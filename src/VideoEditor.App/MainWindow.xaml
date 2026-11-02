@@ -107,7 +107,8 @@
             <StackPanel>
                 <TextBlock Style="{StaticResource SectionTitle}" Text="畫面比例" Margin="0,0,0,6" />
                 <WrapPanel>
-                    <RadioButton x:Name="Ratio16x9" AutomationProperties.AutomationId="Ratio16x9" Content="16:9" GroupName="Ratio" IsChecked="True" Checked="OnOutputSettingChanged" />
+                    <RadioButton x:Name="RatioOriginal" AutomationProperties.AutomationId="RatioOriginal" Content="原尺寸" GroupName="Ratio" IsChecked="True" Checked="OnOutputSettingChanged" />
+                    <RadioButton x:Name="Ratio16x9" AutomationProperties.AutomationId="Ratio16x9" Content="16:9" GroupName="Ratio" Checked="OnOutputSettingChanged" />
                     <RadioButton x:Name="Ratio9x16" AutomationProperties.AutomationId="Ratio9x16" Content="9:16" GroupName="Ratio" Checked="OnOutputSettingChanged" />
                     <RadioButton x:Name="Ratio1x1" AutomationProperties.AutomationId="Ratio1x1" Content="1:1" GroupName="Ratio" Checked="OnOutputSettingChanged" />
                     <RadioButton x:Name="Ratio4x5" AutomationProperties.AutomationId="Ratio4x5" Content="4:5" GroupName="Ratio" Checked="OnOutputSettingChanged" />

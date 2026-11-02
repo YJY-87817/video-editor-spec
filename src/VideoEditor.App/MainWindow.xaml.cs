@@ -99,7 +99,8 @@ public partial class MainWindow : Window
         Ratio9x16.IsChecked == true ? AspectRatio.R9x16
         : Ratio1x1.IsChecked == true ? AspectRatio.R1x1
         : Ratio4x5.IsChecked == true ? AspectRatio.R4x5
-        : AspectRatio.R16x9;
+        : Ratio16x9.IsChecked == true ? AspectRatio.R16x9
+        : AspectRatio.Original;
 
     private FitMode SelectedMode => ModePad.IsChecked == true ? FitMode.Pad : FitMode.Fill;
 

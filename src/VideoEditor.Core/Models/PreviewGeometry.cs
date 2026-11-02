@@ -8,6 +8,8 @@ public static class OutputSize
     /// <summary>以來源較大邊為基準，較小邊依目標比例計算並取偶數。</summary>
     public static Size2 Compute(int sourceWidth, int sourceHeight, AspectRatio ratio)
     {
+        if (ratio.IsOriginal) return new Size2(MakeEven(sourceWidth), MakeEven(sourceHeight));
+
         var longSide = MakeEven(Math.Max(sourceWidth, sourceHeight));
         if (ratio.W >= ratio.H)
             return new Size2(longSide, MakeEven((double)longSide * ratio.H / ratio.W));

@@ -154,6 +154,31 @@ public class ExportIntegrationTests(TestMedia media)
     }
 
     [Fact]
+    public async Task OriginalKeepsEachReferenceSize()
+    {
+        var landscape = new TimelineModel();
+        landscape.Append(await media.Probe(media.Landscape), 0, 0.5);
+        var wide = await media.Export(landscape, new OutputSettings(AspectRatio.Original, FitMode.Fill), "original-wide.mp4");
+        Assert.Equal((1920, 1080), (wide.DisplayWidth, wide.DisplayHeight));
+
+        var rotated = new TimelineModel();
+        rotated.Append(await media.Probe(media.Rotated), 0, 0.5);
+        var tall = await media.Export(rotated, new OutputSettings(AspectRatio.Original, FitMode.Fill), "original-tall.mp4");
+        Assert.Equal((1080, 1920), (tall.DisplayWidth, tall.DisplayHeight));
+    }
+
+    [Fact]
+    public async Task OriginalFitsOtherClipsToFirstClip()
+    {
+        var t = new TimelineModel();
+        t.Append(await media.Probe(media.Portrait), 0, 0.5);
+        t.Append(await media.Probe(media.Landscape), 0, 0.5);
+        var result = await media.Export(t, new OutputSettings(AspectRatio.Original, FitMode.Pad), "original-mixed.mp4");
+        Assert.Equal((1080, 1920), (result.DisplayWidth, result.DisplayHeight));
+        Assert.Equal(30, await media.CountFrames(result.Path));
+    }
+
+    [Fact]
     public async Task HdrSourceKeepsBitDepthAndColor()
     {
         var t = new TimelineModel();

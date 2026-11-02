@@ -23,6 +23,14 @@ public class OutputSizeTests
         Assert.Equal(0, size.Width % 2);
         Assert.Equal(0, size.Height % 2);
     }
+
+    [Theory]
+    [InlineData(1920, 1080, 1920, 1080)]
+    [InlineData(1080, 1920, 1080, 1920)]
+    [InlineData(1440, 1080, 1440, 1080)]
+    [InlineData(1281, 721, 1282, 722)]
+    public void OriginalKeepsSourceSize(int w, int h, int ew, int eh) =>
+        Assert.Equal(new Size2(ew, eh), OutputSize.Compute(w, h, AspectRatio.Original));
 }
 
 public class PreviewLayoutTests
