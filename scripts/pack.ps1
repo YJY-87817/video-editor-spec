@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   把影片編輯器打包到同一個資料夾（程式 + ffmpeg），可選擇再壓成 zip。
 
@@ -23,11 +23,14 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 if (-not $Output) { $Output = Join-Path $root 'dist\VideoEditor' }
-$Output = [System.IO.Path]::GetFullPath($Output)
+# 相對路徑以 PowerShell 目前位置為準（GetFullPath 只看行程的工作目錄）
+$Output = [System.IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Output))
+$driveRoot = [System.IO.Path]::GetPathRoot($Output)
+if ($Output.Length -gt $driveRoot.Length) { $Output = $Output.TrimEnd('\', '/') }
 
-# 安全檢查：避免誤刪專案根目錄或磁碟根目錄
-if ($Output -eq $root -or $Output -eq [System.IO.Path]::GetPathRoot($Output)) {
-    throw "輸出資料夾不可以是專案根目錄或磁碟根目錄：$Output"
+# 安全檢查：輸出資料夾會被整個刪除，不可以是磁碟根目錄、專案根目錄或其上層
+if ($Output -eq $driveRoot -or $Output -eq $root -or $root.StartsWith("$Output\", [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "輸出資料夾不可以是磁碟根目錄、專案根目錄或其上層：$Output"
 }
 
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
