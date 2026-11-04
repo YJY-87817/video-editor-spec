@@ -22,6 +22,11 @@ public sealed class TimelineClip(MediaInfo media, TrackKind track, double source
     public double Volume { get; set; } = 1.0;
     /// <summary>倒放：片段從 SourceOut 往 SourceIn 播放，原音也一起倒放。只用於影片軌。</summary>
     public bool Reversed { get; internal set; }
+    /// <summary>旋轉與鏡像。只用於影片軌。</summary>
+    public FrameTransform Transform { get; internal set; }
+
+    /// <summary>套用旋轉後的畫面尺寸。</summary>
+    public Size2 DisplaySize => Transform.Apply(new Size2(Media.DisplayWidth, Media.DisplayHeight));
 
     public double Duration => SourceOut - SourceIn;
     public double End => Start + Duration;
@@ -85,6 +90,13 @@ public sealed class Timeline
     }
 
     public void Remove(TimelineClip clip) => ListOf(clip.Track).Remove(clip);
+
+    /// <summary>設定旋轉與鏡像。位置與長度不變。</summary>
+    public void SetTransform(TimelineClip clip, FrameTransform transform)
+    {
+        if (clip.Track != TrackKind.Video) throw new ArgumentException("只有影片軌的片段可以旋轉或鏡像。");
+        clip.Transform = transform;
+    }
 
     /// <summary>切換倒放。位置與長度不變，所以不會與其他片段重疊。</summary>
     public void SetReversed(TimelineClip clip, bool reversed)

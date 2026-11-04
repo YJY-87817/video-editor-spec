@@ -30,7 +30,9 @@ public static class ExportPlanner
 
         // 決策：以時間軸上第一個片段作為解析度、影格率與色彩的基準。
         var reference = clips[0].Media;
-        var size = OutputSize.Compute(reference.DisplayWidth, reference.DisplayHeight, settings.Ratio);
+        // 第一個片段旋轉 90° 時，「原尺寸」輸出也跟著轉成直式。
+        var referenceSize = clips[0].DisplaySize;
+        var size = OutputSize.Compute(referenceSize.Width, referenceSize.Height, settings.Ratio);
         var duration = timeline.Duration;
         var (codec, pixelFormat) = ChooseVideoFormat(reference);
         var hasAudio = timeline.AllClips.Any(c => c.Media.HasAudio);
@@ -81,7 +83,7 @@ public static class ExportPlanner
                 input++;
             }
 
-            graph.Add($"{videoSource}{fpsFilter}{FitFilter(clip.Media, size, settings.Mode)},setsar=1,{outputFormat}[v{label}]");
+            graph.Add($"{videoSource}{fpsFilter}{FitFilter(clip.Media, size, settings.Mode, clip.Transform)},setsar=1,{outputFormat}[v{label}]");
             concatInputs.Append($"[v{label}]");
             if (hasAudio)
             {
@@ -133,7 +135,7 @@ public static class ExportPlanner
             throw new InvalidOperationException(timeline.VideoClips.Any(c => c.Reversed)
                 ? "片段數量過多（倒放片段會分成多段處理），超過 Windows 命令列長度上限。請縮短倒放片段。"
                 : "片段數量過多，超過 Windows 命令列長度上限。");
-        return new ExportPlan(args, duration, size, codec, pixelFormat, CollectWarnings(timeline, reference));
+        return new ExportPlan(args, duration, size, codec, pixelFormat, CollectWarnings(timeline, reference, referenceSize));
     }
 
     /// <summary>決策：8-bit 用 H.264；10-bit 以上或 HDR 用 H.265，並維持來源色彩格式。</summary>
@@ -152,9 +154,11 @@ public static class ExportPlanner
         return Math.Clamp(highest, MinAudioBitRate, MaxAudioBitRate);
     }
 
-    public static string FitFilter(MediaInfo media, Size2 size, FitMode mode)
+    /// <summary>像素比修正 → 旋轉與鏡像 → 縮放至輸出尺寸。像素比要在旋轉前修正，因為它是對原始方向定義的。</summary>
+    public static string FitFilter(MediaInfo media, Size2 size, FitMode mode, FrameTransform transform = default)
     {
-        var prefix = media.SampleAspect.Num == media.SampleAspect.Den ? "" : $"scale=iw*{media.SampleAspect}:ih,setsar=1,";
+        var prefix = (media.SampleAspect.Num == media.SampleAspect.Den ? "" : $"scale=iw*{media.SampleAspect}:ih,setsar=1,")
+            + transform.Filter();
         return prefix + (mode == FitMode.Fill
             ? $"scale={size.Width}:{size.Height}:force_original_aspect_ratio=increase:flags=lanczos,crop={size.Width}:{size.Height}"
             : $"scale={size.Width}:{size.Height}:force_original_aspect_ratio=decrease:flags=lanczos,pad={size.Width}:{size.Height}:(ow-iw)/2:(oh-ih)/2:black");
@@ -174,7 +178,7 @@ public static class ExportPlanner
         return tags.Count == 0 ? $"format={pixelFormat}" : $"format={pixelFormat},setparams={string.Join(':', tags)}";
     }
 
-    private static List<string> CollectWarnings(TimelineModel timeline, MediaInfo reference)
+    private static List<string> CollectWarnings(TimelineModel timeline, MediaInfo reference, Size2 referenceSize)
     {
         var warnings = new List<string>();
         var media = timeline.VideoClips.Select(c => c.Media).Distinct().ToList();
@@ -182,7 +186,7 @@ public static class ExportPlanner
             warnings.Add($"片段影格率不一致，將統一為第一個片段的 {reference.FrameRate.Value:0.###} fps。");
         if (media.Any(m => m.IsVariableFrameRate) && media.Count > 1)
             warnings.Add("含可變影格率素材，與其他片段接合時將轉為固定影格率。");
-        if (media.Any(m => m.DisplayWidth != reference.DisplayWidth || m.DisplayHeight != reference.DisplayHeight))
+        if (timeline.VideoClips.Any(c => c.DisplaySize != referenceSize))
             warnings.Add("片段解析度不一致，輸出解析度以第一個片段為準。");
         if (media.Any(m => m.IsHdr != reference.IsHdr || m.BitDepth != reference.BitDepth))
             warnings.Add("片段的色彩格式不一致（SDR/HDR 或位元深度），會統一為第一個片段的格式，不做色調對應，部分片段顏色可能不正確。");

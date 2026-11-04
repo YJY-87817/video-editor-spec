@@ -29,7 +29,7 @@ public sealed class MediaItem(MediaInfo info)
 
 public sealed record ClipRow(TimelineClip Clip, int Number)
 {
-    public string Label => $"{Number}. {Clip.Media.FileName}  {MainWindow.FormatDuration(Clip.Duration)}{(Clip.Reversed ? "  ⟲ 倒放" : "")}";
+    public string Label => $"{Number}. {Clip.Media.FileName}  {MainWindow.FormatDuration(Clip.Duration)}{(Clip.Reversed ? "  ⟲ 倒放" : "")}{(Clip.Transform.IsIdentity ? "" : "  " + Clip.Transform.Label)}";
 }
 
 public partial class MainWindow : Window
@@ -48,6 +48,7 @@ public partial class MainWindow : Window
     private double? _markIn;
     private double? _markOut;
     private MediaInfo? _surfaceMedia;
+    private FrameTransform _surfaceTransform;
     private bool _updatingSlider;
     private bool _updatingVolume;
     private bool _updatingClipList;
@@ -250,10 +251,11 @@ public partial class MainWindow : Window
         UpdateMarkRange();
     }
 
-    private void OnSurfaceChanged(WriteableBitmap? bitmap, MediaInfo? media)
+    private void OnSurfaceChanged(WriteableBitmap? bitmap, MediaInfo? media, FrameTransform transform)
     {
         PreviewImage.Source = bitmap;
         _surfaceMedia = media;
+        _surfaceTransform = transform;
         UpdatePreviewLayout();
     }
 
@@ -297,7 +299,7 @@ public partial class MainWindow : Window
     private void UpdatePreviewLayout()
     {
         var area = new Size(PreviewArea.ActualWidth, PreviewArea.ActualHeight);
-        var reference = OutputReference();
+        var reference = OutputReferenceSize();
         if (reference == null || area.Width <= 0 || area.Height <= 0)
         {
             PreviewImage.Visibility = Visibility.Collapsed;
@@ -307,15 +309,15 @@ public partial class MainWindow : Window
             return;
         }
 
-        var output = OutputSize.Compute(reference.DisplayWidth, reference.DisplayHeight, SelectedRatio);
+        var output = OutputSize.Compute(reference.Value.Width, reference.Value.Height, SelectedRatio);
         // 時間軸空白處沒有來源畫面，用輸出尺寸排版，只顯示黑色的輸出框。
-        var source = _surfaceMedia is { HasVideo: true } s ? new Size2(s.DisplayWidth, s.DisplayHeight) : output;
+        var source = _surfaceMedia is { HasVideo: true } s ? _surfaceTransform.Apply(new Size2(s.DisplayWidth, s.DisplayHeight)) : output;
         var layout = PreviewLayout.Compute(area.Width, area.Height, source, output, SelectedMode);
 
         PreviewImage.Visibility = _surfaceMedia == null ? Visibility.Collapsed : Visibility.Visible;
         FrameFill.Visibility = Visibility.Visible;
         FrameBorder.Visibility = Visibility.Visible;
-        Place(PreviewImage, layout.Source);
+        PlaceImage(layout.Source, _surfaceTransform);
         Place(FrameFill, layout.Frame);
         Place(FrameBorder, layout.Frame);
 
@@ -335,11 +337,35 @@ public partial class MainWindow : Window
         element.Height = rect.Height;
     }
 
-    /// <summary>決定輸出尺寸的素材：時間軸模式是第一個影片片段，素材模式是目前的素材。</summary>
-    private MediaInfo? OutputReference()
+    /// <summary>
+    /// 預覽畫面以原始方向放置，再以中心為原點旋轉與鏡像，轉完後剛好落在 rect 內。
+    /// 先旋轉、再鏡像（TransformGroup 依序套用），與匯出的濾鏡順序相同。
+    /// </summary>
+    private void PlaceImage(Rect2 rect, FrameTransform transform)
     {
-        if (IsTimelinePreview) return _timeline.VideoClips.FirstOrDefault()?.Media;
-        return _selectedMedia?.Info is { HasVideo: true } info ? info : null;
+        var (width, height) = transform.SwapsSize ? (rect.Height, rect.Width) : (rect.Width, rect.Height);
+        Canvas.SetLeft(PreviewImage, rect.X + (rect.Width - width) / 2);
+        Canvas.SetTop(PreviewImage, rect.Y + (rect.Height - height) / 2);
+        PreviewImage.Width = width;
+        PreviewImage.Height = height;
+        PreviewImage.RenderTransformOrigin = new Point(0.5, 0.5);
+        PreviewImage.RenderTransform = transform.IsIdentity
+            ? Transform.Identity
+            : new TransformGroup
+            {
+                Children =
+                {
+                    new RotateTransform(transform.Rotation),
+                    new ScaleTransform(transform.FlipHorizontal ? -1 : 1, transform.FlipVertical ? -1 : 1),
+                },
+            };
+    }
+
+    /// <summary>決定輸出尺寸的畫面：時間軸模式是第一個影片片段（含旋轉），素材模式是目前的素材。</summary>
+    private Size2? OutputReferenceSize()
+    {
+        if (IsTimelinePreview) return _timeline.VideoClips.FirstOrDefault()?.DisplaySize;
+        return _selectedMedia?.Info is { HasVideo: true } info ? new Size2(info.DisplayWidth, info.DisplayHeight) : null;
     }
 
     // ---- 入出點 ----
@@ -457,6 +483,39 @@ public partial class MainWindow : Window
         ReverseCheck.IsEnabled = clip is { Track: TrackKind.Video };
         ReverseCheck.IsChecked = clip?.Reversed == true;
         _updatingReverse = false;
+        UpdateTransformControls(clip);
+    }
+
+    // ---- 旋轉與鏡像 ----
+
+    private void UpdateTransformControls(TimelineClip? clip)
+    {
+        TransformPanel.IsEnabled = clip is { Track: TrackKind.Video };
+        TransformText.Text = clip is { Track: TrackKind.Video } ? clip.Transform.Label : "—";
+    }
+
+    private void OnRotateLeft(object sender, RoutedEventArgs e) => ChangeTransform(t => t.Rotate(-90));
+    private void OnRotateRight(object sender, RoutedEventArgs e) => ChangeTransform(t => t.Rotate(90));
+    private void OnFlipHorizontal(object sender, RoutedEventArgs e) => ChangeTransform(t => t.ToggleHorizontal());
+    private void OnFlipVertical(object sender, RoutedEventArgs e) => ChangeTransform(t => t.ToggleVertical());
+    private void OnResetTransform(object sender, RoutedEventArgs e) => ChangeTransform(_ => FrameTransform.Identity);
+
+    private void ChangeTransform(Func<FrameTransform, FrameTransform> change)
+    {
+        if (Timeline.SelectedClip is not { Track: TrackKind.Video } clip) return;
+        _timeline.SetTransform(clip, change(clip.Transform));
+        UpdateTransformControls(clip);
+        // 看得到效果：切到時間軸預覽，並把播放頭移進這個片段。
+        OnClipsChanged();
+        if (!IsTimelinePreview)
+        {
+            Timeline.Playhead = clip.Start;
+            SwitchToTimelinePreview();
+        }
+        else if (Timeline.Playhead < clip.Start || Timeline.Playhead >= clip.End)
+        {
+            _engine?.Seek(clip.Start);
+        }
     }
 
     private void OnReverseChanged(object sender, RoutedEventArgs e)
@@ -522,13 +581,15 @@ public partial class MainWindow : Window
 
     private void UpdateOutputInfo()
     {
-        var reference = _timeline.VideoClips.FirstOrDefault()?.Media ?? (_selectedMedia?.Info is { HasVideo: true } s ? s : null);
+        var first = _timeline.VideoClips.FirstOrDefault();
+        var reference = first?.Media ?? (_selectedMedia?.Info is { HasVideo: true } s ? s : null);
         if (reference == null)
         {
             OutputInfo.Text = "輸出解析度：—";
             return;
         }
-        var size = OutputSize.Compute(reference.DisplayWidth, reference.DisplayHeight, SelectedRatio);
+        var referenceSize = first?.DisplaySize ?? new Size2(reference.DisplayWidth, reference.DisplayHeight);
+        var size = OutputSize.Compute(referenceSize.Width, referenceSize.Height, SelectedRatio);
         var (codec, _) = ExportPlanner.ChooseVideoFormat(reference);
         OutputInfo.Text = $"輸出解析度：{size.Width}×{size.Height}\n編碼：{(codec == "libx265" ? "H.265" : "H.264")}，CRF 18";
     }

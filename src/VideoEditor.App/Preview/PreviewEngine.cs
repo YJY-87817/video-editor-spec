@@ -50,13 +50,14 @@ public sealed class PreviewEngine : IDisposable
     private TimelineModel _timeline = new();
     private WriteableBitmap? _bitmap;
     private MediaInfo? _surfaceMedia;
+    private FrameTransform _surfaceTransform;
     private double _clockBase;
     private TimelineClip? _videoClip;
     private TimelineClip? _musicClip;
     private bool _waitingForFirstFrame;
     private long _framesAtSwitch;
     private bool _acceptVlcFrames;
-    private (MediaInfo Media, double SourceTime, Size2 Size, long Frame, long Request)? _pendingFrame;
+    private (MediaInfo Media, FrameTransform Transform, double SourceTime, Size2 Size, long Frame, long Request)? _pendingFrame;
     private long _latestRequest;
     private long _shownRequest;
     private bool _extracting;
@@ -96,8 +97,11 @@ public sealed class PreviewEngine : IDisposable
 
     public event Action? PositionChanged;
     public event Action? PlayingChanged;
-    /// <summary>顯示的素材或畫面尺寸改變。bitmap 為 null 表示時間軸空白處，顯示黑畫面。</summary>
-    public event Action<WriteableBitmap?, MediaInfo?>? SurfaceChanged;
+    /// <summary>
+    /// 顯示的素材、畫面尺寸或旋轉鏡像改變。bitmap 為 null 表示時間軸空白處，顯示黑畫面。
+    /// bitmap 是原始方向的畫面，旋轉與鏡像由畫面元件套用。
+    /// </summary>
+    public event Action<WriteableBitmap?, MediaInfo?, FrameTransform>? SurfaceChanged;
     public event Action<string>? Error;
     public event Action<string>? Status;
 
@@ -288,7 +292,7 @@ public sealed class PreviewEngine : IDisposable
         }
 
         var size = FrameExtractor.PreviewSize(clip.Media.DisplayWidth, clip.Media.DisplayHeight, MaxPreviewLongSide);
-        EnsureSurface(size, clip.Media);
+        EnsureSurface(size, clip.Media, clip.Transform);
         _clockBase = position;
         if (!clip.Reversed)
         {
@@ -439,7 +443,7 @@ public sealed class PreviewEngine : IDisposable
         for (var d = 0; d < step; d++)
         {
             if (!_frames.TryGet((media.Path, frame - d * direction), out var cached)) continue;
-            ShowFrame(cached, media);
+            ShowFrame(cached, media, clip.Transform);
             break;
         }
 
@@ -524,11 +528,11 @@ public sealed class PreviewEngine : IDisposable
         {
             _pendingFrame = null;
             _shownRequest = request;
-            ShowFrame(cached, media);
+            ShowFrame(cached, media, clip.Transform);
             return;
         }
 
-        _pendingFrame = (media, FrameExtractor.FrameSeekTime(frame, fps), size, frame, request);
+        _pendingFrame = (media, clip.Transform, FrameExtractor.FrameSeekTime(frame, fps), size, frame, request);
         if (!_extracting) _ = ExtractPendingFramesAsync();
     }
 
@@ -549,7 +553,7 @@ public sealed class PreviewEngine : IDisposable
                 // 拖曳中也顯示解好的影格，畫面才會跟著動；但不可蓋掉較新的畫面（如空白處的黑畫面）。
                 if (IsPlaying || IsRewinding || request.Request < _shownRequest) continue;
                 _shownRequest = request.Request;
-                ShowFrame(frame, request.Media);
+                ShowFrame(frame, request.Media, request.Transform);
             }
         }
         catch (Exception e) when (e is FfmpegException or System.ComponentModel.Win32Exception)
@@ -562,22 +566,23 @@ public sealed class PreviewEngine : IDisposable
         }
     }
 
-    private void ShowFrame(RawFrame frame, MediaInfo media)
+    private void ShowFrame(RawFrame frame, MediaInfo media, FrameTransform transform)
     {
-        EnsureSurface(new Size2(frame.Width, frame.Height), media);
+        EnsureSurface(new Size2(frame.Width, frame.Height), media, transform);
         _bitmap!.WritePixels(new Int32Rect(0, 0, frame.Width, frame.Height), frame.Bgra, frame.Width * 4, 0);
     }
 
-    private void EnsureSurface(Size2 size, MediaInfo media)
+    private void EnsureSurface(Size2 size, MediaInfo media, FrameTransform transform)
     {
-        var changed = _surfaceMedia != media;
+        var changed = _surfaceMedia != media || _surfaceTransform != transform;
         if (_bitmap == null || _bitmap.PixelWidth != size.Width || _bitmap.PixelHeight != size.Height)
         {
             _bitmap = new WriteableBitmap(size.Width, size.Height, 96, 96, PixelFormats.Bgr32, null);
             changed = true;
         }
         _surfaceMedia = media;
-        if (changed) SurfaceChanged?.Invoke(_bitmap, media);
+        _surfaceTransform = transform;
+        if (changed) SurfaceChanged?.Invoke(_bitmap, media, transform);
     }
 
     private void ShowBlack()
@@ -585,7 +590,7 @@ public sealed class PreviewEngine : IDisposable
         if (_bitmap == null && _surfaceMedia == null) return;
         _bitmap = null;
         _surfaceMedia = null;
-        SurfaceChanged?.Invoke(null, null);
+        SurfaceChanged?.Invoke(null, null, FrameTransform.Identity);
     }
 
     public void Dispose()
