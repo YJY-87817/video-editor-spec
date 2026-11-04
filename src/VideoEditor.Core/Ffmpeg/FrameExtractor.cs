@@ -20,6 +20,29 @@ public sealed class FrameExtractor(FfmpegTools tools)
         return bytes.Length == size.Width * size.Height * 4 ? new RawFrame(bytes, size.Width, size.Height) : null;
     }
 
+    /// <summary>
+    /// 一次解出多格：從第 firstFrame 格起，每 step 格取一格，最多 count 格（BGRA）。
+    /// 倒帶播放時用，比逐格各跑一次 FFmpeg 快得多。回傳的第 i 格是第 firstFrame + i × step 格。
+    /// </summary>
+    public async Task<IReadOnlyList<RawFrame>> ExtractRangeAsync(string path, long firstFrame, int count, int step, double fps, Size2 size,
+        CancellationToken token = default)
+    {
+        step = Math.Max(1, step);
+        string[] args =
+        [
+            "-v", "error", "-ss", Seconds(FrameSeekTime(firstFrame, fps)), "-i", path,
+            "-an", "-vf", $"select=not(mod(n\\,{step})),scale={size.Width}:{size.Height},setsar=1",
+            "-fps_mode", "passthrough", "-frames:v", count.ToString(CultureInfo.InvariantCulture),
+            "-f", "rawvideo", "-pix_fmt", "bgra", "pipe:1",
+        ];
+        var bytes = await ProcessRunner.RunForBytesAsync(tools.Ffmpeg, args, token);
+        var frameSize = size.Width * size.Height * 4;
+        var frames = new List<RawFrame>();
+        for (var offset = 0; offset + frameSize <= bytes.Length; offset += frameSize)
+            frames.Add(new RawFrame(bytes.AsSpan(offset, frameSize).ToArray(), size.Width, size.Height));
+        return frames;
+    }
+
     /// <summary>解出 JPEG 縮圖。</summary>
     public Task<byte[]> ThumbnailAsync(string path, double time, int width, CancellationToken token = default)
     {

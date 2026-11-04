@@ -20,10 +20,41 @@ public sealed class TimelineClip(MediaInfo media, TrackKind track, double source
     public double Start { get; internal set; } = start;
     /// <summary>線性增益，1 = 原音量。</summary>
     public double Volume { get; set; } = 1.0;
+    /// <summary>倒放：片段從 SourceOut 往 SourceIn 播放，原音也一起倒放。只用於影片軌。</summary>
+    public bool Reversed { get; internal set; }
+    /// <summary>旋轉與鏡像。只用於影片軌。</summary>
+    public FrameTransform Transform { get; internal set; }
+
+    /// <summary>套用旋轉後的畫面尺寸。</summary>
+    public Size2 DisplaySize => Transform.Apply(new Size2(Media.DisplayWidth, Media.DisplayHeight));
 
     public double Duration => SourceOut - SourceIn;
     public double End => Start + Duration;
-    public double ToSourceTime(double timelineTime) => SourceIn + (timelineTime - Start);
+
+    /// <summary>
+    /// 時間軸時間對應的來源時間。倒放時第一格是出點前的最後一格，
+    /// 與匯出時 FFmpeg reverse 濾鏡的輸出相同。
+    /// </summary>
+    public double ToSourceTime(double timelineTime)
+    {
+        var offset = timelineTime - Start;
+        return Reversed ? Math.Max(SourceIn, LastFrameTime - offset) : SourceIn + offset;
+    }
+
+    /// <summary>ToSourceTime 的反函數。</summary>
+    public double ToTimelineTime(double sourceTime) =>
+        Reversed ? Start + (LastFrameTime - sourceTime) : Start + (sourceTime - SourceIn);
+
+    /// <summary>出點前最後一格的時間戳。</summary>
+    private double LastFrameTime
+    {
+        get
+        {
+            var fps = Media.FrameRate.Value;
+            if (fps <= 0) return SourceOut;
+            return Math.Max(SourceIn, (Export.ReverseGraph.FirstFrameAtOrAfter(SourceOut, fps) - 1) / fps);
+        }
+    }
 }
 
 /// <summary>時間軸模型。規則：同軌不可重疊、可留空白、拖曳不推動其他片段。</summary>
@@ -60,6 +91,20 @@ public sealed class Timeline
 
     public void Remove(TimelineClip clip) => ListOf(clip.Track).Remove(clip);
 
+    /// <summary>設定旋轉與鏡像。位置與長度不變。</summary>
+    public void SetTransform(TimelineClip clip, FrameTransform transform)
+    {
+        if (clip.Track != TrackKind.Video) throw new ArgumentException("只有影片軌的片段可以旋轉或鏡像。");
+        clip.Transform = transform;
+    }
+
+    /// <summary>切換倒放。位置與長度不變，所以不會與其他片段重疊。</summary>
+    public void SetReversed(TimelineClip clip, bool reversed)
+    {
+        if (clip.Track != TrackKind.Video) throw new ArgumentException("只有影片軌的片段可以倒放。");
+        clip.Reversed = reversed;
+    }
+
     public TimelineClip? VideoClipAt(double time) => ClipAt(_video, time);
     public TimelineClip? MusicClipAt(double time) => ClipAt(_music, time);
 
@@ -91,27 +136,37 @@ public sealed class Timeline
         return clip.Start;
     }
 
-    /// <summary>拖曳左緣：片段右緣固定，受來源起點、左鄰與最短長度限制。</summary>
+    /// <summary>
+    /// 拖曳左緣：片段右緣固定，受來源範圍、左鄰與最短長度限制。
+    /// 倒放時左緣是來源的結尾，所以改的是 SourceOut。
+    /// </summary>
     public void TrimStart(TimelineClip clip, double targetStart)
     {
         var previousEnd = ListOf(clip.Track).Where(c => c != clip && c.End <= clip.Start + Epsilon)
             .Select(c => c.End).DefaultIfEmpty(0).Max();
-        var earliest = Math.Max(previousEnd, clip.Start - clip.SourceIn);
+        var available = clip.Reversed ? clip.Media.Duration - clip.SourceOut : clip.SourceIn;
+        var earliest = Math.Max(previousEnd, clip.Start - available);
         var latest = clip.End - MinClipDuration;
         var start = Math.Clamp(targetStart, earliest, Math.Max(earliest, latest));
-        clip.SourceIn += start - clip.Start;
+        if (clip.Reversed) clip.SourceOut -= start - clip.Start;
+        else clip.SourceIn += start - clip.Start;
         clip.Start = start;
     }
 
-    /// <summary>拖曳右緣：片段左緣固定，受來源長度、右鄰與最短長度限制。</summary>
+    /// <summary>
+    /// 拖曳右緣：片段左緣固定，受來源範圍、右鄰與最短長度限制。
+    /// 倒放時右緣是來源的開頭，所以改的是 SourceIn。
+    /// </summary>
     public void TrimEnd(TimelineClip clip, double targetEnd)
     {
         var nextStart = ListOf(clip.Track).Where(c => c != clip && c.Start >= clip.End - Epsilon)
             .Select(c => c.Start).DefaultIfEmpty(double.MaxValue).Min();
-        var latest = Math.Min(nextStart, clip.Start + (clip.Media.Duration - clip.SourceIn));
+        var available = clip.Reversed ? clip.SourceOut : clip.Media.Duration - clip.SourceIn;
+        var latest = Math.Min(nextStart, clip.Start + available);
         var earliest = clip.Start + MinClipDuration;
         var end = Math.Clamp(targetEnd, earliest, Math.Max(earliest, latest));
-        clip.SourceOut = clip.SourceIn + (end - clip.Start);
+        if (clip.Reversed) clip.SourceIn = clip.SourceOut - (end - clip.Start);
+        else clip.SourceOut = clip.SourceIn + (end - clip.Start);
     }
 
     /// <summary>與相鄰片段交換順序；兩段合占的範圍與中間空白不變，不影響其他片段。</summary>

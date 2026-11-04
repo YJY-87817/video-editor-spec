@@ -147,7 +147,7 @@ public sealed class TimelineView : FrameworkElement
         DrawRuler(dc, width);
         foreach (var clip in _timeline.VideoClips)
         {
-            DrawClip(dc, clip, VideoRowY, VideoRowHeight, VideoClipBrush, clip.Media.FileName);
+            DrawClip(dc, clip, VideoRowY, VideoRowHeight, VideoClipBrush, ClipLabel(clip));
             var hasAudio = clip.Media.HasAudio;
             DrawClip(dc, clip, OriginalAudioRowY, AudioRowHeight, hasAudio ? AudioClipBrush : SilentClipBrush,
                 hasAudio ? VolumeLabel(clip) : "無音訊");
@@ -158,6 +158,12 @@ public sealed class TimelineView : FrameworkElement
         var playheadX = TimeToX(_playhead);
         dc.DrawLine(PlayheadPen, new Point(playheadX, 0), new Point(playheadX, ActualHeight));
         dc.Pop();
+    }
+
+    private static string ClipLabel(TimelineClip clip)
+    {
+        var label = clip.Reversed ? $"⟲ 倒放  {clip.Media.FileName}" : clip.Media.FileName;
+        return clip.Transform.IsIdentity ? label : $"{label}  {clip.Transform.Label}";
     }
 
     private static string VolumeLabel(TimelineClip clip) => $"音量 {clip.Volume * 100:0}%";

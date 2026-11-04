@@ -89,7 +89,8 @@
             <DockPanel>
                 <TextBlock x:Name="TimeText" AutomationProperties.AutomationId="TimeText" DockPanel.Dock="Right" VerticalAlignment="Center" FontFamily="Consolas" Text="00:00:00.00 / 00:00:00.00" />
                 <WrapPanel>
-                    <Button x:Name="PlayButton" AutomationProperties.AutomationId="PlayButton" Content="▶ 播放" Width="72" Click="OnPlayClick" ToolTip="空白鍵" />
+                    <Button x:Name="RewindButton" AutomationProperties.AutomationId="RewindButton" Content="◀◀ 倒帶" Width="72" Click="OnRewindClick" ToolTip="J（再按加速）" />
+                    <Button x:Name="PlayButton" AutomationProperties.AutomationId="PlayButton" Content="▶ 播放" Width="72" Click="OnPlayClick" ToolTip="空白鍵／L；K 暫停" />
                     <Button Content="◀ 前一格" AutomationProperties.AutomationId="StepBackButton" Click="OnStepBack" ToolTip="←" />
                     <Button Content="後一格 ▶" AutomationProperties.AutomationId="StepForwardButton" Click="OnStepForward" ToolTip="→" />
                     <Button Content="入點 I" AutomationProperties.AutomationId="MarkInButton" Click="OnMarkIn" Margin="10,0,6,0" />
@@ -133,6 +134,22 @@
                     <TextBlock x:Name="VolumeText" AutomationProperties.AutomationId="VolumeText" DockPanel.Dock="Right" Width="44" TextAlignment="Right" Text="—" />
                     <Slider x:Name="VolumeSlider" AutomationProperties.AutomationId="VolumeSlider" Minimum="0" Maximum="200" IsEnabled="False" Focusable="False" ValueChanged="OnVolumeChanged" />
                 </DockPanel>
+
+                <TextBlock Style="{StaticResource SectionTitle}" Text="旋轉與鏡像" />
+                <StackPanel x:Name="TransformPanel" IsEnabled="False">
+                    <WrapPanel>
+                        <Button Content="↺ 左轉 90°" AutomationProperties.AutomationId="RotateLeftButton" Margin="0,0,6,6" Click="OnRotateLeft" />
+                        <Button Content="↻ 右轉 90°" AutomationProperties.AutomationId="RotateRightButton" Margin="0,0,6,6" Click="OnRotateRight" />
+                        <Button Content="⇋ 水平鏡像" AutomationProperties.AutomationId="FlipHorizontalButton" Margin="0,0,6,6" Click="OnFlipHorizontal" />
+                        <Button Content="⇵ 垂直鏡像" AutomationProperties.AutomationId="FlipVerticalButton" Margin="0,0,6,6" Click="OnFlipVertical" />
+                        <Button Content="重設" AutomationProperties.AutomationId="ResetTransformButton" Margin="0,0,6,6" Click="OnResetTransform" />
+                    </WrapPanel>
+                    <TextBlock x:Name="TransformText" AutomationProperties.AutomationId="TransformText" FontSize="12" Foreground="#B0B0B0" Text="—" />
+                </StackPanel>
+
+                <TextBlock Style="{StaticResource SectionTitle}" Text="片段倒放" />
+                <CheckBox x:Name="ReverseCheck" AutomationProperties.AutomationId="ReverseCheck" Content="倒放這個片段（畫面與原音）" Foreground="#E0E0E0"
+                          IsEnabled="False" Focusable="False" Checked="OnReverseChanged" Unchecked="OnReverseChanged" />
 
                 <TextBlock Style="{StaticResource SectionTitle}" Text="匯出" />
                 <Button x:Name="ExportButton" AutomationProperties.AutomationId="ExportButton" Content="匯出 MP4…" Padding="10,8" Margin="0" Click="OnExportClick" />
