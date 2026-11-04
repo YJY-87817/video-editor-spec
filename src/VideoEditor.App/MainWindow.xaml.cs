@@ -54,6 +54,10 @@ public partial class MainWindow : Window
     private bool _updatingClipList;
     private bool _updatingReverse;
     private CancellationTokenSource? _exportCancel;
+    private int _importTotal;
+    private int _importDone;
+    private int _exportRun;
+    private const int ExportDoneDisplayMs = 4000;
 
     public MainWindow()
     {
@@ -80,7 +84,7 @@ public partial class MainWindow : Window
 
         _probe = new MediaProbe(_tools);
         _extractor = new FrameExtractor(_tools);
-        _engine = new PreviewEngine(_extractor, new ReversePreviewCache(_tools), Dispatcher);
+        _engine = new PreviewEngine(_extractor, new ReversePreviewCache(_tools, progress: new Progress<double?>(ShowReverseProgress)), Dispatcher);
         _engine.PositionChanged += OnEnginePosition;
         _engine.PlayingChanged += () =>
         {
@@ -137,23 +141,75 @@ public partial class MainWindow : Window
     private async Task ImportAsync(IEnumerable<string> paths)
     {
         if (_probe == null) return;
-        foreach (var path in paths)
+        var pending = paths.Where(path => !_media.Any(m => string.Equals(m.Info.Path, path, StringComparison.OrdinalIgnoreCase))).ToList();
+        if (pending.Count == 0) return;
+        // 匯入中又拖進新檔案時，併入同一個進度。
+        _importTotal += pending.Count;
+        foreach (var path in pending)
         {
-            if (_media.Any(m => string.Equals(m.Info.Path, path, StringComparison.OrdinalIgnoreCase))) continue;
+            var name = System.IO.Path.GetFileName(path);
             try
             {
+                ShowImportProgress(name, "讀取資訊", 0);
                 var info = await _probe.ProbeAsync(path);
+                ShowImportProgress(name, "產生縮圖", 0.5);
                 var item = new MediaItem(info) { Thumbnail = await LoadThumbnailAsync(info) };
                 _media.Add(item);
                 MediaList.SelectedItem ??= item;
             }
             catch (Exception e) when (e is FfmpegException or InvalidDataException or System.Text.Json.JsonException)
             {
-                MessageBox.Show(this, $"無法匯入 {System.IO.Path.GetFileName(path)}：\n{(e as FfmpegException)?.Stderr ?? e.Message}", "匯入失敗",
+                MessageBox.Show(this, $"無法匯入 {name}：\n{(e as FfmpegException)?.Stderr ?? e.Message}", "匯入失敗",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally
+            {
+                _importDone++;
+                if (_importDone >= _importTotal)
+                {
+                    _importDone = 0;
+                    _importTotal = 0;
+                }
+                ShowImportProgress(name, "完成", 0);
             }
         }
     }
+
+    // ---- 進度面板 ----
+
+    /// <summary>stage 為目前檔案內的進度（0–1）。全部完成時隱藏。</summary>
+    private void ShowImportProgress(string name, string step, double stage)
+    {
+        if (_importTotal == 0)
+        {
+            ImportRow.Visibility = Visibility.Collapsed;
+            UpdateProgressPanel();
+            return;
+        }
+        var value = (_importDone + stage) / _importTotal;
+        ImportText.Text = $"讀取素材 {_importDone + 1}/{_importTotal}：{name}（{step}）";
+        ImportProgress.Value = value;
+        ImportPercent.Text = $"{value * 100:0}%";
+        ImportRow.Visibility = Visibility.Visible;
+        UpdateProgressPanel();
+    }
+
+    private void ShowReverseProgress(double? value)
+    {
+        ReverseRow.Visibility = value == null ? Visibility.Collapsed : Visibility.Visible;
+        ReverseProgress.Value = value ?? 0;
+        ReversePercent.Text = $"{(value ?? 0) * 100:0}%";
+        UpdateProgressPanel();
+    }
+
+    private void UpdateProgressPanel() =>
+        ProgressPanel.Visibility = ImportRow.Visibility == Visibility.Visible || ReverseRow.Visibility == Visibility.Visible
+            || ExportRow.Visibility == Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
+
+    private static string FormatSpan(TimeSpan span) =>
+        span.TotalHours >= 1 ? $"{(int)span.TotalHours} 小時 {span.Minutes} 分"
+        : span.TotalMinutes >= 1 ? $"{span.Minutes} 分 {span.Seconds} 秒"
+        : $"{Math.Max(1, span.Seconds)} 秒";
 
     private async Task<BitmapSource?> LoadThumbnailAsync(MediaInfo info)
     {
@@ -629,37 +685,69 @@ public partial class MainWindow : Window
         _exportCancel = new CancellationTokenSource();
         ExportButton.IsEnabled = false;
         CancelButton.IsEnabled = true;
+        var title = $"匯出中：{System.IO.Path.GetFileName(output)}（{plan.Size.Width}×{plan.Size.Height}）";
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var run = ++_exportRun;
+        var finished = false;
+        var succeeded = false;
+        CancelButton.Visibility = Visibility.Visible;
         ExportProgress.Value = 0;
-        StatusText.Text = $"匯出中：{plan.Size.Width}×{plan.Size.Height}…";
+        ExportPercent.Text = "0%";
+        ExportText.Text = title;
+        ExportRow.Visibility = Visibility.Visible;
+        UpdateProgressPanel();
+        Taskbar.ProgressState = System.Windows.Shell.TaskbarItemProgressState.Normal;
+        Taskbar.ProgressValue = 0;
+        StatusText.Text = title;
         var progress = new Progress<double>(value =>
         {
+            // Progress 是非同步送回 UI 執行緒的，匯出結束後才到的回報要忽略。
+            if (finished) return;
             ExportProgress.Value = value;
-            StatusText.Text = $"匯出中：{value * 100:0}%";
+            ExportPercent.Text = $"{value * 100:0}%";
+            Taskbar.ProgressValue = value;
+            // 進度太少時估算不準，先不顯示剩餘時間。
+            ExportText.Text = value is > 0.02 and < 1
+                ? $"{title}　剩餘約 {FormatSpan(clock.Elapsed * ((1 - value) / value))}"
+                : title;
         });
 
         try
         {
             await new ExportService(_tools!).ExportAsync(plan, output, progress, _exportCancel.Token);
+            finished = true;
+            succeeded = true;
             StatusText.Text = $"匯出完成：{output}";
+            ExportProgress.Value = 1;
+            ExportPercent.Text = "100%";
+            ExportText.Text = $"✔ 匯出完成：{output}（花費 {FormatSpan(clock.Elapsed)}）";
+            CancelButton.Visibility = Visibility.Collapsed;
+            Taskbar.ProgressState = System.Windows.Shell.TaskbarItemProgressState.None;
         }
         catch (OperationCanceledException)
         {
-            ExportProgress.Value = 0;
             StatusText.Text = "已取消匯出。";
         }
         catch (Exception error) when (error is FfmpegException or IOException or UnauthorizedAccessException)
         {
-            ExportProgress.Value = 0;
             StatusText.Text = "匯出失敗。";
             MessageBox.Show(this, (error as FfmpegException)?.Stderr ?? error.Message, "匯出失敗", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
+            finished = true;
             ExportButton.IsEnabled = true;
             CancelButton.IsEnabled = false;
+            Taskbar.ProgressState = System.Windows.Shell.TaskbarItemProgressState.None;
             _exportCancel.Dispose();
             _exportCancel = null;
         }
+
+        // 完成訊息留幾秒再收起；期間若又開始新的匯出，就交給新的那次處理。
+        if (succeeded) await Task.Delay(ExportDoneDisplayMs);
+        if (run != _exportRun) return;
+        ExportRow.Visibility = Visibility.Collapsed;
+        UpdateProgressPanel();
     }
 
     private void OnCancelExport(object sender, RoutedEventArgs e) => _exportCancel?.Cancel();

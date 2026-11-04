@@ -5,6 +5,9 @@
         Title="影片編輯器" Icon="app.ico" Width="1360" Height="860" MinWidth="1000" MinHeight="640"
         Background="#1E1E1E" FontFamily="Microsoft JhengHei UI" AllowDrop="True"
         Drop="OnFileDrop" PreviewKeyDown="OnPreviewKeyDown" Closed="OnClosed">
+    <Window.TaskbarItemInfo>
+        <TaskbarItemInfo x:Name="Taskbar" />
+    </Window.TaskbarItemInfo>
     <Window.Resources>
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="#E0E0E0" />
@@ -76,6 +79,51 @@
                 <Rectangle x:Name="FrameBorder" Stroke="#FFD24A" StrokeThickness="1.5" StrokeDashArray="4 3" IsHitTestVisible="False" />
             </Canvas>
             <TextBlock x:Name="EmptyHint" Text="匯入素材後，在這裡預覽並用 I / O 標記入出點" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#777777" />
+
+            <!-- 進度面板：疊在預覽下方，有工作進行時才出現，不推動其他版面 -->
+            <Border x:Name="ProgressPanel" VerticalAlignment="Bottom" Margin="16" Padding="16,12" CornerRadius="6"
+                    Background="#E6202830" BorderBrush="#4A90D9" BorderThickness="1" Visibility="Collapsed"
+                    AutomationProperties.AutomationId="ProgressPanel">
+                <StackPanel>
+                    <Grid x:Name="ImportRow" Visibility="Collapsed" Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock x:Name="ImportText" AutomationProperties.AutomationId="ImportText" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Margin="0,0,0,6" />
+                            <ProgressBar x:Name="ImportProgress" AutomationProperties.AutomationId="ImportProgress" Height="10" Maximum="1" Foreground="#4A90D9" Background="#33FFFFFF" BorderThickness="0" />
+                        </StackPanel>
+                        <TextBlock x:Name="ImportPercent" Grid.Column="1" FontSize="20" FontWeight="Bold" Foreground="#9CC4F0" VerticalAlignment="Center" Margin="16,0,0,0" MinWidth="64" TextAlignment="Right" />
+                    </Grid>
+
+                    <Grid x:Name="ReverseRow" Visibility="Collapsed" Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="準備倒放預覽…" AutomationProperties.AutomationId="ReverseText" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,6" />
+                            <ProgressBar x:Name="ReverseProgress" AutomationProperties.AutomationId="ReverseProgress" Height="10" Maximum="1" Foreground="#B58CFF" Background="#33FFFFFF" BorderThickness="0" />
+                        </StackPanel>
+                        <TextBlock x:Name="ReversePercent" Grid.Column="1" FontSize="20" FontWeight="Bold" Foreground="#C9B0FF" VerticalAlignment="Center" Margin="16,0,0,0" MinWidth="64" TextAlignment="Right" />
+                    </Grid>
+
+                    <Grid x:Name="ExportRow" Visibility="Collapsed" Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock x:Name="ExportText" AutomationProperties.AutomationId="ExportText" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Margin="0,0,0,6" />
+                            <ProgressBar x:Name="ExportProgress" AutomationProperties.AutomationId="ExportProgress" Height="14" Maximum="1" Foreground="#4CC26A" Background="#33FFFFFF" BorderThickness="0" />
+                        </StackPanel>
+                        <TextBlock x:Name="ExportPercent" AutomationProperties.AutomationId="ExportPercent" Grid.Column="1" FontSize="26" FontWeight="Bold" Foreground="#7FE09A" VerticalAlignment="Center" Margin="16,0,12,0" MinWidth="80" TextAlignment="Right" />
+                        <Button x:Name="CancelButton" AutomationProperties.AutomationId="CancelButton" Grid.Column="2" Content="取消匯出" VerticalAlignment="Center" Margin="0" Click="OnCancelExport" />
+                    </Grid>
+                </StackPanel>
+            </Border>
         </Grid>
 
         <!-- 播放控制 -->
@@ -153,8 +201,6 @@
 
                 <TextBlock Style="{StaticResource SectionTitle}" Text="匯出" />
                 <Button x:Name="ExportButton" AutomationProperties.AutomationId="ExportButton" Content="匯出 MP4…" Padding="10,8" Margin="0" Click="OnExportClick" />
-                <ProgressBar x:Name="ExportProgress" AutomationProperties.AutomationId="ExportProgress" Height="10" Margin="0,8,0,0" Maximum="1" />
-                <Button x:Name="CancelButton" AutomationProperties.AutomationId="CancelButton" Content="取消匯出" Margin="0,6,0,0" IsEnabled="False" Click="OnCancelExport" />
                 <TextBlock x:Name="StatusText" AutomationProperties.AutomationId="StatusText" Margin="0,8,0,0" FontSize="12" TextWrapping="Wrap" Foreground="#B0B0B0" />
             </StackPanel>
         </ScrollViewer>

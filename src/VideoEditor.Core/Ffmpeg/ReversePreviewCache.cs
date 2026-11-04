@@ -8,7 +8,8 @@ namespace VideoEditor.Core.Ffmpeg;
 /// 倒放片段的預覽檔。LibVLC 不能倒著播放，所以先用 FFmpeg 產生一個已倒放、縮小的暫存檔，
 /// 播放時改播這個檔案。檔案依來源與入出點快取，關閉時刪除。
 /// </summary>
-public sealed class ReversePreviewCache(FfmpegTools tools, string? directory = null) : IDisposable
+/// <param name="progress">產生中回報 0–1；產生結束（成功或失敗）時回報 null。</param>
+public sealed class ReversePreviewCache(FfmpegTools tools, string? directory = null, IProgress<double?>? progress = null) : IDisposable
 {
     private readonly string _directory = directory ?? Path.Combine(Path.GetTempPath(), "VideoEditor", "reverse-" + Guid.NewGuid().ToString("N"));
     private readonly Dictionary<(string Path, long In, long Out, int Width, int Height), Task<string>> _files = [];
@@ -28,7 +29,7 @@ public sealed class ReversePreviewCache(FfmpegTools tools, string? directory = n
 
     public static IReadOnlyList<string> BuildArguments(MediaInfo media, double sourceIn, double sourceOut, Size2 size, string output)
     {
-        var args = new List<string> { "-hide_banner", "-nostats", "-v", "error", "-y" };
+        var args = new List<string> { "-hide_banner", "-nostats", "-v", "error", "-progress", "pipe:1", "-y" };
         var graph = new List<string>();
         var input = 0;
         var frameBytes = ReverseGraph.FrameBytes(media, size.Width, size.Height);
@@ -50,11 +51,17 @@ public sealed class ReversePreviewCache(FfmpegTools tools, string? directory = n
         {
             Directory.CreateDirectory(_directory);
             var output = Path.Combine(_directory, $"{Guid.NewGuid():N}.mp4");
-            await ProcessRunner.RunForBytesAsync(tools.Ffmpeg, BuildArguments(media, sourceIn, sourceOut, size, output), token);
+            var duration = sourceOut - sourceIn;
+            progress?.Report(0);
+            await ProcessRunner.RunWithLinesAsync(tools.Ffmpeg, BuildArguments(media, sourceIn, sourceOut, size, output), line =>
+            {
+                if (ExportService.ParseProgress(line, duration) is { } value) progress?.Report(value);
+            }, token);
             return output;
         }
         finally
         {
+            progress?.Report(null);
             _gate.Release();
         }
     }

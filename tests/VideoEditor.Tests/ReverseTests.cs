@@ -212,8 +212,16 @@ public class ReverseIntegrationTests(TestMedia media)
     public async Task ReversePreviewFileStartsAtLastFrame()
     {
         var source = await media.Probe(media.Landscape);
-        using var cache = new ReversePreviewCache(media.Tools, Path.Combine(media.Directory, "proxy"));
+        var reports = new List<double?>();
+        using var cache = new ReversePreviewCache(media.Tools, Path.Combine(media.Directory, "proxy"), new SyncProgress(reports.Add));
         var path = await cache.GetAsync(source, 1, 2.5, new Size2(640, 360));
+        // 從 0 開始、過程遞增、最後以 null 表示結束。
+        Assert.Equal(0, reports[0]);
+        Assert.Null(reports[^1]);
+        Assert.True(reports.Count >= 3);
+        var values = reports.Take(reports.Count - 1).Select(v => v!.Value).ToList();
+        Assert.Equal(values.Order(), values);
+        Assert.True(values[^1] > 0.5);
         Assert.Same(cache.GetAsync(source, 1, 2.5, new Size2(640, 360)), cache.GetAsync(source, 1, 2.5, new Size2(640, 360)));
 
         var info = await media.Probe(path);
@@ -242,4 +250,10 @@ public class ReverseIntegrationTests(TestMedia media)
             Assert.Equal(exact, frames[i].Bgra);
         }
     }
+}
+
+/// <summary>同步回報的 IProgress，測試時不必等待 SynchronizationContext。</summary>
+internal sealed class SyncProgress(Action<double?> report) : IProgress<double?>
+{
+    public void Report(double? value) => report(value);
 }
