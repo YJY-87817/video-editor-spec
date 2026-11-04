@@ -16,6 +16,17 @@ dotnet run --project src/VideoEditor.App
 dotnet test
 ```
 
+## 打包
+
+在 Windows PowerShell 執行，會把程式與 ffmpeg 一起放進 `dist\VideoEditor`（自包含，對方不必安裝 .NET）：
+
+```powershell
+.\scripts\pack.ps1                              # ffmpeg 從 PATH 尋找
+.\scripts\pack.ps1 -FfmpegDir C:\ffmpeg\bin -Zip  # 指定 ffmpeg 位置，並另外壓成 dist\VideoEditor.zip
+```
+
+其他參數：`-Output` 輸出資料夾、`-FrameworkDependent` 不內含 .NET 執行階段、`-SkipFfmpeg` 不複製 ffmpeg。
+
 ## 操作
 
 | 按鍵 | 功能 |
