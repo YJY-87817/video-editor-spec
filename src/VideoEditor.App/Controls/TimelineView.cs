@@ -147,7 +147,7 @@ public sealed class TimelineView : FrameworkElement
         DrawRuler(dc, width);
         foreach (var clip in _timeline.VideoClips)
         {
-            DrawClip(dc, clip, VideoRowY, VideoRowHeight, VideoClipBrush, clip.Media.FileName);
+            DrawClip(dc, clip, VideoRowY, VideoRowHeight, VideoClipBrush, clip.Reversed ? $"⟲ 倒放  {clip.Media.FileName}" : clip.Media.FileName);
             var hasAudio = clip.Media.HasAudio;
             DrawClip(dc, clip, OriginalAudioRowY, AudioRowHeight, hasAudio ? AudioClipBrush : SilentClipBrush,
                 hasAudio ? VolumeLabel(clip) : "無音訊");

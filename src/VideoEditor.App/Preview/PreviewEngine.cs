@@ -5,6 +5,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using LibVLCSharp.Shared;
+using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
 using VideoEditor.Core.Timeline;
@@ -16,6 +17,7 @@ namespace VideoEditor.App.Preview;
 /// <summary>
 /// 預覽引擎。播放時由 LibVLC 解碼（影片與配樂各一個播放器），
 /// 暫停與拖曳時由 FFmpeg 解出精確影格，因為 LibVLC 無法倒退逐格。
+/// 倒放片段改播 FFmpeg 預先產生的倒放預覽檔；倒帶（往回播放）則由 FFmpeg 成批解出影格顯示，沒有聲音。
 /// 除了 LibVLC 回呼之外，所有成員都只在 UI 執行緒使用。
 /// </summary>
 public sealed class PreviewEngine : IDisposable
@@ -26,8 +28,12 @@ public sealed class PreviewEngine : IDisposable
     private const long FirstFrameTimeoutMs = 1500;
     private const double VideoDriftLimitMs = 500;
     private const double MusicDriftLimitMs = 300;
+    private const int ReverseProxyLongSide = 854;
+    private const int RewindBatchFrames = 12;
+    private const int MaxRewindSpeed = 8;
 
     private readonly FrameExtractor _extractor;
+    private readonly ReversePreviewCache _proxies;
     private readonly Dispatcher _dispatcher;
     private readonly LibVLC _vlc;
     private readonly MediaPlayer _videoPlayer;
@@ -55,9 +61,20 @@ public sealed class PreviewEngine : IDisposable
     private long _shownRequest;
     private bool _extracting;
 
-    public PreviewEngine(FrameExtractor extractor, Dispatcher dispatcher)
+    // 播放器時間 = 時間軸位置 - 片段起點 + _playerBase。一般片段為 SourceIn，倒放預覽檔為 0。
+    private double _playerBase;
+    private (TimelineClip Clip, Task<string> File, Size2 Size)? _proxyWait;
+
+    private readonly DispatcherTimer _rewindTimer;
+    private readonly Stopwatch _rewindClock = new();
+    private double _rewindBase;
+    private bool _rewindFetching;
+    private readonly HashSet<(string Path, long Frame)> _rewindMissing = [];
+
+    public PreviewEngine(FrameExtractor extractor, ReversePreviewCache proxies, Dispatcher dispatcher)
     {
         _extractor = extractor;
+        _proxies = proxies;
         _dispatcher = dispatcher;
         _vlc = new LibVLC("--no-video-title-show", "--quiet");
         _videoPlayer = new MediaPlayer(_vlc);
@@ -66,10 +83,15 @@ public sealed class PreviewEngine : IDisposable
         _sink.FrameAvailable = () => _dispatcher.BeginInvoke(PresentVlcFrame, DispatcherPriority.Render);
         _timer = new DispatcherTimer(DispatcherPriority.Render, _dispatcher) { Interval = TimeSpan.FromMilliseconds(16) };
         _timer.Tick += (_, _) => Tick();
+        _rewindTimer = new DispatcherTimer(DispatcherPriority.Render, _dispatcher) { Interval = TimeSpan.FromMilliseconds(16) };
+        _rewindTimer.Tick += (_, _) => RewindTick();
     }
 
     public double Position { get; private set; }
     public bool IsPlaying { get; private set; }
+    /// <summary>倒帶速度（1、2、4、8 倍）；0 表示沒有在倒帶。</summary>
+    public int RewindSpeed { get; private set; }
+    public bool IsRewinding => RewindSpeed > 0;
     public double Duration => _timeline.Duration;
 
     public event Action? PositionChanged;
@@ -77,6 +99,7 @@ public sealed class PreviewEngine : IDisposable
     /// <summary>顯示的素材或畫面尺寸改變。bitmap 為 null 表示時間軸空白處，顯示黑畫面。</summary>
     public event Action<WriteableBitmap?, MediaInfo?>? SurfaceChanged;
     public event Action<string>? Error;
+    public event Action<string>? Status;
 
     public void Load(TimelineModel timeline, double position = 0)
     {
@@ -87,6 +110,7 @@ public sealed class PreviewEngine : IDisposable
 
     public void Play()
     {
+        StopRewind();
         if (IsPlaying || Duration <= 0) return;
         if (Position >= Duration - 0.01) Position = 0;
         IsPlaying = true;
@@ -103,15 +127,47 @@ public sealed class PreviewEngine : IDisposable
 
     public void Pause()
     {
-        if (!IsPlaying) return;
+        if (!IsPlaying && !IsRewinding) return;
         Stop();
         ShowFrameAtPosition();
     }
 
     public void Toggle()
     {
-        if (IsPlaying) Pause();
+        if (IsPlaying || IsRewinding) Pause();
         else Play();
+    }
+
+    /// <summary>倒帶：播放頭往回走。倒帶中再按一次加倍速度（最多 8 倍）。</summary>
+    public void Rewind()
+    {
+        if (Duration <= 0) return;
+        if (IsRewinding)
+        {
+            // 從目前位置以新速度重新起算。
+            _rewindBase = Position;
+            _rewindClock.Restart();
+            RewindSpeed = Math.Min(MaxRewindSpeed, RewindSpeed * 2);
+            PlayingChanged?.Invoke();
+            return;
+        }
+
+        Stop();
+        if (Position <= 0.01) Position = Duration;
+        RewindSpeed = 1;
+        _rewindBase = Position;
+        _rewindClock.Restart();
+        _rewindTimer.Start();
+        PlayingChanged?.Invoke();
+        RewindTick();
+    }
+
+    /// <summary>預先產生倒放預覽檔，播放到該片段時就不必等待。</summary>
+    public void PrepareReverse(TimelineClip clip)
+    {
+        if (!clip.Reversed) return;
+        var size = FrameExtractor.PreviewSize(clip.Media.DisplayWidth, clip.Media.DisplayHeight, ReverseProxyLongSide);
+        _ = _proxies.GetAsync(clip.Media, clip.SourceIn, clip.SourceOut, size).ContinueWith(_ => { }, TaskScheduler.Default);
     }
 
     /// <summary>移動播放頭。播放中拖曳會先暫停。</summary>
@@ -128,10 +184,14 @@ public sealed class PreviewEngine : IDisposable
         Stop();
         var clip = _timeline.VideoClipAt(Position);
         var fps = clip != null && clip.Media.FrameRate.Value > 0 ? clip.Media.FrameRate.Value : DefaultFrameRate;
-        var next = clip == null
-            ? Position + direction / fps
-            : clip.Start + (FrameExtractor.FrameIndex(clip.ToSourceTime(Position), fps) + direction) / fps - clip.SourceIn;
-        Seek(next);
+        if (clip == null)
+        {
+            Seek(Position + direction / fps);
+            return;
+        }
+        // 倒放片段在時間軸上往後一格，是來源的前一格。
+        var sourceStep = clip.Reversed ? -direction : direction;
+        Seek(clip.ToTimelineTime((FrameExtractor.FrameIndex(clip.ToSourceTime(Position), fps) + sourceStep) / fps));
     }
 
     /// <summary>時間軸內容改變（拖曳、修剪、刪除）後，重畫目前位置的影格。</summary>
@@ -139,6 +199,7 @@ public sealed class PreviewEngine : IDisposable
 
     private void Stop()
     {
+        StopRewind();
         if (!IsPlaying) return;
         IsPlaying = false;
         _acceptVlcFrames = false;
@@ -151,12 +212,38 @@ public sealed class PreviewEngine : IDisposable
         });
         _videoClip = null;
         _musicClip = null;
+        _proxyWait = null;
+        PlayingChanged?.Invoke();
+    }
+
+    private void StopRewind()
+    {
+        if (!IsRewinding) return;
+        RewindSpeed = 0;
+        _rewindTimer.Stop();
+        _rewindClock.Stop();
         PlayingChanged?.Invoke();
     }
 
     private void Tick()
     {
         if (!IsPlaying) return;
+        if (_proxyWait is { } wait)
+        {
+            // 倒放預覽檔還在產生：時鐘停在片段起點，畫面維持不動。
+            if (!wait.File.IsCompleted) return;
+            _proxyWait = null;
+            Enqueue(() => _musicPlayer.SetPause(false));
+            if (!wait.File.IsCompletedSuccessfully)
+            {
+                var reason = wait.File.Exception?.InnerException is FfmpegException f ? f.Stderr : wait.File.Exception?.InnerException?.Message;
+                Error?.Invoke($"無法產生倒放預覽：{reason}");
+                Pause();
+                return;
+            }
+            Status?.Invoke("");
+            StartVideo(wait.Clip, wait.File.Result, _clockBase, 0, wait.Size);
+        }
 
         if (_waitingForFirstFrame
             && (_sink.FramesDisplayed > _framesAtSwitch || _firstFrameWait.ElapsedMilliseconds > FirstFrameTimeoutMs))
@@ -202,9 +289,34 @@ public sealed class PreviewEngine : IDisposable
 
         var size = FrameExtractor.PreviewSize(clip.Media.DisplayWidth, clip.Media.DisplayHeight, MaxPreviewLongSide);
         EnsureSurface(size, clip.Media);
-        var sourceTime = clip.ToSourceTime(position);
-        var sourceOut = clip.SourceOut;
-        var path = clip.Media.Path;
+        _clockBase = position;
+        if (!clip.Reversed)
+        {
+            StartVideo(clip, clip.Media.Path, position, clip.SourceIn, size);
+            return;
+        }
+
+        var proxySize = FrameExtractor.PreviewSize(clip.Media.DisplayWidth, clip.Media.DisplayHeight, ReverseProxyLongSide);
+        var file = _proxies.GetAsync(clip.Media, clip.SourceIn, clip.SourceOut, proxySize);
+        if (file.IsCompletedSuccessfully)
+        {
+            StartVideo(clip, file.Result, position, 0, size);
+            return;
+        }
+        // 預覽檔還沒好：先停下時鐘與配樂，等 Tick 發現完成後再開始播。
+        Enqueue(() => _videoPlayer.Stop());
+        Enqueue(() => _musicPlayer.SetPause(true));
+        _waitingForFirstFrame = true;
+        _proxyWait = (clip, file, size);
+        Status?.Invoke("正在準備倒放預覽…");
+    }
+
+    /// <summary>從 position 開始播放片段。playerBase 是播放器時間與片段內位置的差（見 _playerBase）。</summary>
+    private void StartVideo(TimelineClip clip, string path, double position, double playerBase, Size2 size)
+    {
+        _playerBase = playerBase;
+        var start = position - clip.Start + playerBase;
+        var stop = clip.Duration + playerBase;
         _clockBase = position;
         _framesAtSwitch = _sink.FramesDisplayed;
         _waitingForFirstFrame = true;
@@ -212,7 +324,7 @@ public sealed class PreviewEngine : IDisposable
         Enqueue(() =>
         {
             _sink.SetTarget(size);
-            PlayMedia(_videoPlayer, path, sourceTime, sourceOut);
+            PlayMedia(_videoPlayer, path, start, stop);
         });
     }
 
@@ -248,10 +360,10 @@ public sealed class PreviewEngine : IDisposable
         if (_videoClip == null) return position;
         var actual = _videoPlayer.Time;
         if (actual <= 0) return position;
-        var expected = _videoClip.ToSourceTime(position) * 1000;
+        var expected = (position - _videoClip.Start + _playerBase) * 1000;
         if (Math.Abs(actual - expected) <= VideoDriftLimitMs) return position;
 
-        var corrected = _videoClip.Start + actual / 1000.0 - _videoClip.SourceIn;
+        var corrected = _videoClip.Start + actual / 1000.0 - _playerBase;
         _clockBase = corrected;
         _clock.Restart();
         return corrected;
@@ -283,6 +395,101 @@ public sealed class PreviewEngine : IDisposable
                 _dispatcher.BeginInvoke(() => Error?.Invoke($"播放失敗：{e.Message}"));
             }
         }, TaskScheduler.Default);
+    }
+
+    // ---- 倒帶 ----
+
+    private void RewindTick()
+    {
+        if (!IsRewinding) return;
+        var position = _rewindBase - _rewindClock.Elapsed.TotalSeconds * RewindSpeed;
+        if (position <= 0)
+        {
+            StopRewind();
+            Position = 0;
+            PositionChanged?.Invoke();
+            ShowFrameAtPosition();
+            return;
+        }
+        Position = position;
+        PositionChanged?.Invoke();
+        ShowRewindFrame();
+    }
+
+    /// <summary>顯示目前位置附近已解出的影格，並預先成批解出接下來（往回）要用的影格。</summary>
+    private void ShowRewindFrame()
+    {
+        var clip = _timeline.VideoClipAt(Position);
+        if (clip == null)
+        {
+            ShowBlack();
+            return;
+        }
+
+        var media = clip.Media;
+        var fps = media.FrameRate.Value > 0 ? media.FrameRate.Value : DefaultFrameRate;
+        var frame = FrameExtractor.FrameIndex(clip.ToSourceTime(Position), fps);
+        // 時間軸往回走時，一般片段的來源時間變小，倒放片段的來源時間變大。
+        var direction = clip.Reversed ? 1 : -1;
+        var step = RewindSpeed;
+        var first = ReverseGraph.FirstFrameAtOrAfter(clip.SourceIn, fps);
+        var last = Math.Max(first, ReverseGraph.FirstFrameAtOrAfter(clip.SourceOut, fps) - 1);
+
+        // 高倍速只解每 step 格中的一格，所以找最近的一格來顯示。
+        for (var d = 0; d < step; d++)
+        {
+            if (!_frames.TryGet((media.Path, frame - d * direction), out var cached)) continue;
+            ShowFrame(cached, media);
+            break;
+        }
+
+        if (_rewindFetching) return;
+        for (var i = 0; i < RewindBatchFrames; i++)
+        {
+            var target = frame + i * step * direction;
+            if (target < first || target > last) return;
+            if (_frames.TryGet((media.Path, target), out _) || _rewindMissing.Contains((media.Path, target))) continue;
+            _ = FetchRewindFramesAsync(media, target, direction, step, fps, first, last);
+            return;
+        }
+    }
+
+    private async Task FetchRewindFramesAsync(MediaInfo media, long target, int direction, int step, double fps, long first, long last)
+    {
+        // FFmpeg 只能往後解，所以往回走時從前面開始解，一路解到 target。
+        long start;
+        int count;
+        if (direction > 0)
+        {
+            start = target;
+            count = (int)Math.Min(RewindBatchFrames, (last - target) / step + 1);
+        }
+        else
+        {
+            var back = Math.Min(RewindBatchFrames - 1, (target - first) / step);
+            start = target - back * step;
+            count = (int)back + 1;
+        }
+
+        _rewindFetching = true;
+        try
+        {
+            var size = FrameExtractor.PreviewSize(media.DisplayWidth, media.DisplayHeight, MaxPreviewLongSide);
+            var frames = await _extractor.ExtractRangeAsync(media.Path, start, count, step, fps, size);
+            for (var i = 0; i < frames.Count; i++) _frames.Add((media.Path, start + i * step), frames[i]);
+            // 來源結尾附近可能解不出影格，記下來，之後不再重試。
+            if (frames.Count == 0) _rewindMissing.Add((media.Path, target));
+        }
+        catch (Exception e) when (e is FfmpegException or System.ComponentModel.Win32Exception)
+        {
+            StopRewind();
+            Error?.Invoke($"無法解出倒帶影格：{e.Message}");
+        }
+        finally
+        {
+            _rewindFetching = false;
+        }
+        if (IsRewinding) ShowRewindFrame();
     }
 
     private void PresentVlcFrame()
@@ -340,7 +547,7 @@ public sealed class PreviewEngine : IDisposable
                 if (frame == null) continue;
                 _frames.Add((request.Media.Path, request.Frame), frame);
                 // 拖曳中也顯示解好的影格，畫面才會跟著動；但不可蓋掉較新的畫面（如空白處的黑畫面）。
-                if (IsPlaying || request.Request < _shownRequest) continue;
+                if (IsPlaying || IsRewinding || request.Request < _shownRequest) continue;
                 _shownRequest = request.Request;
                 ShowFrame(frame, request.Media);
             }
@@ -385,10 +592,12 @@ public sealed class PreviewEngine : IDisposable
     {
         Stop();
         _timer.Stop();
+        _rewindTimer.Stop();
         _commands.Wait(TimeSpan.FromSeconds(2));
         _videoPlayer.Dispose();
         _musicPlayer.Dispose();
         _vlc.Dispose();
         _sink.Dispose();
+        _proxies.Dispose();
     }
 }

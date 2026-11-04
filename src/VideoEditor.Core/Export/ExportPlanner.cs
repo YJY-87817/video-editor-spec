@@ -21,7 +21,9 @@ public static class ExportPlanner
     private const long MaxAudioBitRate = 512_000;
     private const int MaxCommandLength = 30000;
 
-    public static ExportPlan Build(TimelineModel timeline, OutputSettings settings, string outputPath)
+    /// <param name="reverseBufferBytes">倒放時每一小段的記憶體上限，測試時可調小以驗證分段。</param>
+    public static ExportPlan Build(TimelineModel timeline, OutputSettings settings, string outputPath,
+        long reverseBufferBytes = ReverseGraph.DefaultBufferBytes)
     {
         var clips = timeline.VideoClips;
         if (clips.Count == 0) throw new InvalidOperationException("影片軌沒有片段，無法匯出。");
@@ -60,20 +62,35 @@ public static class ExportPlanner
         {
             if (clip.Start - cursor > 0.001) AddGap(clip.Start - cursor);
 
-            // -ss/-t 放在 -i 之前：快速定位，重新編碼時切點仍然準確。
-            args.AddRange(["-ss", Num(clip.SourceIn), "-t", Num(clip.Duration), "-i", clip.Media.Path]);
             var label = segments++;
-            graph.Add($"[{input}:v]setpts=PTS-STARTPTS,{fpsFilter}{FitFilter(clip.Media, size, settings.Mode)},setsar=1,{outputFormat}[v{label}]");
+            var withAudio = hasAudio && clip.Media.HasAudio;
+            string videoSource, audioSource;
+            if (clip.Reversed)
+            {
+                var frameBytes = ReverseGraph.FrameBytes(clip.Media, clip.Media.DisplayWidth, clip.Media.DisplayHeight);
+                ReverseGraph.Add(args, graph, ref input, $"r{label}", clip.Media, clip.SourceIn, clip.SourceOut, withAudio, "", frameBytes, reverseBufferBytes);
+                videoSource = $"[r{label}v]";
+                audioSource = $"[r{label}a]";
+            }
+            else
+            {
+                // -ss/-t 放在 -i 之前：快速定位，重新編碼時切點仍然準確。
+                args.AddRange(["-ss", Num(clip.SourceIn), "-t", Num(clip.Duration), "-i", clip.Media.Path]);
+                videoSource = $"[{input}:v]setpts=PTS-STARTPTS,";
+                audioSource = $"[{input}:a]asetpts=PTS-STARTPTS,";
+                input++;
+            }
+
+            graph.Add($"{videoSource}{fpsFilter}{FitFilter(clip.Media, size, settings.Mode)},setsar=1,{outputFormat}[v{label}]");
             concatInputs.Append($"[v{label}]");
             if (hasAudio)
             {
-                graph.Add(clip.Media.HasAudio
-                    ? $"[{input}:a]asetpts=PTS-STARTPTS,{AudioFormat},volume={Num(clip.Volume)},apad,atrim=0:{Num(clip.Duration)}[a{label}]"
+                graph.Add(withAudio
+                    ? $"{audioSource}{AudioFormat},volume={Num(clip.Volume)},apad,atrim=0:{Num(clip.Duration)}[a{label}]"
                     : $"anullsrc=r={AudioSampleRate}:cl=stereo:d={Num(clip.Duration)}[a{label}]");
                 concatInputs.Append($"[a{label}]");
             }
 
-            input++;
             cursor = clip.End;
         }
 
@@ -113,7 +130,9 @@ public static class ExportPlanner
         args.AddRange(["-t", Num(duration), "-movflags", "+faststart", outputPath]);
 
         if (args.Sum(a => a.Length + 3) > MaxCommandLength)
-            throw new InvalidOperationException("片段數量過多，超過 Windows 命令列長度上限。");
+            throw new InvalidOperationException(timeline.VideoClips.Any(c => c.Reversed)
+                ? "片段數量過多（倒放片段會分成多段處理），超過 Windows 命令列長度上限。請縮短倒放片段。"
+                : "片段數量過多，超過 Windows 命令列長度上限。");
         return new ExportPlan(args, duration, size, codec, pixelFormat, CollectWarnings(timeline, reference));
     }
 

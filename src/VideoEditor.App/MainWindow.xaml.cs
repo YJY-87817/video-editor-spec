@@ -29,7 +29,7 @@ public sealed class MediaItem(MediaInfo info)
 
 public sealed record ClipRow(TimelineClip Clip, int Number)
 {
-    public string Label => $"{Number}. {Clip.Media.FileName}  {MainWindow.FormatDuration(Clip.Duration)}";
+    public string Label => $"{Number}. {Clip.Media.FileName}  {MainWindow.FormatDuration(Clip.Duration)}{(Clip.Reversed ? "  ⟲ 倒放" : "")}";
 }
 
 public partial class MainWindow : Window
@@ -51,6 +51,7 @@ public partial class MainWindow : Window
     private bool _updatingSlider;
     private bool _updatingVolume;
     private bool _updatingClipList;
+    private bool _updatingReverse;
     private CancellationTokenSource? _exportCancel;
 
     public MainWindow()
@@ -78,9 +79,14 @@ public partial class MainWindow : Window
 
         _probe = new MediaProbe(_tools);
         _extractor = new FrameExtractor(_tools);
-        _engine = new PreviewEngine(_extractor, Dispatcher);
+        _engine = new PreviewEngine(_extractor, new ReversePreviewCache(_tools), Dispatcher);
         _engine.PositionChanged += OnEnginePosition;
-        _engine.PlayingChanged += () => PlayButton.Content = _engine.IsPlaying ? "⏸ 暫停" : "▶ 播放";
+        _engine.PlayingChanged += () =>
+        {
+            PlayButton.Content = _engine.IsPlaying || _engine.IsRewinding ? "⏸ 暫停" : "▶ 播放";
+            RewindButton.Content = _engine.IsRewinding ? $"◀◀ {_engine.RewindSpeed}×" : "◀◀ 倒帶";
+        };
+        _engine.Status += message => StatusText.Text = message;
         _engine.SurfaceChanged += OnSurfaceChanged;
         _engine.Error += message => StatusText.Text = message;
         UpdateOutputInfo();
@@ -263,6 +269,7 @@ public partial class MainWindow : Window
     }
 
     private void OnPlayClick(object sender, RoutedEventArgs e) => _engine?.Toggle();
+    private void OnRewindClick(object sender, RoutedEventArgs e) => _engine?.Rewind();
     private void OnStepBack(object sender, RoutedEventArgs e) => _engine?.StepFrame(-1);
     private void OnStepForward(object sender, RoutedEventArgs e) => _engine?.StepFrame(1);
 
@@ -271,6 +278,9 @@ public partial class MainWindow : Window
         switch (e.Key)
         {
             case Key.Space: _engine?.Toggle(); break;
+            case Key.J: _engine?.Rewind(); break;
+            case Key.K: _engine?.Pause(); break;
+            case Key.L: _engine?.Play(); break;
             case Key.Left: _engine?.StepFrame(-1); break;
             case Key.Right: _engine?.StepFrame(1); break;
             case Key.I: MarkIn(); break;
@@ -442,6 +452,21 @@ public partial class MainWindow : Window
         _updatingClipList = true;
         ClipList.SelectedItem = (ClipList.ItemsSource as IEnumerable<ClipRow>)?.FirstOrDefault(r => r.Clip == clip);
         _updatingClipList = false;
+
+        _updatingReverse = true;
+        ReverseCheck.IsEnabled = clip is { Track: TrackKind.Video };
+        ReverseCheck.IsChecked = clip?.Reversed == true;
+        _updatingReverse = false;
+    }
+
+    private void OnReverseChanged(object sender, RoutedEventArgs e)
+    {
+        if (_updatingReverse || Timeline.SelectedClip is not { Track: TrackKind.Video } clip) return;
+        _engine?.Pause();
+        _timeline.SetReversed(clip, ReverseCheck.IsChecked == true);
+        // 先在背景產生倒放預覽檔，按播放時多半已經好了。
+        _engine?.PrepareReverse(clip);
+        OnClipsChanged();
     }
 
     private void OnVolumeChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
