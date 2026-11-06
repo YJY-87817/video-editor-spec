@@ -312,13 +312,29 @@ public sealed class TimelineView : FrameworkElement
 
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
     {
+        EndDrag();
+        ReleaseMouseCapture();
+    }
+
+    /// <summary>
+    /// 拖曳到一半失去滑鼠（切換視窗、跳出對話框）時，不會收到放開按鍵的事件。
+    /// 在這裡結束拖曳，否則之後滑鼠只要經過時間軸，片段或播放頭就會跟著游標移動。
+    /// </summary>
+    protected override void OnLostMouseCapture(MouseEventArgs e)
+    {
+        base.OnLostMouseCapture(e);
+        if (_drag != DragKind.None) EndDrag();
+    }
+
+    private void EndDrag()
+    {
         var wasEditing = _drag is DragKind.Move or DragKind.TrimStart or DragKind.TrimEnd;
         _drag = DragKind.None;
         _dragClip = null;
         _snapped = false;
-        ReleaseMouseCapture();
         if (wasEditing) ClipsChanged?.Invoke();
         ViewChanged?.Invoke();
+        InvalidateVisual();
     }
 
     /// <summary>

@@ -109,6 +109,42 @@ public class ImportControllerTests(TestMedia media)
         Assert.Equal(2, view.Failures.Count);
     }
 
+    [Fact]
+    public async Task ToolThatCannotStartIsReportedAndFilesCanBeRetried()
+    {
+        // 模擬 ffprobe 被防毒軟體擋下或被刪掉：程式無法啟動。
+        var missing = Path.Combine(media.Directory, "no-such-tools");
+        var tools = new FfmpegTools(Path.Combine(missing, "ffmpeg.exe"), Path.Combine(missing, "ffprobe.exe"));
+        var view = new FakeView();
+        var controller = new ImportController(new MediaProbe(tools), new FrameExtractor(tools), view);
+
+        await controller.ImportAsync([media.Landscape, media.Music]);
+        Assert.Equal("landscape.mp4,music.m4a", string.Join(",", view.Failures.Select(f => f.Name)));
+        Assert.Equal("Hide", view.Events[^1]);
+
+        // 兩個檔案都沒有卡在「排入中」，可以再試。
+        await controller.ImportAsync([media.Landscape, media.Music]);
+        Assert.Equal(4, view.Failures.Count);
+    }
+
+    [Fact]
+    public async Task UnexpectedErrorDoesNotLeaveTheRestOfTheDropStuck()
+    {
+        var view = new FakeView { ThrowOnAdd = true };
+        var controller = Create(view);
+
+        // 第一個檔案加入清單時發生預料之外的錯誤，迴圈中斷，第二個檔案還沒處理。
+        await Assert.ThrowsAsync<InvalidOperationException>(() => controller.ImportAsync([media.Landscape, media.Music]));
+        Assert.Equal("Hide", view.Events[^1]); // 進度沒有卡在畫面上
+
+        view.ThrowOnAdd = false;
+        view.Progress.Clear();
+        await controller.ImportAsync([media.Music]);
+
+        Assert.Single(view.Added); // 沒處理到的檔案之後仍可匯入
+        Assert.Equal("讀取素材 1/1：music.m4a（讀取資訊）", view.Progress[0].Text); // 進度計數也已歸零
+    }
+
     private sealed class FakeView : IImportView
     {
         public HashSet<string> Known { get; } = [];
@@ -117,6 +153,7 @@ public class ImportControllerTests(TestMedia media)
         public List<(string Name, string Message)> Failures { get; } = [];
         public List<string> Events { get; } = [];
         public int Hidden { get; private set; }
+        public bool ThrowOnAdd { get; set; }
 
         // 與視窗相同：素材清單裡已有的才算已匯入。
         public bool IsAlreadyImported(string path) => Known.Contains(path) || Added.Any(a => a.Info.Path == path);
@@ -133,7 +170,11 @@ public class ImportControllerTests(TestMedia media)
             Events.Add("Hide");
         }
 
-        public void AddMedia(MediaInfo info, byte[]? thumbnail) => Added.Add((info, thumbnail));
+        public void AddMedia(MediaInfo info, byte[]? thumbnail)
+        {
+            if (ThrowOnAdd) throw new InvalidOperationException("模擬預料之外的錯誤");
+            Added.Add((info, thumbnail));
+        }
         public void ShowFailure(string name, string message) => Failures.Add((name, message));
     }
 }

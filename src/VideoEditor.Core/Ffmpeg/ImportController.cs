@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Text.Json;
 using VideoEditor.Core.Models;
 
@@ -36,32 +37,53 @@ public sealed class ImportController(MediaProbe probe, FrameExtractor extractor,
         if (pending.Count == 0) return;
         // 匯入中又拖進新檔案時，併入同一個進度。
         _total += pending.Count;
-        foreach (var path in pending)
+        var processed = 0;
+        try
         {
-            var name = Path.GetFileName(path);
-            try
+            foreach (var path in pending)
             {
-                Report(name, "讀取資訊", 0);
-                var info = await probe.ProbeAsync(path);
-                Report(name, "產生縮圖", 0.5);
-                view.AddMedia(info, await LoadThumbnailAsync(info));
-            }
-            catch (Exception e) when (e is FfmpegException or InvalidDataException or JsonException)
-            {
-                view.ShowFailure(name, (e as FfmpegException)?.Stderr ?? e.Message);
-            }
-            finally
-            {
-                _queued.Remove(path);
-                _done++;
-                if (_done >= _total)
+                var name = Path.GetFileName(path);
+                try
                 {
-                    _done = 0;
-                    _total = 0;
+                    Report(name, "讀取資訊", 0);
+                    var info = await probe.ProbeAsync(path);
+                    Report(name, "產生縮圖", 0.5);
+                    view.AddMedia(info, await LoadThumbnailAsync(info));
                 }
-                Report(name, "完成", 0);
+                // Win32Exception：ffprobe 無法啟動（例如被防毒軟體擋下）。也當成這個檔案匯入失敗，不中斷其他檔案。
+                catch (Exception e) when (e is FfmpegException or InvalidDataException or JsonException
+                    or Win32Exception or IOException or UnauthorizedAccessException)
+                {
+                    view.ShowFailure(name, (e as FfmpegException)?.Stderr ?? e.Message);
+                }
+                finally
+                {
+                    _queued.Remove(path);
+                    processed++;
+                    CountDone(1);
+                    Report(name, "完成", 0);
+                }
             }
         }
+        finally
+        {
+            // 預料之外的錯誤中斷了迴圈：還沒處理的檔案移出排入清單（之後還能再拖進來），
+            // 並把它們算成已結束，進度才不會一直卡在畫面上。
+            if (processed < pending.Count)
+            {
+                foreach (var path in pending.Skip(processed)) _queued.Remove(path);
+                CountDone(pending.Count - processed);
+                if (_total == 0) view.HideProgress();
+            }
+        }
+    }
+
+    private void CountDone(int count)
+    {
+        _done += count;
+        if (_done < _total) return;
+        _done = 0;
+        _total = 0;
     }
 
     /// <summary>stage 為目前檔案內的進度（0–1）。全部完成時隱藏。</summary>
@@ -83,7 +105,7 @@ public sealed class ImportController(MediaProbe probe, FrameExtractor extractor,
             var bytes = await extractor.ThumbnailAsync(info.Path, Math.Min(1, info.Duration / 10), thumbnailWidth);
             return bytes.Length == 0 ? null : bytes;
         }
-        catch (FfmpegException)
+        catch (Exception e) when (e is FfmpegException or Win32Exception)
         {
             // 沒有縮圖不影響其他功能。
             return null;
