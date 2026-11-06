@@ -82,18 +82,19 @@ public partial class MainWindow
     private void ChangeTransform(Func<FrameTransform, FrameTransform> change)
     {
         if (Timeline.SelectedClip is not { Track: TrackKind.Video } clip) return;
-        _timeline.SetTransform(clip, change(clip.Transform));
+        var followUp = _editor.ChangeTransform(clip, change, IsTimelinePreview, Timeline.Playhead);
         UpdateTransformControls(clip);
-        // 看得到效果：切到時間軸預覽，並把播放頭移進這個片段。
         OnClipsChanged();
-        if (!IsTimelinePreview)
+        // 看得到效果：切到時間軸預覽，並把播放頭移進這個片段。
+        switch (followUp)
         {
-            Timeline.Playhead = clip.Start;
-            SwitchToTimelinePreview();
-        }
-        else if (Timeline.Playhead < clip.Start || Timeline.Playhead >= clip.End)
-        {
-            _engine?.Seek(clip.Start);
+            case PreviewFollowUp.ShowClipInTimeline:
+                Timeline.Playhead = clip.Start;
+                SwitchToTimelinePreview();
+                break;
+            case PreviewFollowUp.SeekToClip:
+                _engine?.Seek(clip.Start);
+                break;
         }
     }
 
@@ -110,7 +111,7 @@ public partial class MainWindow
     private void OnVolumeChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (_updatingVolume || Timeline.SelectedClip is not { } clip) return;
-        clip.Volume = Math.Round(e.NewValue) / 100;
+        clip.Volume = TimelineEditor.VolumeFromPercent(e.NewValue);
         VolumeText.Text = $"{e.NewValue:0}%";
         Timeline.InvalidateVisual();
     }

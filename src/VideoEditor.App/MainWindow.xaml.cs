@@ -23,14 +23,14 @@ public partial class MainWindow : Window, IExportView, IImportView
     private const double ZoomStep = 1.5;
 
     private readonly TimelineModel _timeline = new();
+    private readonly TimelineEditor _editor;
     private readonly ObservableCollection<MediaItem> _media = [];
     private readonly FfmpegTools? _tools;
     private readonly ImportController? _import;
     private readonly PreviewEngine? _engine;
     private TimelineModel? _sourcePreview;
     private MediaItem? _selectedMedia;
-    private double? _markIn;
-    private double? _markOut;
+    private readonly InOutPoints _points = new();
     private MediaInfo? _surfaceMedia;
     private FrameTransform _surfaceTransform;
     private bool _updatingSlider;
@@ -41,6 +41,7 @@ public partial class MainWindow : Window, IExportView, IImportView
 
     public MainWindow()
     {
+        _editor = new TimelineEditor(_timeline);
         InitializeComponent();
         UpdateModeIndicator();
         VolumeSlider.Value = 100;
