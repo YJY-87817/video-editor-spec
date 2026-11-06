@@ -22,8 +22,34 @@ public partial class MainWindow
 {
     // ---- 預覽 ----
 
+    private static readonly Brush SourceModeBrush = FrozenBrush(0x4A, 0x90, 0xD9);
+    private static readonly Brush SourceModeBadge = FrozenBrush(0xCC, 0x2E, 0x6F, 0xB5);
+    private static readonly Brush TimelineModeBrush = FrozenBrush(0xF0, 0x88, 0x3E);
+    private static readonly Brush TimelineModeBadge = FrozenBrush(0xCC, 0xC8, 0x65, 0x1B);
+
+    private static Brush FrozenBrush(byte r, byte g, byte b) => FrozenBrush(0xFF, r, g, b);
+
+    private static Brush FrozenBrush(byte a, byte r, byte g, byte b)
+    {
+        var brush = new SolidColorBrush(Color.FromArgb(a, r, g, b));
+        brush.Freeze();
+        return brush;
+    }
+
+    /// <summary>預覽區的色框與標籤，讓人一眼分辨目前看的是匯入的原始影片，還是時間軸上剪好的結果。</summary>
+    private void UpdateModeIndicator()
+    {
+        var timeline = IsTimelinePreview;
+        ModeFrame.BorderBrush = timeline ? TimelineModeBrush : SourceModeBrush;
+        ModeBadge.Background = timeline ? TimelineModeBadge : SourceModeBadge;
+        ModeBadgeText.Text = timeline ? "剪輯預覽　時間軸上的成品"
+            : _selectedMedia == null ? "匯入影片預覽"
+            : $"匯入影片預覽　{_selectedMedia.Info.FileName}";
+    }
+
     private void LoadPreviewSource()
     {
+        UpdateModeIndicator();
         if (_engine == null) return;
         if (IsTimelinePreview)
         {
