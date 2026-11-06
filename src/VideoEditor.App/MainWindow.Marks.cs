@@ -13,6 +13,7 @@ using VideoEditor.App.Preview;
 using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
+using VideoEditor.Core.Playback;
 using VideoEditor.Core.Timeline;
 using TimelineModel = VideoEditor.Core.Timeline.Timeline;
 
@@ -43,7 +44,7 @@ public partial class MainWindow
     {
         MarkText.Text = _selectedMedia == null || IsTimelinePreview
             ? ""
-            : $"I {FormatDuration(_points.InPoint)}  O {FormatDuration(_points.OutPoint(_selectedMedia.Info))}";
+            : $"I {PlaybackText.Duration(_points.InPoint)}  O {PlaybackText.Duration(_points.OutPoint(_selectedMedia.Info))}";
         UpdateMarkRange();
     }
 
