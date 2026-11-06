@@ -138,7 +138,8 @@
                 <TextBlock x:Name="TimeText" AutomationProperties.AutomationId="TimeText" DockPanel.Dock="Right" VerticalAlignment="Center" FontFamily="Consolas" Text="00:00:00.00 / 00:00:00.00" />
                 <WrapPanel>
                     <Button x:Name="RewindButton" AutomationProperties.AutomationId="RewindButton" Content="◀◀ 倒帶" Width="72" Click="OnRewindClick" ToolTip="J（再按加速）" />
-                    <Button x:Name="PlayButton" AutomationProperties.AutomationId="PlayButton" Content="▶ 播放" Width="72" Click="OnPlayClick" ToolTip="空白鍵／L；K 暫停" />
+                    <Button x:Name="PlayButton" AutomationProperties.AutomationId="PlayButton" Content="▶ 播放" Width="72" Click="OnPlayClick" ToolTip="空白鍵；K 暫停" />
+                    <Button x:Name="FastForwardButton" AutomationProperties.AutomationId="FastForwardButton" Content="▶▶ 快轉" Width="72" Click="OnFastForwardClick" ToolTip="L（播放中再按加速）" />
                     <Button Content="◀ 前一格" AutomationProperties.AutomationId="StepBackButton" Click="OnStepBack" ToolTip="←" />
                     <Button Content="後一格 ▶" AutomationProperties.AutomationId="StepForwardButton" Click="OnStepForward" ToolTip="→" />
                     <Button Content="入點 I" AutomationProperties.AutomationId="MarkInButton" Click="OnMarkIn" Margin="10,0,6,0" />
