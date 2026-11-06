@@ -65,6 +65,33 @@ public static class ProcessRunner
         return output.ToArray();
     }
 
+    /// <summary>
+    /// 執行並把標準輸出切成固定大小的區塊（例如一格 rawvideo 影格），最多 maxChunks 塊，結尾不足一塊的部分捨棄。
+    /// 每塊直接讀進自己的陣列，不經過整段緩衝再複製，解多格影格時記憶體配置少很多。
+    /// </summary>
+    public static async Task<IReadOnlyList<byte[]>> RunForChunksAsync(string exe, IEnumerable<string> args, int chunkSize, int maxChunks,
+        CancellationToken token = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(chunkSize);
+        using var process = Start(exe, args);
+        using var kill = token.Register(() => KillQuietly(process));
+        var error = ReadErrorTailAsync(process);
+        var output = process.StandardOutput.BaseStream;
+        var chunks = new List<byte[]>();
+        var buffer = new byte[chunkSize];
+        while (chunks.Count < maxChunks)
+        {
+            if (await output.ReadAtLeastAsync(buffer, chunkSize, throwOnEndOfStream: false, CancellationToken.None) < chunkSize) break;
+            chunks.Add(buffer);
+            // 讀滿上限時不再配置下一塊。
+            if (chunks.Count < maxChunks) buffer = new byte[chunkSize];
+        }
+        // 讀滿上限後仍要把剩下的輸出讀完，程序才不會因管線塞滿而卡住。
+        await output.CopyToAsync(Stream.Null, CancellationToken.None);
+        await FinishAsync(process, exe, error, token);
+        return chunks;
+    }
+
     /// <summary>執行並逐行回報標準輸出，用於讀取 -progress 進度。</summary>
     public static async Task RunWithLinesAsync(string exe, IEnumerable<string> args, Action<string> onLine, CancellationToken token = default)
     {

@@ -16,8 +16,8 @@ public sealed class FrameExtractor(FfmpegTools tools)
             "-frames:v", "1", "-an", "-vf", $"scale={size.Width}:{size.Height},setsar=1",
             "-f", "rawvideo", "-pix_fmt", "bgra", "pipe:1",
         ];
-        var bytes = await ProcessRunner.RunForBytesAsync(tools.Ffmpeg, args, token);
-        return bytes.Length == size.Width * size.Height * 4 ? new RawFrame(bytes, size.Width, size.Height) : null;
+        var chunks = await ProcessRunner.RunForChunksAsync(tools.Ffmpeg, args, FrameBytes(size), 1, token);
+        return chunks.Count == 1 ? new RawFrame(chunks[0], size.Width, size.Height) : null;
     }
 
     /// <summary>
@@ -35,12 +35,8 @@ public sealed class FrameExtractor(FfmpegTools tools)
             "-fps_mode", "passthrough", "-frames:v", count.ToString(CultureInfo.InvariantCulture),
             "-f", "rawvideo", "-pix_fmt", "bgra", "pipe:1",
         ];
-        var bytes = await ProcessRunner.RunForBytesAsync(tools.Ffmpeg, args, token);
-        var frameSize = size.Width * size.Height * 4;
-        var frames = new List<RawFrame>();
-        for (var offset = 0; offset + frameSize <= bytes.Length; offset += frameSize)
-            frames.Add(new RawFrame(bytes.AsSpan(offset, frameSize).ToArray(), size.Width, size.Height));
-        return frames;
+        var chunks = await ProcessRunner.RunForChunksAsync(tools.Ffmpeg, args, FrameBytes(size), count, token);
+        return chunks.Select(bytes => new RawFrame(bytes, size.Width, size.Height)).ToList();
     }
 
     /// <summary>解出 JPEG 縮圖。</summary>
@@ -66,6 +62,9 @@ public sealed class FrameExtractor(FfmpegTools tools)
 
     /// <summary>時間所在的影格編號。</summary>
     public static long FrameIndex(double time, double fps) => (long)Math.Floor(time * fps + 0.5);
+
+    /// <summary>一格 BGRA 影格的位元組數。</summary>
+    public static int FrameBytes(Size2 size) => size.Width * size.Height * 4;
 
     private static int Even(double value) => Math.Max(2, (int)Math.Round(value / 2) * 2);
     private static string Seconds(double value) => value.ToString("0.######", CultureInfo.InvariantCulture);
