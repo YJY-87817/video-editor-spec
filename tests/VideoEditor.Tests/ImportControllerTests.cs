@@ -70,6 +70,45 @@ public class ImportControllerTests(TestMedia media)
         Assert.Equal("Hide", view.Events[^1]);
     }
 
+    [Fact]
+    public async Task SameFileDroppedAgainWhileImportingIsNotDuplicated()
+    {
+        var view = new FakeView();
+        var controller = Create(view);
+
+        // 第一次還在讀取（尚未加入素材清單）時，又拖進同一個檔案。
+        var first = controller.ImportAsync([media.Landscape]);
+        var second = controller.ImportAsync([media.Landscape]);
+        await Task.WhenAll(first, second);
+
+        Assert.Single(view.Added);
+    }
+
+    [Fact]
+    public async Task SameFileTwiceInOneDropIsImportedOnce()
+    {
+        var view = new FakeView();
+
+        await Create(view).ImportAsync([media.Landscape, media.Landscape]);
+
+        Assert.Single(view.Added);
+        Assert.Equal("讀取素材 1/1：landscape.mp4（讀取資訊）", view.Progress[0].Text);
+    }
+
+    [Fact]
+    public async Task FailedFileCanBeTriedAgain()
+    {
+        var bad = media.Output("retry-not-a-video.mp4");
+        await File.WriteAllTextAsync(bad, "這不是影片");
+        var view = new FakeView();
+        var controller = Create(view);
+
+        await controller.ImportAsync([bad]);
+        await controller.ImportAsync([bad]);
+
+        Assert.Equal(2, view.Failures.Count);
+    }
+
     private sealed class FakeView : IImportView
     {
         public HashSet<string> Known { get; } = [];
@@ -79,7 +118,8 @@ public class ImportControllerTests(TestMedia media)
         public List<string> Events { get; } = [];
         public int Hidden { get; private set; }
 
-        public bool IsAlreadyImported(string path) => Known.Contains(path);
+        // 與視窗相同：素材清單裡已有的才算已匯入。
+        public bool IsAlreadyImported(string path) => Known.Contains(path) || Added.Any(a => a.Info.Path == path);
 
         public void ShowProgress(string text, double value)
         {

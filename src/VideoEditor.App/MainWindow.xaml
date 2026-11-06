@@ -4,7 +4,7 @@
         xmlns:controls="clr-namespace:VideoEditor.App.Controls"
         Title="影片編輯器" Icon="app.ico" Width="1360" Height="860" MinWidth="1000" MinHeight="640"
         Background="#1E1E1E" FontFamily="Microsoft JhengHei UI" AllowDrop="True"
-        Drop="OnFileDrop" PreviewKeyDown="OnPreviewKeyDown" Closed="OnClosed">
+        Drop="OnFileDrop" PreviewKeyDown="OnPreviewKeyDown" Closing="OnClosing" Closed="OnClosed">
     <Window.TaskbarItemInfo>
         <TaskbarItemInfo x:Name="Taskbar" />
     </Window.TaskbarItemInfo>

@@ -27,10 +27,12 @@ public sealed class ImportController(MediaProbe probe, FrameExtractor extractor,
 {
     private int _total;
     private int _done;
+    // 已排入但還沒處理完的檔案：還不在素材清單裡，但也不能再排一次。
+    private readonly HashSet<string> _queued = new(StringComparer.OrdinalIgnoreCase);
 
     public async Task ImportAsync(IEnumerable<string> paths)
     {
-        var pending = paths.Where(path => !view.IsAlreadyImported(path)).ToList();
+        var pending = paths.Where(path => !view.IsAlreadyImported(path) && _queued.Add(path)).ToList();
         if (pending.Count == 0) return;
         // 匯入中又拖進新檔案時，併入同一個進度。
         _total += pending.Count;
@@ -50,6 +52,7 @@ public sealed class ImportController(MediaProbe probe, FrameExtractor extractor,
             }
             finally
             {
+                _queued.Remove(path);
                 _done++;
                 if (_done >= _total)
                 {
