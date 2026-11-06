@@ -168,7 +168,8 @@ public sealed class TimelineView : FrameworkElement
     private static string ClipLabel(TimelineClip clip)
     {
         var label = clip.Reversed ? $"⟲ 倒放  {clip.Media.FileName}" : clip.Media.FileName;
-        return clip.Transform.IsIdentity ? label : $"{label}  {clip.Transform.Label}";
+        if (!clip.Transform.IsIdentity) label = $"{label}  {clip.Transform.Label}";
+        return clip.Framing.IsDefault ? label : $"{label}  {clip.Framing.ShortLabel}";
     }
 
     private static string VolumeLabel(TimelineClip clip) => $"音量 {clip.Volume * 100:0}%";

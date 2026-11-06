@@ -86,11 +86,14 @@ public partial class MainWindow
             : $"{clip!.Framing.Label}。在剪輯預覽中拖曳黃色框移動、拖曳四角縮放，也可以用滑鼠滾輪縮放、雙擊框重設。";
     }
 
-    private void ApplyFraming(TimelineClip clip, ClipFraming framing)
+    /// <param name="refreshList">拖曳中每次移動都會呼叫，片段清單等放開滑鼠再更新一次就好。</param>
+    private void ApplyFraming(TimelineClip clip, ClipFraming framing, bool refreshList = true)
     {
         _timeline.SetFraming(clip, framing);
         UpdatePreviewLayout();
         UpdateFramingControls(Timeline.SelectedClip);
+        Timeline.InvalidateVisual(); // 時間軸上的片段標示
+        if (refreshList) RefreshClipList();
     }
 
     private void OnResetFraming(object sender, RoutedEventArgs e)
@@ -148,7 +151,7 @@ public partial class MainWindow
             ? _framingAtStart.MoveBy((point.X - _framingDragStart.X) * scale, (point.Y - _framingDragStart.Y) * scale, source, output)
             : ClipFraming.ResizeFromCorner(_framingAnchorX, _framingAnchorY, _framingDirectionX, _framingDirectionY,
                 (point.X - _previewPlan.Source.X) * scale, (point.Y - _previewPlan.Source.Y) * scale, source, output);
-        ApplyFraming(clip, next);
+        ApplyFraming(clip, next, refreshList: false);
     }
 
     private void OnFramingDragEnd(object sender, MouseButtonEventArgs e)
@@ -163,8 +166,11 @@ public partial class MainWindow
 
     private void EndFramingDrag()
     {
+        if (_framingDrag == FramingDragKind.None) return;
+        var changed = _framingDragClip is { } clip && clip.Framing != _framingAtStart;
         _framingDrag = FramingDragKind.None;
         _framingDragClip = null;
+        if (changed) RefreshClipList();
     }
 
     private void OnFramingWheel(object sender, MouseWheelEventArgs e)
