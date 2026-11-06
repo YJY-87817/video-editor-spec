@@ -90,6 +90,7 @@ public partial class MainWindow : Window
         {
             PlayButton.Content = _engine.IsPlaying || _engine.IsRewinding ? "⏸ 暫停" : "▶ 播放";
             RewindButton.Content = _engine.IsRewinding ? $"◀◀ {_engine.RewindSpeed}×" : "◀◀ 倒帶";
+            FastForwardButton.Content = _engine.IsFastForwarding ? $"▶▶ {_engine.PlaybackRate}×" : "▶▶ 快轉";
         };
         _engine.Status += message => StatusText.Text = message;
         _engine.SurfaceChanged += OnSurfaceChanged;
@@ -328,6 +329,7 @@ public partial class MainWindow : Window
 
     private void OnPlayClick(object sender, RoutedEventArgs e) => _engine?.Toggle();
     private void OnRewindClick(object sender, RoutedEventArgs e) => _engine?.Rewind();
+    private void OnFastForwardClick(object sender, RoutedEventArgs e) => _engine?.FastForward();
     private void OnStepBack(object sender, RoutedEventArgs e) => _engine?.StepFrame(-1);
     private void OnStepForward(object sender, RoutedEventArgs e) => _engine?.StepFrame(1);
 
@@ -338,7 +340,7 @@ public partial class MainWindow : Window
             case Key.Space: _engine?.Toggle(); break;
             case Key.J: _engine?.Rewind(); break;
             case Key.K: _engine?.Pause(); break;
-            case Key.L: _engine?.Play(); break;
+            case Key.L: _engine?.PlayOrFaster(); break;
             case Key.Left: _engine?.StepFrame(-1); break;
             case Key.Right: _engine?.StepFrame(1); break;
             case Key.I: MarkIn(); break;

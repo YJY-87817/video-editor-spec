@@ -31,6 +31,9 @@ public sealed class PreviewEngine : IDisposable
     private const int ReverseProxyLongSide = 854;
     private const int RewindBatchFrames = 12;
     private const int MaxRewindSpeed = 8;
+    private const int MaxPlaybackRate = 8;
+    /// <summary>這個倍速以上靜音：LibVLC 高倍速的聲音斷斷續續，聽起來只是雜音。</summary>
+    private const int MuteFromRate = 4;
 
     private readonly FrameExtractor _extractor;
     private readonly ReversePreviewCache _proxies;
@@ -92,6 +95,9 @@ public sealed class PreviewEngine : IDisposable
     public bool IsPlaying { get; private set; }
     /// <summary>倒帶速度（1、2、4、8 倍）；0 表示沒有在倒帶。</summary>
     public int RewindSpeed { get; private set; }
+    /// <summary>播放倍速（1、2、4、8）；快轉時大於 1。</summary>
+    public int PlaybackRate { get; private set; } = 1;
+    public bool IsFastForwarding => IsPlaying && PlaybackRate > 1;
     public bool IsRewinding => RewindSpeed > 0;
     public double Duration => _timeline.Duration;
 
@@ -129,6 +135,40 @@ public sealed class PreviewEngine : IDisposable
         _timer.Start();
         PlayingChanged?.Invoke();
         Tick();
+    }
+
+    /// <summary>快轉：沒在播放時以 2 倍速開始，播放中再按一次加倍（最多 8 倍）。</summary>
+    public void FastForward()
+    {
+        if (Duration <= 0) return;
+        if (!IsPlaying) Play();
+        if (!IsPlaying) return;
+        SetRate(Math.Min(MaxPlaybackRate, PlaybackRate * 2));
+    }
+
+    /// <summary>J/K/L 的 L：沒在播放時以正常速度播放，播放中則加速。</summary>
+    public void PlayOrFaster()
+    {
+        if (IsPlaying) FastForward();
+        else Play();
+    }
+
+    private void SetRate(int rate)
+    {
+        if (rate == PlaybackRate) return;
+        // 從目前位置以新倍速重新起算；等待第一格時時鐘本來就停著，不用動。
+        if (!_waitingForFirstFrame)
+        {
+            _clockBase = Position;
+            _clock.Restart();
+        }
+        PlaybackRate = rate;
+        Enqueue(() =>
+        {
+            _videoPlayer.SetRate(rate);
+            _musicPlayer.SetRate(rate);
+        });
+        PlayingChanged?.Invoke();
     }
 
     public void Pause()
@@ -205,8 +245,11 @@ public sealed class PreviewEngine : IDisposable
     public void Refresh()
     {
         var wasPlaying = IsPlaying;
+        var rate = PlaybackRate;
         Seek(Math.Min(Position, Duration));
-        if (wasPlaying) Play();
+        if (!wasPlaying) return;
+        Play();
+        SetRate(rate);
     }
 
     private void Stop()
@@ -225,6 +268,7 @@ public sealed class PreviewEngine : IDisposable
         _videoClip = null;
         _musicClip = null;
         _proxyWait = null;
+        PlaybackRate = 1;
         PlayingChanged?.Invoke();
     }
 
@@ -265,7 +309,7 @@ public sealed class PreviewEngine : IDisposable
             _clock.Restart();
         }
 
-        var position = _waitingForFirstFrame ? _clockBase : _clockBase + _clock.Elapsed.TotalSeconds;
+        var position = _waitingForFirstFrame ? _clockBase : _clockBase + _clock.Elapsed.TotalSeconds * PlaybackRate;
         if (position >= Duration)
         {
             Stop();
@@ -280,8 +324,8 @@ public sealed class PreviewEngine : IDisposable
         if (_waitingForFirstFrame) position = _clockBase;
         else position = FollowVideoClock(position);
 
-        ApplyVolume(_videoPlayer, _videoClip);
-        ApplyVolume(_musicPlayer, _musicClip);
+        ApplyVolume(_videoPlayer, _videoClip, PlaybackRate);
+        ApplyVolume(_musicPlayer, _musicClip, PlaybackRate);
         Position = position;
         PositionChanged?.Invoke();
     }
@@ -348,7 +392,7 @@ public sealed class PreviewEngine : IDisposable
             if (clip == null || _waitingForFirstFrame) return;
             var expected = clip.ToSourceTime(position) * 1000;
             var actual = _musicPlayer.Time;
-            if (actual > 0 && Math.Abs(actual - expected) > MusicDriftLimitMs)
+            if (actual > 0 && Math.Abs(actual - expected) > MusicDriftLimitMs * PlaybackRate)
                 Enqueue(() => _musicPlayer.Time = (long)expected);
             return;
         }
@@ -373,7 +417,8 @@ public sealed class PreviewEngine : IDisposable
         var actual = _videoPlayer.Time;
         if (actual <= 0) return position;
         var expected = (position - _videoClip.Start + _playerBase) * 1000;
-        if (Math.Abs(actual - expected) <= VideoDriftLimitMs) return position;
+        // 倍速時同樣的延遲會造成較大的來源時間差，容許值跟著放大。
+        if (Math.Abs(actual - expected) <= VideoDriftLimitMs * PlaybackRate) return position;
 
         var corrected = _videoClip.Start + actual / 1000.0 - _playerBase;
         _clockBase = corrected;
@@ -381,10 +426,10 @@ public sealed class PreviewEngine : IDisposable
         return corrected;
     }
 
-    private static void ApplyVolume(MediaPlayer player, TimelineClip? clip)
+    private static void ApplyVolume(MediaPlayer player, TimelineClip? clip, int rate)
     {
         if (clip == null) return;
-        var volume = VolumeCurve.ToVlcVolume(clip.Volume);
+        var volume = rate >= MuteFromRate ? 0 : VolumeCurve.ToVlcVolume(clip.Volume);
         if (player.Volume != volume) player.Volume = volume;
     }
 
@@ -395,6 +440,8 @@ public sealed class PreviewEngine : IDisposable
         media.AddOption(":stop-time=" + stop.ToString(CultureInfo.InvariantCulture));
         foreach (var option in options) media.AddOption(option);
         player.Play(media);
+        // 新的媒體要重新套用倍速（在佇列上執行，讀到的是最新的倍速）。
+        player.SetRate(PlaybackRate);
     }
 
     private void Enqueue(Action command)
