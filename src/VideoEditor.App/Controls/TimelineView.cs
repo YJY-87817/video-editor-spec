@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Windows;
 using System.Windows.Automation.Peers;
 using System.Windows.Input;
@@ -19,6 +19,8 @@ public sealed class TimelineView : FrameworkElement
     private const double EdgeGrab = 7;
     private const double MinPixelsPerSecond = 2;
     private const double MaxPixelsPerSecond = 800;
+    /// <summary>拉動片段邊緣時，離播放頭這麼多像素以內就貼齊播放頭；按住 Alt 可暫時關閉。</summary>
+    private const double SnapPixels = 8;
 
     private static readonly Brush Background = Frozen("#181818");
     private static readonly Brush RowBrush = Frozen("#232323");
@@ -32,6 +34,8 @@ public sealed class TimelineView : FrameworkElement
     private static readonly Pen TickPen = FrozenPen(Frozen("#555555"), 1);
     private static readonly Pen SelectedPen = FrozenPen(Frozen("#FFD24A"), 2);
     private static readonly Pen PlayheadPen = FrozenPen(Frozen("#FF4D4D"), 1.5);
+    /// <summary>片段邊緣貼齊播放頭時，播放頭改用這支筆，讓人看得出已經對齊。</summary>
+    private static readonly Pen SnappedPlayheadPen = FrozenPen(Frozen("#FFD24A"), 2.5);
     private static readonly Typeface Face = new("Microsoft JhengHei UI");
 
     private enum DragKind { None, Playhead, Move, TrimStart, TrimEnd }
@@ -43,6 +47,7 @@ public sealed class TimelineView : FrameworkElement
     private DragKind _drag;
     private TimelineClip? _dragClip;
     private double _dragGrabOffset;
+    private bool _snapped;
 
     public TimelineView()
     {
@@ -156,7 +161,7 @@ public sealed class TimelineView : FrameworkElement
             DrawClip(dc, clip, MusicRowY, AudioRowHeight, MusicClipBrush, $"{clip.Media.FileName}  {VolumeLabel(clip)}");
 
         var playheadX = TimeToX(_playhead);
-        dc.DrawLine(PlayheadPen, new Point(playheadX, 0), new Point(playheadX, ActualHeight));
+        dc.DrawLine(_snapped ? SnappedPlayheadPen : PlayheadPen, new Point(playheadX, 0), new Point(playheadX, ActualHeight));
         dc.Pop();
     }
 
@@ -294,10 +299,12 @@ public sealed class TimelineView : FrameworkElement
                 _timeline.Move(_dragClip!, time - _dragGrabOffset);
                 break;
             case DragKind.TrimStart:
-                _timeline.TrimStart(_dragClip!, time);
+                _timeline.TrimStart(_dragClip!, SnapToPlayhead(time));
+                _snapped = _snapped && IsAtPlayhead(_dragClip!.Start);
                 break;
             case DragKind.TrimEnd:
-                _timeline.TrimEnd(_dragClip!, time);
+                _timeline.TrimEnd(_dragClip!, SnapToPlayhead(time));
+                _snapped = _snapped && IsAtPlayhead(_dragClip!.End);
                 break;
         }
         InvalidateVisual();
@@ -308,10 +315,29 @@ public sealed class TimelineView : FrameworkElement
         var wasEditing = _drag is DragKind.Move or DragKind.TrimStart or DragKind.TrimEnd;
         _drag = DragKind.None;
         _dragClip = null;
+        _snapped = false;
         ReleaseMouseCapture();
         if (wasEditing) ClipsChanged?.Invoke();
         ViewChanged?.Invoke();
     }
+
+    /// <summary>
+    /// 剪輯點靠近播放頭時貼齊。吸附範圍以像素計，換算成目前縮放比例下的秒數。
+    /// 邊緣受來源長度或相鄰片段限制而停不到播放頭時，不算貼齊。
+    /// </summary>
+    private double SnapToPlayhead(double time)
+    {
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Alt))
+        {
+            _snapped = false;
+            return time;
+        }
+        var (snappedTime, snapped) = TimelineSnap.ToPlayhead(time, _playhead, SnapPixels / _pixelsPerSecond);
+        _snapped = snapped;
+        return snappedTime;
+    }
+
+    private bool IsAtPlayhead(double time) => Math.Abs(time - _playhead) < 1e-6;
 
     protected override void OnMouseWheel(MouseWheelEventArgs e)
     {
