@@ -296,10 +296,10 @@ public class ProbeParseTests
     [InlineData("\"N/A\"", "無法讀取檔案長度")]
     public void RejectsFilesTooShortForTheTimeline(string duration, string expected)
     {
-        var json = $$"""
+        var json = """
             {"streams":[{"codec_type":"video","codec_name":"png","width":64,"height":64,"r_frame_rate":"25/1","avg_frame_rate":"25/1"}],
-             "format":{"duration":{{duration}}}}
-            """;
+             "format":{"duration":DURATION}}
+            """.Replace("DURATION", duration);
         var error = Assert.Throws<InvalidDataException>(() => MediaProbe.Parse(json, "still.png"));
         Assert.Contains(expected, error.Message);
     }
