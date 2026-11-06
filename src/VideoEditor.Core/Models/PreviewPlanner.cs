@@ -17,15 +17,16 @@ public static class PreviewPlanner
 {
     /// <param name="reference">決定輸出尺寸的畫面（含旋轉）；沒有時整個預覽收起。</param>
     /// <param name="surface">目前顯示的畫面；時間軸空白處沒有來源畫面，用輸出尺寸排版，只顯示黑色的輸出框。</param>
+    /// <param name="framing">目前片段的畫面位置（填滿裁切時）；沒有畫面時不使用。</param>
     public static PreviewPlan Compute(double areaWidth, double areaHeight, Size2? reference, AspectRatio ratio, FitMode mode,
-        PreviewSurface? surface)
+        PreviewSurface? surface, ClipFraming? framing = null)
     {
         if (reference == null || areaWidth <= 0 || areaHeight <= 0) return PreviewPlan.Hidden;
 
         var output = OutputSize.Compute(reference.Value.Width, reference.Value.Height, ratio);
         var transform = surface?.Transform ?? FrameTransform.Identity;
         var source = surface?.VideoSize is { } size ? transform.Apply(size) : output;
-        var layout = PreviewLayout.Compute(areaWidth, areaHeight, source, output, mode);
+        var layout = PreviewLayout.Compute(areaWidth, areaHeight, source, output, mode, surface?.VideoSize != null ? framing : null);
 
         // 填滿裁切：把框外（會被裁掉的範圍）調暗。
         return new PreviewPlan(true, surface != null, layout.Source, layout.Frame, ImageRect(layout.Source, transform),

@@ -22,13 +22,20 @@ public static class OutputSize
 /// <summary>預覽區內，來源畫面與輸出框線各自的位置。</summary>
 public readonly record struct PreviewLayout(Rect2 Source, Rect2 Frame)
 {
-    public static PreviewLayout Compute(double areaWidth, double areaHeight, Size2 source, Size2 output, FitMode mode)
+    /// <param name="framing">填滿裁切時的畫面位置；null 或預設時框線置中、最大。加黑邊時不使用。</param>
+    public static PreviewLayout Compute(double areaWidth, double areaHeight, Size2 source, Size2 output, FitMode mode,
+        ClipFraming? framing = null)
     {
         if (mode == FitMode.Fill)
         {
             // 完整顯示來源，框線內縮，框外即會被裁掉的範圍。
             var sourceRect = Fit(areaWidth, areaHeight, 0, 0, source.Width, source.Height);
-            return new PreviewLayout(sourceRect, Fit(sourceRect.Width, sourceRect.Height, sourceRect.X, sourceRect.Y, output.Width, output.Height));
+            if (framing is null || framing.IsDefault)
+                return new PreviewLayout(sourceRect, Fit(sourceRect.Width, sourceRect.Height, sourceRect.X, sourceRect.Y, output.Width, output.Height));
+            var crop = framing.CropRect(source, output);
+            var scale = sourceRect.Width / source.Width;
+            return new PreviewLayout(sourceRect,
+                new Rect2(sourceRect.X + crop.X * scale, sourceRect.Y + crop.Y * scale, crop.Width * scale, crop.Height * scale));
         }
 
         var frame = Fit(areaWidth, areaHeight, 0, 0, output.Width, output.Height);

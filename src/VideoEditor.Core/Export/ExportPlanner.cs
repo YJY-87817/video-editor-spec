@@ -83,7 +83,7 @@ public static class ExportPlanner
                 input++;
             }
 
-            graph.Add($"{videoSource}{fpsFilter}{FitFilter(clip.Media, size, settings.Mode, clip.Transform)},setsar=1,{outputFormat}[v{label}]");
+            graph.Add($"{videoSource}{fpsFilter}{FitFilter(clip.Media, size, settings.Mode, clip.Transform, clip.Framing)},setsar=1,{outputFormat}[v{label}]");
             concatInputs.Append($"[v{label}]");
             if (hasAudio)
             {
@@ -154,13 +154,17 @@ public static class ExportPlanner
         return Math.Clamp(highest, MinAudioBitRate, MaxAudioBitRate);
     }
 
-    /// <summary>像素比修正 → 旋轉與鏡像 → 縮放至輸出尺寸。像素比要在旋轉前修正，因為它是對原始方向定義的。</summary>
-    public static string FitFilter(MediaInfo media, Size2 size, FitMode mode, FrameTransform transform = default)
+    /// <summary>
+    /// 像素比修正 → 旋轉與鏡像 →（填滿裁切時）裁出畫面位置 → 縮放至輸出尺寸。像素比要在旋轉前修正，因為它是對原始方向定義的。
+    /// 畫面位置以轉完的方向記錄，所以裁切放在旋轉之後；裁出的範圍已是輸出比例，之後的縮放與裁切只修正一像素內的誤差。
+    /// </summary>
+    public static string FitFilter(MediaInfo media, Size2 size, FitMode mode, FrameTransform transform = default, ClipFraming? framing = null)
     {
         var prefix = (media.SampleAspect.Num == media.SampleAspect.Den ? "" : $"scale=iw*{media.SampleAspect}:ih,setsar=1,")
             + transform.Filter();
+        var source = transform.Apply(new Size2(media.DisplayWidth, media.DisplayHeight));
         return prefix + (mode == FitMode.Fill
-            ? $"scale={size.Width}:{size.Height}:force_original_aspect_ratio=increase:flags=lanczos,crop={size.Width}:{size.Height}"
+            ? (framing?.CropFilter(source, size) ?? "") + $"scale={size.Width}:{size.Height}:force_original_aspect_ratio=increase:flags=lanczos,crop={size.Width}:{size.Height}"
             : $"scale={size.Width}:{size.Height}:force_original_aspect_ratio=decrease:flags=lanczos,pad={size.Width}:{size.Height}:(ow-iw)/2:(oh-ih)/2:black");
     }
 

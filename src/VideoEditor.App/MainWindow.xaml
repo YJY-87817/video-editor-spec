@@ -9,6 +9,15 @@
         <TaskbarItemInfo x:Name="Taskbar" />
     </Window.TaskbarItemInfo>
     <Window.Resources>
+        <!-- 畫面位置框的四個角，拖曳可縮放 -->
+        <Style x:Key="FrameHandle" TargetType="Rectangle">
+            <Setter Property="Width" Value="12" />
+            <Setter Property="Height" Value="12" />
+            <Setter Property="Fill" Value="#FFD24A" />
+            <Setter Property="Stroke" Value="#202020" />
+            <Setter Property="StrokeThickness" Value="1" />
+            <Setter Property="Visibility" Value="Collapsed" />
+        </Style>
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="#E0E0E0" />
         </Style>
@@ -71,12 +80,19 @@
         </DockPanel>
 
         <!-- 預覽 -->
-        <Grid x:Name="PreviewArea" Grid.Row="0" Grid.Column="1" Margin="0,8,0,4" Background="#0C0C0C" ClipToBounds="True" SizeChanged="OnPreviewAreaResized">
-            <Canvas>
+        <Grid x:Name="PreviewArea" Grid.Row="0" Grid.Column="1" Margin="0,8,0,4" Background="#0C0C0C" ClipToBounds="True" SizeChanged="OnPreviewAreaResized"
+              MouseWheel="OnFramingWheel">
+            <!-- 剪輯預覽＋填滿裁切時，黃色框可拖曳移動、拖四角縮放、滾輪縮放、雙擊重設 -->
+            <Canvas x:Name="PreviewCanvas" MouseMove="OnFramingDragMove" MouseLeftButtonUp="OnFramingDragEnd" LostMouseCapture="OnFramingCaptureLost">
                 <Rectangle x:Name="FrameFill" Fill="Black" />
                 <Image x:Name="PreviewImage" Stretch="Fill" RenderOptions.BitmapScalingMode="Linear" AutomationProperties.AutomationId="PreviewImage" />
                 <Path x:Name="CropDim" Fill="#A0000000" IsHitTestVisible="False" />
-                <Rectangle x:Name="FrameBorder" Stroke="#FFD24A" StrokeThickness="1.5" StrokeDashArray="4 3" IsHitTestVisible="False" />
+                <Rectangle x:Name="FrameBorder" Stroke="#FFD24A" StrokeThickness="1.5" StrokeDashArray="4 3" IsHitTestVisible="False"
+                           AutomationProperties.AutomationId="FrameBorder" MouseLeftButtonDown="OnFramingMoveStart" />
+                <Rectangle x:Name="FrameHandleTopLeft" Style="{StaticResource FrameHandle}" Tag="-1,-1" Cursor="SizeNWSE" MouseLeftButtonDown="OnFramingResizeStart" />
+                <Rectangle x:Name="FrameHandleTopRight" Style="{StaticResource FrameHandle}" Tag="1,-1" Cursor="SizeNESW" MouseLeftButtonDown="OnFramingResizeStart" />
+                <Rectangle x:Name="FrameHandleBottomLeft" Style="{StaticResource FrameHandle}" Tag="-1,1" Cursor="SizeNESW" MouseLeftButtonDown="OnFramingResizeStart" />
+                <Rectangle x:Name="FrameHandleBottomRight" Style="{StaticResource FrameHandle}" Tag="1,1" Cursor="SizeNWSE" MouseLeftButtonDown="OnFramingResizeStart" />
             </Canvas>
             <Border x:Name="ModeFrame" BorderThickness="2" BorderBrush="#4A90D9" IsHitTestVisible="False" />
             <Border x:Name="ModeBadge" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12" Padding="10,4" CornerRadius="4"
@@ -157,6 +173,15 @@
                         <Button Content="重設" AutomationProperties.AutomationId="ResetTransformButton" Margin="0,0,6,6" Click="OnResetTransform" />
                     </WrapPanel>
                     <TextBlock x:Name="TransformText" AutomationProperties.AutomationId="TransformText" FontSize="12" Foreground="#B0B0B0" Text="—" />
+                </StackPanel>
+
+                <TextBlock Style="{StaticResource SectionTitle}" Text="畫面位置（填滿裁切）" />
+                <StackPanel>
+                    <WrapPanel>
+                        <Button x:Name="ResetFramingButton" Content="重設畫面位置" AutomationProperties.AutomationId="ResetFramingButton" Margin="0,0,6,6"
+                                IsEnabled="False" Click="OnResetFraming" />
+                    </WrapPanel>
+                    <TextBlock x:Name="FramingText" AutomationProperties.AutomationId="FramingText" FontSize="12" Foreground="#B0B0B0" TextWrapping="Wrap" Text="—" />
                 </StackPanel>
 
                 <TextBlock Style="{StaticResource SectionTitle}" Text="片段倒放" />
