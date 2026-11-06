@@ -16,6 +16,8 @@ dotnet run --project src/VideoEditor.App
 dotnet test
 ```
 
+GitHub Actions（`.github/workflows/ci.yml`）會在 Windows 上建置並執行測試，推送到 `main` 與每個 pull request 都會觸發。
+
 ## 操作
 
 | 按鍵 | 功能 |

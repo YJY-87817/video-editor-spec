@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # 專案只支援 Windows（WPF），整合測試也需要 ffmpeg.exe / ffprobe.exe
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install FFmpeg
+        shell: pwsh
+        run: |
+          choco install ffmpeg --no-progress -y
+          # 測試需要 libx264 與 libx265
+          $encoders = ffmpeg -hide_banner -encoders 2>&1 | Out-String
+          foreach ($name in 'libx264', 'libx265') {
+            if ($encoders -notmatch $name) { throw "FFmpeg 缺少 $name" }
+          }
+          ffmpeg -version | Select-Object -First 1
+
+      - name: Build
+        run: dotnet build VideoEditor.slnx --configuration Release
+
+      - name: Test
+        run: dotnet test VideoEditor.slnx --configuration Release --no-build --verbosity normal
