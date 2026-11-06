@@ -73,12 +73,32 @@ public sealed class ExportService(FfmpegTools tools)
     public static long EstimateBytes(TimelineModel timeline) =>
         (long)(timeline.AllClips.Sum(c => c.Media.BitRate / 8.0 * c.Duration) * SizeSafetyFactor);
 
-    /// <summary>先寫入暫存檔，成功才改名；取消或失敗時清掉暫存檔，不留下殘缺影片。</summary>
+    /// <summary>
+    /// 匯出時先寫入的暫存檔，與輸出檔放在同一個資料夾（改名才不必跨磁碟複製）。
+    /// 檔名含隨機碼，一定不會與現有檔案同名：固定檔名可能剛好是使用者自己的檔案、甚至是時間軸上的素材，
+    /// 會被 FFmpeg 覆蓋，結束時又被刪掉。
+    /// </summary>
+    public static string TemporaryPath(string outputPath)
+    {
+        var fullPath = Path.GetFullPath(outputPath);
+        var directory = Path.GetDirectoryName(fullPath)!;
+        while (true)
+        {
+            var candidate = Path.Combine(directory,
+                $"{Path.GetFileNameWithoutExtension(fullPath)}.{Guid.NewGuid().ToString("N")[..8]}.part{Path.GetExtension(fullPath)}");
+            if (!File.Exists(candidate)) return candidate;
+        }
+    }
+
+    /// <summary>
+    /// 先寫入暫存檔，成功才改名；取消或 FFmpeg 失敗時清掉暫存檔，不留下殘缺影片。
+    /// 已經做好、只是改名失敗（例如匯出途中用播放器打開了舊的輸出檔）時保留暫存檔，丟出 <see cref="ExportRenameException"/>。
+    /// </summary>
     public async Task ExportAsync(ExportPlan plan, string outputPath, IProgress<double>? progress, CancellationToken token = default)
     {
-        var temporary = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(outputPath))!,
-            $"{Path.GetFileNameWithoutExtension(outputPath)}.part{Path.GetExtension(outputPath)}");
+        var temporary = TemporaryPath(outputPath);
         var args = plan.Arguments.Take(plan.Arguments.Count - 1).Append(temporary);
+        var finished = false;
 
         try
         {
@@ -86,13 +106,31 @@ public sealed class ExportService(FfmpegTools tools)
             {
                 if (ParseProgress(line, plan.Duration) is { } value) progress?.Report(value);
             }, token);
-            File.Move(temporary, outputPath, overwrite: true);
+            finished = true;
+            try
+            {
+                File.Move(temporary, outputPath, overwrite: true);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                throw new ExportRenameException(temporary, outputPath, e);
+            }
             progress?.Report(1);
         }
         finally
         {
-            if (File.Exists(temporary)) File.Delete(temporary);
+            if (!finished) DeleteQuietly(temporary);
         }
+    }
+
+    private static void DeleteQuietly(string path)
+    {
+        try
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+        // 刪不掉（例如防毒軟體還在掃描）時不要蓋掉原本的錯誤；暫存檔名明顯，使用者可以自己刪。
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
     }
 
     public static double? ParseProgress(string line, double duration)
@@ -102,4 +140,12 @@ public sealed class ExportService(FfmpegTools tools)
         if (!long.TryParse(line.AsSpan(key.Length), NumberStyles.Integer, CultureInfo.InvariantCulture, out var us)) return null;
         return Math.Clamp(us / 1_000_000.0 / duration, 0, 1);
     }
+}
+
+/// <summary>影片已經做好，但無法改成輸出檔名。做好的影片保留在 <see cref="TemporaryPath"/>。</summary>
+public sealed class ExportRenameException(string temporaryPath, string outputPath, Exception inner)
+    : IOException($"影片已做好，但無法存成「{Path.GetFileName(outputPath)}」（可能正被播放器等程式開著）：{inner.Message}\n\n"
+        + $"做好的影片保留在：\n{temporaryPath}\n\n請關閉開著它的程式後，自行把它改名，或重新匯出。", inner)
+{
+    public string TemporaryPath { get; } = temporaryPath;
 }

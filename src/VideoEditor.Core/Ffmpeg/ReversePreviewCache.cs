@@ -11,7 +11,14 @@ namespace VideoEditor.Core.Ffmpeg;
 /// <param name="progress">產生中回報 0–1；產生結束（成功或失敗）時回報 null。</param>
 public sealed class ReversePreviewCache(FfmpegTools tools, string? directory = null, IProgress<double?>? progress = null) : IDisposable
 {
-    private readonly string _directory = directory ?? Path.Combine(Path.GetTempPath(), "VideoEditor", "reverse-" + Guid.NewGuid().ToString("N"));
+    /// <summary>預設放預覽檔的上層資料夾；每次執行各用一個 reverse-xxxx 子資料夾。</summary>
+    public static string DefaultRoot => Path.Combine(Path.GetTempPath(), "VideoEditor");
+    private const string FolderPrefix = "reverse-";
+    /// <summary>使用中時一直獨佔開著的檔案；清理舊資料夾時，刪不掉它就表示還有程式在用。</summary>
+    private const string LockFileName = ".in-use";
+
+    private readonly string _directory = directory ?? Path.Combine(DefaultRoot, FolderPrefix + Guid.NewGuid().ToString("N"));
+    private FileStream? _lock;
     private readonly Dictionary<(string Path, long In, long Out, int Width, int Height), Task<string>> _files = [];
     // 一次只產生一個，避免同時跑多個 FFmpeg 拖慢播放。
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -53,6 +60,8 @@ public sealed class ReversePreviewCache(FfmpegTools tools, string? directory = n
         try
         {
             Directory.CreateDirectory(_directory);
+            // 標記這個資料夾正在使用，另一個同時執行的程式清理時才不會刪掉它。
+            _lock ??= new FileStream(Path.Combine(_directory, LockFileName), FileMode.Create, FileAccess.ReadWrite, FileShare.None);
             var output = Path.Combine(_directory, $"{Guid.NewGuid():N}.mp4");
             var duration = sourceOut - sourceIn;
             progress?.Report(0);
@@ -69,12 +78,38 @@ public sealed class ReversePreviewCache(FfmpegTools tools, string? directory = n
         }
     }
 
+    /// <summary>
+    /// 刪掉以前留下的預覽資料夾（程式當掉或被強制結束時，Dispose 沒有執行）。
+    /// 還有程式在用的資料夾（使用中標記刪不掉）會略過；刪不掉的檔案也略過，下次再試。回傳刪掉的資料夾數。
+    /// </summary>
+    public static int CleanupStale(string? root = null)
+    {
+        root ??= DefaultRoot;
+        if (!Directory.Exists(root)) return 0;
+        var removed = 0;
+        foreach (var folder in Directory.EnumerateDirectories(root, FolderPrefix + "*"))
+        {
+            try
+            {
+                var marker = Path.Combine(folder, LockFileName);
+                // 使用中的程式獨佔開著這個檔案，刪除會失敗，整個資料夾就保留。
+                if (File.Exists(marker)) File.Delete(marker);
+                Directory.Delete(folder, true);
+                removed++;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        }
+        return removed;
+    }
+
     private static long Ticks(double seconds) => (long)Math.Round(seconds * 1_000_000);
 
     /// <summary>停止產生中的預覽檔並刪除暫存資料夾。檔案仍被佔用時會重試，最多約 2 秒。</summary>
     public void Dispose()
     {
         _disposed.Cancel(); // 會立刻終止產生中的 FFmpeg
+        _lock?.Dispose();
+        _lock = null;
         for (var attempt = 1; ; attempt++)
         {
             try

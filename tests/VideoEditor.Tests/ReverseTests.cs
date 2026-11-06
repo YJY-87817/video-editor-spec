@@ -277,6 +277,37 @@ public class ReversePreviewCleanupTests(TestMedia media)
     }
 
     [Fact]
+    public async Task StartupCleanupRemovesOnlyFoldersNobodyUses()
+    {
+        var root = Path.Combine(media.Directory, "cleanup-root");
+        // 上次當掉時留下的資料夾。
+        var stale = Directory.CreateDirectory(Path.Combine(root, "reverse-stale")).FullName;
+        await File.WriteAllTextAsync(Path.Combine(stale, "old.mp4"), "x");
+        await File.WriteAllTextAsync(Path.Combine(stale, ".in-use"), ""); // 沒有人開著
+        // 別的資料夾不碰。
+        var other = Directory.CreateDirectory(Path.Combine(root, "something-else")).FullName;
+
+        // 另一個正在執行的程式：已產生過預覽檔，使用中標記一直開著。
+        var source = await media.Probe(media.Landscape);
+        var live = Path.Combine(root, "reverse-live");
+        var cache = new ReversePreviewCache(media.Tools, live);
+        var proxy = await cache.GetAsync(source, 0, 0.5, new Size2(320, 180));
+        try
+        {
+            Assert.Equal(1, ReversePreviewCache.CleanupStale(root));
+            Assert.False(Directory.Exists(stale));
+            Assert.True(Directory.Exists(other));
+            Assert.True(File.Exists(proxy)); // 使用中的預覽檔還在
+        }
+        finally
+        {
+            cache.Dispose();
+        }
+        Assert.False(Directory.Exists(live));
+        Assert.Equal(0, ReversePreviewCache.CleanupStale(Path.Combine(media.Directory, "cleanup-no-root")));
+    }
+
+    [Fact]
     public void MissingDirectoryIsFine() =>
         new ReversePreviewCache(media.Tools, Path.Combine(media.Directory, "cleanup-never-created")).Dispose();
 

@@ -143,7 +143,7 @@ public class ExportControllerTests(TestMedia media)
         // CancelAsync 完成時，FFmpeg 已結束、暫存檔已清掉、畫面已收到結束通知。
         Assert.False(controller.IsRunning);
         Assert.Contains("Ended", view.Calls);
-        Assert.False(File.Exists(media.Output("controller-close.part.mp4")));
+        Assert.Empty(Directory.GetFiles(media.Directory, "controller-close.*.part.mp4"));
         Assert.False(File.Exists(output));
         await run;
         Assert.Equal("已取消匯出。", string.Join(",", view.Statuses));
