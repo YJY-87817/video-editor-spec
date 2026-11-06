@@ -18,7 +18,7 @@ using TimelineModel = VideoEditor.Core.Timeline.Timeline;
 
 namespace VideoEditor.App;
 
-public partial class MainWindow : Window
+public partial class MainWindow : Window, IExportView
 {
     private const int ThumbnailWidth = 144;
     private const double ZoomStep = 1.5;
@@ -39,15 +39,14 @@ public partial class MainWindow : Window
     private bool _updatingVolume;
     private bool _updatingClipList;
     private bool _updatingReverse;
-    private CancellationTokenSource? _exportCancel;
+    private readonly ExportController? _export;
     private int _importTotal;
     private int _importDone;
-    private int _exportRun;
-    private const int ExportDoneDisplayMs = 4000;
 
     public MainWindow()
     {
         InitializeComponent();
+        UpdateModeIndicator();
         VolumeSlider.Value = 100;
         MediaList.ItemsSource = _media;
         Timeline.Timeline = _timeline;
@@ -70,6 +69,7 @@ public partial class MainWindow : Window
 
         _probe = new MediaProbe(_tools);
         _extractor = new FrameExtractor(_tools);
+        _export = new ExportController(_tools, this);
         _engine = new PreviewEngine(_extractor, new ReversePreviewCache(_tools, progress: new Progress<double?>(ShowReverseProgress)), Dispatcher);
         _engine.PositionChanged += OnEnginePosition;
         _engine.PlayingChanged += () =>
@@ -110,7 +110,7 @@ public partial class MainWindow : Window
 
     private void OnClosed(object? sender, EventArgs e)
     {
-        _exportCancel?.Cancel();
+        _export?.Cancel();
         _engine?.Dispose();
     }
 }

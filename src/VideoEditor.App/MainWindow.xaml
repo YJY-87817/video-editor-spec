@@ -78,6 +78,11 @@
                 <Path x:Name="CropDim" Fill="#A0000000" IsHitTestVisible="False" />
                 <Rectangle x:Name="FrameBorder" Stroke="#FFD24A" StrokeThickness="1.5" StrokeDashArray="4 3" IsHitTestVisible="False" />
             </Canvas>
+            <Border x:Name="ModeFrame" BorderThickness="2" BorderBrush="#4A90D9" IsHitTestVisible="False" />
+            <Border x:Name="ModeBadge" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12" Padding="10,4" CornerRadius="4"
+                    Background="#CC2E6FB5" IsHitTestVisible="False" AutomationProperties.AutomationId="ModeBadge">
+                <TextBlock x:Name="ModeBadgeText" FontSize="13" FontWeight="SemiBold" Foreground="White" AutomationProperties.AutomationId="ModeBadgeText" />
+            </Border>
             <TextBlock x:Name="EmptyHint" Text="匯入素材後，在這裡預覽並用 I / O 標記入出點" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#777777" />
 
             <!-- 進度面板：疊在預覽下方，有工作進行時才出現，不推動其他版面 -->
@@ -145,8 +150,8 @@
                     <Button Content="入點 I" AutomationProperties.AutomationId="MarkInButton" Click="OnMarkIn" Margin="10,0,6,0" />
                     <Button Content="出點 O" AutomationProperties.AutomationId="MarkOutButton" Click="OnMarkOut" />
                     <Button x:Name="AddButton" AutomationProperties.AutomationId="AddToTimelineButton" Content="加入時間軸" Click="OnAddToTimeline" />
-                    <RadioButton x:Name="SourceMode" AutomationProperties.AutomationId="SourceMode" Content="素材" GroupName="PreviewMode" IsChecked="True" Margin="10,4,8,0" Checked="OnPreviewModeChecked" />
-                    <RadioButton x:Name="TimelineMode" AutomationProperties.AutomationId="TimelineMode" Content="時間軸" GroupName="PreviewMode" Margin="0,4,8,0" Checked="OnPreviewModeChecked" />
+                    <RadioButton x:Name="SourceMode" AutomationProperties.AutomationId="SourceMode" Content="匯入影片預覽" GroupName="PreviewMode" IsChecked="True" Margin="10,4,8,0" Checked="OnPreviewModeChecked" />
+                    <RadioButton x:Name="TimelineMode" AutomationProperties.AutomationId="TimelineMode" Content="剪輯預覽" GroupName="PreviewMode" Margin="0,4,8,0" Checked="OnPreviewModeChecked" />
                     <TextBlock x:Name="MarkText" AutomationProperties.AutomationId="MarkText" VerticalAlignment="Center" Foreground="#FFD24A" FontFamily="Consolas" Margin="4,0,0,0" />
                 </WrapPanel>
             </DockPanel>

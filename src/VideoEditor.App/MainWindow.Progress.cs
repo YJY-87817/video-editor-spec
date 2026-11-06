@@ -50,9 +50,4 @@ public partial class MainWindow
     private void UpdateProgressPanel() =>
         ProgressPanel.Visibility = ImportRow.Visibility == Visibility.Visible || ReverseRow.Visibility == Visibility.Visible
             || ExportRow.Visibility == Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
-
-    private static string FormatSpan(TimeSpan span) =>
-        span.TotalHours >= 1 ? $"{(int)span.TotalHours} 小時 {span.Minutes} 分"
-        : span.TotalMinutes >= 1 ? $"{span.Minutes} 分 {span.Seconds} 秒"
-        : $"{Math.Max(1, span.Seconds)} 秒";
 }
