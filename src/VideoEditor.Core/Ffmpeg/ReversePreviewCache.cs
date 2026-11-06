@@ -16,6 +16,9 @@ public sealed class ReversePreviewCache(FfmpegTools tools, string? directory = n
     // 一次只產生一個，避免同時跑多個 FFmpeg 拖慢播放。
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly CancellationTokenSource _disposed = new();
+    // 關閉時 FFmpeg 剛被停止，可能還佔用預覽檔一下子；刪不掉就稍等再試。
+    private const int DeleteAttempts = 20;
+    private const int DeleteRetryDelayMs = 100;
 
     /// <summary>取得（必要時開始產生）預覽檔。檔案從片段第一格（來源的 sourceOut 前一格）開始，長度等於片段。</summary>
     public Task<string> GetAsync(MediaInfo media, double sourceIn, double sourceOut, Size2 size)
@@ -68,10 +71,23 @@ public sealed class ReversePreviewCache(FfmpegTools tools, string? directory = n
 
     private static long Ticks(double seconds) => (long)Math.Round(seconds * 1_000_000);
 
+    /// <summary>停止產生中的預覽檔並刪除暫存資料夾。檔案仍被佔用時會重試，最多約 2 秒。</summary>
     public void Dispose()
     {
-        _disposed.Cancel();
-        try { if (Directory.Exists(_directory)) Directory.Delete(_directory, true); }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        _disposed.Cancel(); // 會立刻終止產生中的 FFmpeg
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                if (Directory.Exists(_directory)) Directory.Delete(_directory, true);
+                return;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // 仍刪不掉就放棄：只是暫存目錄裡留下一些檔案，不影響程式關閉。
+                if (attempt >= DeleteAttempts) return;
+                Thread.Sleep(DeleteRetryDelayMs);
+            }
+        }
     }
 }

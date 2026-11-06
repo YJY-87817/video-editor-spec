@@ -27,7 +27,8 @@ jobs:
       - name: Install FFmpeg
         shell: pwsh
         run: |
-          choco install ffmpeg --no-progress -y
+          # 固定版本：FFmpeg 改版可能改變輸出或預設值，讓測試在程式碼沒變時失敗。升級時改這裡並確認 CI 通過。
+          choco install ffmpeg --version 9.0.2 --no-progress -y
           # 測試需要 libx264 與 libx265
           $encoders = ffmpeg -hide_banner -encoders 2>&1 | Out-String
           foreach ($name in 'libx264', 'libx265') {

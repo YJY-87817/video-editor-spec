@@ -40,7 +40,8 @@ public static class ProcessRunner
     private static void KillQuietly(Process process)
     {
         try { process.Kill(entireProcessTree: true); }
-        catch (InvalidOperationException) { }
+        // 程序已經結束或正在結束時，Kill 可能丟出這兩種例外；本來就是要它結束，忽略即可。
+        catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception) { }
     }
 
     private static async Task FinishAsync(Process process, string exe, Task<string> error, CancellationToken token)
