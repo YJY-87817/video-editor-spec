@@ -113,6 +113,11 @@ public sealed class ExportController(FfmpegTools tools, IExportView view, int do
         {
             view.ShowStatus("已取消匯出。");
         }
+        catch (ExportRenameException error)
+        {
+            view.ShowStatus($"影片已做好，但未能存成輸出檔名，保留在：{error.TemporaryPath}");
+            view.ShowError(error.Message);
+        }
         catch (Exception error) when (error is FfmpegException or IOException or UnauthorizedAccessException)
         {
             view.ShowStatus("匯出失敗。");

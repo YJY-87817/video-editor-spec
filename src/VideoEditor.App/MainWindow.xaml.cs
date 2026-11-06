@@ -67,6 +67,8 @@ public partial class MainWindow : Window, IExportView, IImportView
             return;
         }
 
+        // 清掉上次當掉或被強制結束時留下的倒放預覽檔。
+        ReversePreviewCache.CleanupStale();
         var extractor = new FrameExtractor(_tools);
         _import = new ImportController(new MediaProbe(_tools), extractor, this);
         _export = new ExportController(_tools, this);

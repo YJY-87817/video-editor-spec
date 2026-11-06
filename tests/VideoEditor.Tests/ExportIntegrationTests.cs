@@ -232,7 +232,7 @@ public class ExportIntegrationTests(TestMedia media)
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             new ExportService(media.Tools).ExportAsync(plan, output, progress, cts.Token));
         Assert.False(File.Exists(output));
-        Assert.False(File.Exists(media.Output("cancel.part.mp4")));
+        Assert.Empty(Directory.GetFiles(media.Directory, "cancel.*.part.mp4"));
     }
 
     [Fact]
@@ -254,6 +254,59 @@ public class ExportIntegrationTests(TestMedia media)
         t.Append(await media.Probe(media.Landscape), 0, 1);
         Assert.NotNull(ExportService.Preflight(t, media.Landscape));
         Assert.Null(ExportService.Preflight(t, media.Output("ok.mp4")));
+    }
+
+    [Fact]
+    public async Task ExportNeverTouchesAFileNamedLikeTheOldTemporaryFile()
+    {
+        // 舊版固定寫到「檔名.part.mp4」：同名的檔案會被覆蓋，結束時又被刪掉。
+        var output = media.Output("keep.mp4");
+        var bystander = media.Output("keep.part.mp4");
+        await File.WriteAllTextAsync(bystander, "使用者自己的檔案");
+        var t = new TimelineModel();
+        t.Append(await media.Probe(media.Landscape), 0, 0.5);
+
+        await new ExportService(media.Tools).ExportAsync(ExportPlanner.Build(t, Default, output), output, null);
+
+        Assert.Equal("使用者自己的檔案", await File.ReadAllTextAsync(bystander));
+        Assert.True(File.Exists(output));
+        Assert.Empty(Directory.GetFiles(media.Directory, "keep.*.part.mp4"));
+    }
+
+    [Fact]
+    public void TemporaryPathIsBesideTheOutputAndUnique()
+    {
+        var output = media.Output("temp-name.mp4");
+        var first = ExportService.TemporaryPath(output);
+        Assert.Equal(media.Directory, Path.GetDirectoryName(first));
+        Assert.Matches(@"^temp-name\.[0-9a-f]{8}\.part\.mp4$", Path.GetFileName(first));
+        Assert.NotEqual(first, ExportService.TemporaryPath(output));
+    }
+
+    [Fact]
+    public async Task FinishedVideoIsKeptWhenTheOutputCannotBeReplaced()
+    {
+        var t = new TimelineModel();
+        t.Append(await media.Probe(media.Landscape), 0, 0.5);
+        var output = media.Output("locked-at-end.mp4");
+
+        ExportRenameException error;
+        // 模擬匯出途中用播放器打開了舊的輸出檔：改名那一步會失敗。
+        using (new FileStream(output, FileMode.Create, FileAccess.ReadWrite, FileShare.None))
+            error = await Assert.ThrowsAsync<ExportRenameException>(() =>
+                new ExportService(media.Tools).ExportAsync(ExportPlanner.Build(t, Default, output), output, null));
+
+        try
+        {
+            // 做好的影片沒被刪掉，而且是完整可播放的檔案。
+            Assert.True(File.Exists(error.TemporaryPath));
+            Assert.Contains(error.TemporaryPath, error.Message);
+            Assert.True((await media.Probe(error.TemporaryPath)).Duration > 0.3);
+        }
+        finally
+        {
+            File.Delete(error.TemporaryPath);
+        }
     }
 
     [Fact]
