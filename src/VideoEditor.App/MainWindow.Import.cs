@@ -71,8 +71,7 @@ public partial class MainWindow
     {
         _selectedMedia = MediaList.SelectedItem as MediaItem;
         MediaDetails.Text = _selectedMedia == null ? "" : DescribeMedia(_selectedMedia.Info);
-        _markIn = null;
-        _markOut = null;
+        _points.Clear();
         if (_selectedMedia == null) return;
         EmptyHint.Visibility = Visibility.Collapsed;
         UpdateOutputInfo();

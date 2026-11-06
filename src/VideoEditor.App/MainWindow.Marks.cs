@@ -25,28 +25,17 @@ public partial class MainWindow
     private void OnMarkIn(object sender, RoutedEventArgs e) => MarkIn();
     private void OnMarkOut(object sender, RoutedEventArgs e) => MarkOut();
 
-    /// <summary>對齊到畫面上顯示的那一格，匯出的切點才會與看到的相同。</summary>
-    private double SnappedSourcePosition(MediaInfo media)
-    {
-        var position = _engine!.Position;
-        return media.FrameRate.Value > 0
-            ? Math.Min(media.Duration, FrameExtractor.FrameIndex(position, media.FrameRate.Value) / media.FrameRate.Value)
-            : position;
-    }
-
     private void MarkIn()
     {
         if (_engine == null || _selectedMedia == null || IsTimelinePreview) return;
-        _markIn = SnappedSourcePosition(_selectedMedia.Info);
-        if (_markOut <= _markIn) _markOut = null;
+        _points.SetIn(InOutPoints.Snap(_engine.Position, _selectedMedia.Info));
         UpdateMarks();
     }
 
     private void MarkOut()
     {
         if (_engine == null || _selectedMedia == null || IsTimelinePreview) return;
-        _markOut = SnappedSourcePosition(_selectedMedia.Info);
-        if (_markIn >= _markOut) _markIn = null;
+        _points.SetOut(InOutPoints.Snap(_engine.Position, _selectedMedia.Info));
         UpdateMarks();
     }
 
@@ -54,7 +43,7 @@ public partial class MainWindow
     {
         MarkText.Text = _selectedMedia == null || IsTimelinePreview
             ? ""
-            : $"I {FormatDuration(_markIn ?? 0)}  O {FormatDuration(_markOut ?? _selectedMedia.Info.Duration)}";
+            : $"I {FormatDuration(_points.InPoint)}  O {FormatDuration(_points.OutPoint(_selectedMedia.Info))}";
         UpdateMarkRange();
     }
 
@@ -66,8 +55,8 @@ public partial class MainWindow
             return;
         }
         var duration = _selectedMedia.Info.Duration;
-        var inPoint = _markIn ?? 0;
-        var outPoint = _markOut ?? duration;
+        var inPoint = _points.InPoint;
+        var outPoint = _points.OutPoint(_selectedMedia.Info);
         MarkRange.Visibility = Visibility.Visible;
         Canvas.SetLeft(MarkRange, inPoint / duration * ScrubSlider.ActualWidth);
         MarkRange.Width = Math.Max(1, (outPoint - inPoint) / duration * ScrubSlider.ActualWidth);
@@ -76,19 +65,13 @@ public partial class MainWindow
     private void OnAddToTimeline(object sender, RoutedEventArgs e)
     {
         if (_selectedMedia == null) return;
-        var media = _selectedMedia.Info;
-        try
+        var result = _editor.Add(_selectedMedia.Info, _points);
+        if (result.Clip == null)
         {
-            var clip = _timeline.Append(media, _markIn ?? 0, _markOut ?? media.Duration);
-            Timeline.Select(clip);
-        }
-        catch (ArgumentException error)
-        {
-            StatusText.Text = error.Message;
+            StatusText.Text = result.Error ?? "";
             return;
         }
-        _markIn = null;
-        _markOut = null;
+        Timeline.Select(result.Clip);
         UpdateMarks();
         OnClipsChanged();
     }
