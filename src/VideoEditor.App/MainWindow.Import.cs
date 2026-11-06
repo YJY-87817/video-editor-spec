@@ -24,7 +24,7 @@ public partial class MainWindow
 
     private void OnFileDrop(object sender, DragEventArgs e)
     {
-        if (e.Data.GetData(DataFormats.FileDrop) is string[] files) _ = ImportAsync(files);
+        if (e.Data.GetData(DataFormats.FileDrop) is string[] files) _ = _import?.ImportAsync(files);
     }
 
     private void OnImportClick(object sender, RoutedEventArgs e)
@@ -34,66 +34,37 @@ public partial class MainWindow
             Multiselect = true,
             Filter = "影音檔|*.mp4;*.mov;*.m4v;*.mkv;*.avi;*.webm;*.mts;*.m2ts;*.mp3;*.m4a;*.wav;*.aac;*.flac|所有檔案|*.*",
         };
-        if (dialog.ShowDialog(this) == true) _ = ImportAsync(dialog.FileNames);
+        if (dialog.ShowDialog(this) == true) _ = _import?.ImportAsync(dialog.FileNames);
     }
 
-    private async Task ImportAsync(IEnumerable<string> paths)
+    // ---- IImportView：匯入流程需要的畫面更新 ----
+
+    bool IImportView.IsAlreadyImported(string path) =>
+        _media.Any(m => string.Equals(m.Info.Path, path, StringComparison.OrdinalIgnoreCase));
+
+    void IImportView.ShowProgress(string text, double value) => ProgressPanel.ShowImport(text, value);
+
+    void IImportView.HideProgress() => ProgressPanel.HideImport();
+
+    void IImportView.AddMedia(MediaInfo info, byte[]? thumbnail)
     {
-        if (_probe == null) return;
-        var pending = paths.Where(path => !_media.Any(m => string.Equals(m.Info.Path, path, StringComparison.OrdinalIgnoreCase))).ToList();
-        if (pending.Count == 0) return;
-        // 匯入中又拖進新檔案時，併入同一個進度。
-        _importTotal += pending.Count;
-        foreach (var path in pending)
-        {
-            var name = System.IO.Path.GetFileName(path);
-            try
-            {
-                ShowImportProgress(name, "讀取資訊", 0);
-                var info = await _probe.ProbeAsync(path);
-                ShowImportProgress(name, "產生縮圖", 0.5);
-                var item = new MediaItem(info) { Thumbnail = await LoadThumbnailAsync(info) };
-                _media.Add(item);
-                MediaList.SelectedItem ??= item;
-            }
-            catch (Exception e) when (e is FfmpegException or InvalidDataException or System.Text.Json.JsonException)
-            {
-                MessageBox.Show(this, $"無法匯入 {name}：\n{(e as FfmpegException)?.Stderr ?? e.Message}", "匯入失敗",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
-            finally
-            {
-                _importDone++;
-                if (_importDone >= _importTotal)
-                {
-                    _importDone = 0;
-                    _importTotal = 0;
-                }
-                ShowImportProgress(name, "完成", 0);
-            }
-        }
+        var item = new MediaItem(info) { Thumbnail = thumbnail == null ? null : CreateThumbnail(thumbnail) };
+        _media.Add(item);
+        MediaList.SelectedItem ??= item;
     }
 
-    private async Task<BitmapSource?> LoadThumbnailAsync(MediaInfo info)
+    void IImportView.ShowFailure(string name, string message) =>
+        MessageBox.Show(this, $"無法匯入 {name}：\n{message}", "匯入失敗", MessageBoxButton.OK, MessageBoxImage.Warning);
+
+    private static BitmapSource CreateThumbnail(byte[] bytes)
     {
-        if (!info.HasVideo) return null;
-        try
-        {
-            var bytes = await _extractor!.ThumbnailAsync(info.Path, Math.Min(1, info.Duration / 10), ThumbnailWidth);
-            if (bytes.Length == 0) return null;
-            var image = new BitmapImage();
-            image.BeginInit();
-            image.CacheOption = BitmapCacheOption.OnLoad;
-            image.StreamSource = new MemoryStream(bytes);
-            image.EndInit();
-            image.Freeze();
-            return image;
-        }
-        catch (FfmpegException)
-        {
-            // 沒有縮圖不影響其他功能。
-            return null;
-        }
+        var image = new BitmapImage();
+        image.BeginInit();
+        image.CacheOption = BitmapCacheOption.OnLoad;
+        image.StreamSource = new MemoryStream(bytes);
+        image.EndInit();
+        image.Freeze();
+        return image;
     }
 
     private void OnMediaSelected(object sender, SelectionChangedEventArgs e)

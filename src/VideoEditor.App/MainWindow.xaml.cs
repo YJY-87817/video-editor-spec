@@ -18,16 +18,14 @@ using TimelineModel = VideoEditor.Core.Timeline.Timeline;
 
 namespace VideoEditor.App;
 
-public partial class MainWindow : Window, IExportView
+public partial class MainWindow : Window, IExportView, IImportView
 {
-    private const int ThumbnailWidth = 144;
     private const double ZoomStep = 1.5;
 
     private readonly TimelineModel _timeline = new();
     private readonly ObservableCollection<MediaItem> _media = [];
     private readonly FfmpegTools? _tools;
-    private readonly MediaProbe? _probe;
-    private readonly FrameExtractor? _extractor;
+    private readonly ImportController? _import;
     private readonly PreviewEngine? _engine;
     private TimelineModel? _sourcePreview;
     private MediaItem? _selectedMedia;
@@ -40,8 +38,6 @@ public partial class MainWindow : Window, IExportView
     private bool _updatingClipList;
     private bool _updatingReverse;
     private readonly ExportController? _export;
-    private int _importTotal;
-    private int _importDone;
 
     public MainWindow()
     {
@@ -55,6 +51,7 @@ public partial class MainWindow : Window, IExportView
         Timeline.EditStarted += () => _engine?.Pause();
         Timeline.ClipsChanged += OnClipsChanged;
         Timeline.ViewChanged += UpdateTimelineScrollBar;
+        ProgressPanel.CancelExportRequested += () => _export?.Cancel();
 
         try
         {
@@ -67,10 +64,10 @@ public partial class MainWindow : Window, IExportView
             return;
         }
 
-        _probe = new MediaProbe(_tools);
-        _extractor = new FrameExtractor(_tools);
+        var extractor = new FrameExtractor(_tools);
+        _import = new ImportController(new MediaProbe(_tools), extractor, this);
         _export = new ExportController(_tools, this);
-        _engine = new PreviewEngine(_extractor, new ReversePreviewCache(_tools, progress: new Progress<double?>(ShowReverseProgress)), Dispatcher);
+        _engine = new PreviewEngine(extractor, new ReversePreviewCache(_tools, progress: new Progress<double?>(ProgressPanel.ShowReverse)), Dispatcher);
         _engine.PositionChanged += OnEnginePosition;
         _engine.PlayingChanged += () =>
         {
@@ -87,7 +84,7 @@ public partial class MainWindow : Window, IExportView
         Loaded += async (_, _) =>
         {
             // 可由命令列直接開啟素材。
-            await ImportAsync(Environment.GetCommandLineArgs().Skip(1).Where(File.Exists));
+            await _import!.ImportAsync(Environment.GetCommandLineArgs().Skip(1).Where(File.Exists));
         };
     }
 

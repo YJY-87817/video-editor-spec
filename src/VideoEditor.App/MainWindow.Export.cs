@@ -58,8 +58,6 @@ public partial class MainWindow
         await _export.RunAsync(_timeline, new OutputSettings(SelectedRatio, SelectedMode), dialog.FileName);
     }
 
-    private void OnCancelExport(object sender, RoutedEventArgs e) => _export?.Cancel();
-
     // ---- IExportView：匯出流程需要的畫面更新 ----
 
     void IExportView.ShowProblem(string message) =>
@@ -74,13 +72,7 @@ public partial class MainWindow
     void IExportView.ShowStarted(string title)
     {
         ExportButton.IsEnabled = false;
-        CancelButton.IsEnabled = true;
-        CancelButton.Visibility = Visibility.Visible;
-        ExportProgress.Value = 0;
-        ExportPercent.Text = "0%";
-        ExportText.Text = title;
-        ExportRow.Visibility = Visibility.Visible;
-        UpdateProgressPanel();
+        ProgressPanel.StartExport(title);
         Taskbar.ProgressState = System.Windows.Shell.TaskbarItemProgressState.Normal;
         Taskbar.ProgressValue = 0;
         StatusText.Text = title;
@@ -88,19 +80,14 @@ public partial class MainWindow
 
     void IExportView.ShowProgress(double value, string text)
     {
-        ExportProgress.Value = value;
-        ExportPercent.Text = $"{value * 100:0}%";
+        ProgressPanel.ReportExport(value, text);
         Taskbar.ProgressValue = value;
-        ExportText.Text = text;
     }
 
     void IExportView.ShowSucceeded(string output, string elapsed)
     {
         StatusText.Text = $"匯出完成：{output}";
-        ExportProgress.Value = 1;
-        ExportPercent.Text = "100%";
-        ExportText.Text = $"✔ 匯出完成：{output}（花費 {elapsed}）";
-        CancelButton.Visibility = Visibility.Collapsed;
+        ProgressPanel.FinishExport($"✔ 匯出完成：{output}（花費 {elapsed}）");
         Taskbar.ProgressState = System.Windows.Shell.TaskbarItemProgressState.None;
     }
 
@@ -112,13 +99,12 @@ public partial class MainWindow
     void IExportView.ShowEnded()
     {
         ExportButton.IsEnabled = true;
-        CancelButton.IsEnabled = false;
+        ProgressPanel.EndExport();
         Taskbar.ProgressState = System.Windows.Shell.TaskbarItemProgressState.None;
     }
 
     void IExportView.HideProgress()
     {
-        ExportRow.Visibility = Visibility.Collapsed;
-        UpdateProgressPanel();
+        ProgressPanel.HideExport();
     }
 }
