@@ -135,7 +135,7 @@ public static class ExportPlanner
             throw new InvalidOperationException(timeline.VideoClips.Any(c => c.Reversed)
                 ? "片段數量過多（倒放片段會分成多段處理），超過 Windows 命令列長度上限。請縮短倒放片段。"
                 : "片段數量過多，超過 Windows 命令列長度上限。");
-        return new ExportPlan(args, duration, size, codec, pixelFormat, CollectWarnings(timeline, reference, referenceSize));
+        return new ExportPlan(args, duration, size, codec, pixelFormat, CollectWarnings(timeline, reference, referenceSize, settings.Mode));
     }
 
     /// <summary>決策：8-bit 用 H.264；10-bit 以上或 HDR 用 H.265，並維持來源色彩格式。</summary>
@@ -182,9 +182,15 @@ public static class ExportPlanner
         return tags.Count == 0 ? $"format={pixelFormat}" : $"format={pixelFormat},setparams={string.Join(':', tags)}";
     }
 
-    private static List<string> CollectWarnings(TimelineModel timeline, MediaInfo reference, Size2 referenceSize)
+    private static List<string> CollectWarnings(TimelineModel timeline, MediaInfo reference, Size2 referenceSize, FitMode mode)
     {
         var warnings = new List<string>();
+        // 畫面位置放大時，等於把來源的一小塊放大成整個畫面，畫質一定會下降；加黑邊不使用畫面位置。
+        var zoomed = timeline.VideoClips.Select((clip, index) => (clip.Framing, Number: index + 1))
+            .Where(c => mode == FitMode.Fill && c.Framing.IsZoomed).ToList();
+        if (zoomed.Count > 0)
+            warnings.Add($"{string.Join("、", zoomed.Select(c => $"第 {c.Number} 段放大 {c.Framing.EffectiveZoom * 100:0}%"))}（畫面位置），"
+                + "匯出時會放大來源畫面，畫質會比原始畫面差。");
         var media = timeline.VideoClips.Select(c => c.Media).Distinct().ToList();
         if (media.Any(m => !SameRate(m.FrameRate, reference.FrameRate)))
             warnings.Add($"片段影格率不一致，將統一為第一個片段的 {reference.FrameRate.Value:0.###} fps。");

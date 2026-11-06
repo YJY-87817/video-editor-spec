@@ -30,5 +30,5 @@ public sealed class MediaItem(MediaInfo info)
 
 public sealed record ClipRow(TimelineClip Clip, int Number)
 {
-    public string Label => $"{Number}. {Clip.Media.FileName}  {PlaybackText.Duration(Clip.Duration)}{(Clip.Reversed ? "  ⟲ 倒放" : "")}{(Clip.Transform.IsIdentity ? "" : "  " + Clip.Transform.Label)}";
+    public string Label => $"{Number}. {Clip.Media.FileName}  {PlaybackText.Duration(Clip.Duration)}{(Clip.Reversed ? "  ⟲ 倒放" : "")}{(Clip.Transform.IsIdentity ? "" : "  " + Clip.Transform.Label)}{(Clip.Framing.IsDefault ? "" : "  " + Clip.Framing.ShortLabel)}";
 }

@@ -16,6 +16,12 @@ public sealed record ClipFraming(double Zoom, double CenterX, double CenterY)
     public bool IsDefault =>
         Math.Abs(Zoom - 1) < Tolerance && Math.Abs(CenterX - 0.5) < Tolerance && Math.Abs(CenterY - 0.5) < Tolerance;
 
+    /// <summary>實際套用的放大倍數（限制在 1–MaxZoom）。</summary>
+    public double EffectiveZoom => Math.Clamp(Zoom, 1, MaxZoom);
+
+    /// <summary>有放大（框比最大框小），匯出時會放大來源畫面。只移動位置不算。</summary>
+    public bool IsZoomed => EffectiveZoom > 1 + 1e-6;
+
     /// <summary>Zoom 為 1 時的框：輸出比例、放得進來源的最大尺寸。</summary>
     public static (double Width, double Height) LargestFrame(Size2 source, Size2 output)
     {
@@ -29,7 +35,7 @@ public sealed record ClipFraming(double Zoom, double CenterX, double CenterY)
     public Rect2 CropRect(Size2 source, Size2 output)
     {
         var (largestWidth, largestHeight) = LargestFrame(source, output);
-        var zoom = Math.Clamp(Zoom, 1, MaxZoom);
+        var zoom = EffectiveZoom;
         var width = largestWidth / zoom;
         var height = largestHeight / zoom;
         var x = Math.Clamp(CenterX * source.Width - width / 2, 0, source.Width - width);
@@ -94,7 +100,10 @@ public sealed record ClipFraming(double Zoom, double CenterX, double CenterY)
             + $":x=iw*{Num(crop.X / source.Width)}:y=ih*{Num(crop.Y / source.Height)},";
     }
 
-    public string Label => IsDefault ? "預設（置中、最大）" : $"放大 {Zoom * 100:0}%";
+    public string Label => IsDefault ? "預設（置中、最大）" : IsZoomed ? $"放大 {EffectiveZoom * 100:0}%" : "已移動位置（未放大）";
+
+    /// <summary>片段清單與時間軸上的簡短標示；預設位置時為空字串。</summary>
+    public string ShortLabel => IsDefault ? "" : IsZoomed ? $"畫面 {EffectiveZoom * 100:0}%" : "畫面已移動";
 
     private static string Num(double value) => value.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture);
 }

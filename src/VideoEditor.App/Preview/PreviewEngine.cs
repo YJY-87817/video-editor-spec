@@ -72,6 +72,8 @@ public sealed class PreviewEngine : IDisposable
         (long Start, int Count)? Batch = null, bool Show = true);
 
     private FrameRequest? _pendingFrame;
+    // 正在背景預先解碼時可用來中止它，讓要立刻顯示的畫面先解。
+    private CancellationTokenSource? _prefetchCancel;
     private long _latestRequest;
     private long _shownRequest;
     private bool _extracting;
@@ -618,6 +620,8 @@ public sealed class PreviewEngine : IDisposable
         // 逐格移動時，連同同方向接下來的幾格一起解，下一步就直接從快取顯示。
         var batch = sourceStep == 0 ? null : FrameBatch.Toward(frame, sourceStep, first, last, StepBatchFrames);
         _pendingFrame = new FrameRequest(media, clip.Transform, size, fps, frame, request, batch);
+        // 背景正在預先解下一批時中止它：一次只跑一個 FFmpeg，不中止的話要等那一批解完才輪到這一格。
+        _prefetchCancel?.Cancel();
         if (!_extracting) _ = ExtractPendingFramesAsync();
     }
 
@@ -642,7 +646,26 @@ public sealed class PreviewEngine : IDisposable
                 _pendingFrame = null;
                 var key = (request.Media.Path, request.Frame);
                 // 前一批（例如逐格預先解碼）可能已經解出這一格。
-                var frame = _frames.TryGet(key, out var cached) ? cached : await ExtractRequestAsync(request);
+                RawFrame? frame;
+                if (_frames.TryGet(key, out var cached)) frame = cached;
+                else
+                {
+                    // 只有背景預先解碼可以被中止；要顯示的畫面一定解完。
+                    using var cancel = request.Show ? null : new CancellationTokenSource();
+                    _prefetchCancel = cancel;
+                    try
+                    {
+                        frame = await ExtractRequestAsync(request, cancel?.Token ?? CancellationToken.None);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        continue; // 被要顯示的畫面插隊，這一批之後需要時再解
+                    }
+                    finally
+                    {
+                        _prefetchCancel = null;
+                    }
+                }
                 if (frame == null)
                 {
                     if (!request.Show) _missingFrames.Add(key);
@@ -665,20 +688,20 @@ public sealed class PreviewEngine : IDisposable
     }
 
     /// <summary>解出請求的影格並放進快取；有 Batch 時一次解整批。</summary>
-    private async Task<RawFrame?> ExtractRequestAsync(FrameRequest request)
+    private async Task<RawFrame?> ExtractRequestAsync(FrameRequest request, CancellationToken token)
     {
         var path = request.Media.Path;
         if (request.Batch is { } batch)
         {
-            var frames = await _extractor.ExtractRangeAsync(path, batch.Start, batch.Count, 1, request.Fps, request.Size);
+            var frames = await _extractor.ExtractRangeAsync(path, batch.Start, batch.Count, 1, request.Fps, request.Size, token);
             for (var i = 0; i < frames.Count; i++) _frames.Add((path, batch.Start + i), frames[i]);
             if (_frames.TryGet((path, request.Frame), out var fromBatch)) return fromBatch;
         }
 
         var seek = FrameExtractor.FrameSeekTime(request.Frame, request.Fps);
-        var frame = await _extractor.ExtractAsync(path, seek, request.Size)
+        var frame = await _extractor.ExtractAsync(path, seek, request.Size, token)
             // 來源結尾附近可能定位不到影格，退回前一小段。
-            ?? await _extractor.ExtractAsync(path, Math.Max(0, seek - 0.25), request.Size);
+            ?? await _extractor.ExtractAsync(path, Math.Max(0, seek - 0.25), request.Size, token);
         if (frame != null) _frames.Add((path, request.Frame), frame);
         return frame;
     }

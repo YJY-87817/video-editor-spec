@@ -170,6 +170,34 @@ public class ClipFramingTimelineTests
     }
 
     [Fact]
+    public void ZoomedFramingWarnsAboutQualityOnlyWhenItUpscales()
+    {
+        var t = new TimelineModel();
+        t.Append(Media(), 0, 1);
+        t.SetFraming(t.Append(Media(), 1, 2), new ClipFraming(2, 0.25, 0.5));
+        t.SetFraming(t.Append(Media(), 2, 3), new ClipFraming(1, 0.3, 0.5)); // 只移動、沒放大
+
+        var warnings = ExportPlanner.Build(t, new OutputSettings(AspectRatio.R9x16, FitMode.Fill), "o.mp4").Warnings;
+        var warning = Assert.Single(warnings, w => w.Contains("畫面位置"));
+        Assert.Contains("第 2 段放大 200%", warning);
+        Assert.DoesNotContain("第 3 段", warning);
+
+        // 加黑邊不使用畫面位置，也就不提醒。
+        Assert.DoesNotContain(ExportPlanner.Build(t, new OutputSettings(AspectRatio.R9x16, FitMode.Pad), "o.mp4").Warnings,
+            w => w.Contains("畫面位置"));
+    }
+
+    [Fact]
+    public void LabelsTellZoomFromMoveOnly()
+    {
+        Assert.Equal("", ClipFraming.Default.ShortLabel);
+        Assert.Equal("畫面 250%", new ClipFraming(2.5, 0.5, 0.5).ShortLabel);
+        Assert.Equal("畫面已移動", new ClipFraming(1, 0.3, 0.5).ShortLabel);
+        Assert.Equal("放大 800%", new ClipFraming(20, 0.5, 0.5).Label); // 超過上限時顯示實際套用的倍數
+        Assert.False(new ClipFraming(1, 0.3, 0.5).IsZoomed);
+    }
+
+    [Fact]
     public void FramingIsAppliedAfterRotation()
     {
         var t = new TimelineModel();
