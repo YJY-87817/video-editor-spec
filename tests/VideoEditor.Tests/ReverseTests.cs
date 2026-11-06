@@ -253,6 +253,55 @@ public class ReverseIntegrationTests(TestMedia media)
 }
 
 /// <summary>同步回報的 IProgress，測試時不必等待 SynchronizationContext。</summary>
+/// <summary>關閉時刪除倒放預覽的暫存資料夾。</summary>
+[Collection("media")]
+public class ReversePreviewCleanupTests(TestMedia media)
+{
+    [Fact]
+    public async Task FileStillInUseIsDeletedOnceReleased()
+    {
+        var directory = Path.Combine(media.Directory, "cleanup-busy");
+        Directory.CreateDirectory(directory);
+        // 模擬剛被停止的 FFmpeg 還佔著檔案：不允許其他人刪除，0.3 秒後才放開。
+        var busy = new FileStream(Path.Combine(directory, "busy.mp4"), FileMode.Create, FileAccess.Write, FileShare.None);
+        var release = Task.Run(async () =>
+        {
+            await Task.Delay(300);
+            busy.Dispose();
+        });
+
+        new ReversePreviewCache(media.Tools, directory).Dispose();
+
+        await release;
+        Assert.False(Directory.Exists(directory));
+    }
+
+    [Fact]
+    public void MissingDirectoryIsFine() =>
+        new ReversePreviewCache(media.Tools, Path.Combine(media.Directory, "cleanup-never-created")).Dispose();
+
+    [Fact]
+    public async Task DisposeDuringRenderStopsFfmpegAndLeavesNothing()
+    {
+        var source = await media.Probe(media.Landscape);
+        var directory = Path.Combine(media.Directory, "cleanup-rendering");
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cache = new ReversePreviewCache(media.Tools, directory, new SyncProgress(value =>
+        {
+            if (value != null) started.TrySetResult();
+        }));
+
+        var render = cache.GetAsync(source, 0, 4, new Size2(640, 360));
+        await started.Task;
+        cache.Dispose();
+
+        // 產生被中止（或在中止前剛好完成），兩者都不能留下暫存資料夾。
+        try { await render; }
+        catch (OperationCanceledException) { }
+        Assert.False(Directory.Exists(directory));
+    }
+}
+
 internal sealed class SyncProgress(Action<double?> report) : IProgress<double?>
 {
     public void Report(double? value) => report(value);
