@@ -34,7 +34,16 @@ internal sealed class VlcVideoSink : IDisposable
         lock (_gate) _target = size;
     }
 
-    /// <summary>取出最新影格。呼叫方須在下一次取用前用完緩衝區。</summary>
+    /// <summary>讓下一個影格一定會觸發 FrameAvailable。</summary>
+    public void ResetPending()
+    {
+        lock (_gate) _renderPending = false;
+    }
+
+    /// <summary>
+    /// 取出最新影格。每次收到 FrameAvailable 都必須呼叫（即使不顯示），否則不會再收到通知。
+    /// 呼叫方須在下一次取用前用完緩衝區。
+    /// </summary>
     public void CopyLatest(Action<byte[], int> consume)
     {
         lock (_gate)

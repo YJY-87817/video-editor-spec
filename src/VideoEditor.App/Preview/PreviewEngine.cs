@@ -119,6 +119,8 @@ public sealed class PreviewEngine : IDisposable
         if (Position >= Duration - 0.01) Position = 0;
         IsPlaying = true;
         _acceptVlcFrames = true;
+        // 保險：清掉可能殘留的「影格待處理」狀態，確保新影格會通知。
+        _sink.ResetPending();
         _clockBase = Position;
         _videoClip = null;
         _musicClip = null;
@@ -199,7 +201,13 @@ public sealed class PreviewEngine : IDisposable
     }
 
     /// <summary>時間軸內容改變（拖曳、修剪、刪除）後，重畫目前位置的影格。</summary>
-    public void Refresh() => Seek(Math.Min(Position, Duration));
+    /// <remarks>播放中（例如播放時把片段加入時間軸）會從同一位置繼續播放，而不是停下來。</remarks>
+    public void Refresh()
+    {
+        var wasPlaying = IsPlaying;
+        Seek(Math.Min(Position, Duration));
+        if (wasPlaying) Play();
+    }
 
     private void Stop()
     {
@@ -498,10 +506,12 @@ public sealed class PreviewEngine : IDisposable
 
     private void PresentVlcFrame()
     {
-        if (!_acceptVlcFrames || _bitmap == null) return;
-        var bitmap = _bitmap;
+        // 不顯示時也一定要取走影格：sink 在影格被取走前不會再通知，
+        // 若在暫停、切換的瞬間直接 return，之後播放時畫面就永遠停住。
+        var bitmap = _acceptVlcFrames ? _bitmap : null;
         _sink.CopyLatest((pixels, stride) =>
         {
+            if (bitmap == null) return;
             // 切片段時可能還有舊尺寸的影格在路上，尺寸不符就跳過。
             if (pixels.Length != bitmap.PixelHeight * stride || stride != bitmap.PixelWidth * 4) return;
             bitmap.WritePixels(new Int32Rect(0, 0, bitmap.PixelWidth, bitmap.PixelHeight), pixels, stride, 0);
