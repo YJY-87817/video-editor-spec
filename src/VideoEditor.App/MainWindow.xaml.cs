@@ -13,6 +13,7 @@ using VideoEditor.App.Preview;
 using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
+using VideoEditor.Core.Playback;
 using VideoEditor.Core.Timeline;
 using TimelineModel = VideoEditor.Core.Timeline.Timeline;
 
@@ -70,12 +71,7 @@ public partial class MainWindow : Window, IExportView, IImportView
         _export = new ExportController(_tools, this);
         _engine = new PreviewEngine(extractor, new ReversePreviewCache(_tools, progress: new Progress<double?>(ProgressPanel.ShowReverse)), Dispatcher);
         _engine.PositionChanged += OnEnginePosition;
-        _engine.PlayingChanged += () =>
-        {
-            PlayButton.Content = _engine.IsPlaying || _engine.IsRewinding ? "⏸ 暫停" : "▶ 播放";
-            RewindButton.Content = _engine.IsRewinding ? $"◀◀ {_engine.RewindSpeed}×" : "◀◀ 倒帶";
-            FastForwardButton.Content = _engine.IsFastForwarding ? $"▶▶ {_engine.PlaybackRate}×" : "▶▶ 快轉";
-        };
+        _engine.PlayingChanged += UpdatePlaybackButtons;
         _engine.Status += message => StatusText.Text = message;
         _engine.SurfaceChanged += OnSurfaceChanged;
         _engine.Error += message => StatusText.Text = message;
@@ -99,12 +95,6 @@ public partial class MainWindow : Window, IExportView, IImportView
         : AspectRatio.Original;
 
     private FitMode SelectedMode => ModePad.IsChecked == true ? FitMode.Pad : FitMode.Fill;
-
-    public static string FormatDuration(double seconds)
-    {
-        var span = TimeSpan.FromSeconds(Math.Max(0, seconds));
-        return $"{(int)span.TotalHours:00}:{span.Minutes:00}:{span.Seconds:00}.{span.Milliseconds / 10:00}";
-    }
 
     private void OnClosed(object? sender, EventArgs e)
     {

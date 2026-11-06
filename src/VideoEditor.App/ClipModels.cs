@@ -13,6 +13,7 @@ using VideoEditor.App.Preview;
 using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
+using VideoEditor.Core.Playback;
 using VideoEditor.Core.Timeline;
 using TimelineModel = VideoEditor.Core.Timeline.Timeline;
 
@@ -23,11 +24,11 @@ public sealed class MediaItem(MediaInfo info)
     public MediaInfo Info { get; } = info;
     public BitmapSource? Thumbnail { get; set; }
     public string Summary => Info.HasVideo
-        ? $"{Info.DisplayWidth}×{Info.DisplayHeight}  {MainWindow.FormatDuration(Info.Duration)}"
-        : $"音訊  {MainWindow.FormatDuration(Info.Duration)}";
+        ? $"{Info.DisplayWidth}×{Info.DisplayHeight}  {PlaybackText.Duration(Info.Duration)}"
+        : $"音訊  {PlaybackText.Duration(Info.Duration)}";
 }
 
 public sealed record ClipRow(TimelineClip Clip, int Number)
 {
-    public string Label => $"{Number}. {Clip.Media.FileName}  {MainWindow.FormatDuration(Clip.Duration)}{(Clip.Reversed ? "  ⟲ 倒放" : "")}{(Clip.Transform.IsIdentity ? "" : "  " + Clip.Transform.Label)}";
+    public string Label => $"{Number}. {Clip.Media.FileName}  {PlaybackText.Duration(Clip.Duration)}{(Clip.Reversed ? "  ⟲ 倒放" : "")}{(Clip.Transform.IsIdentity ? "" : "  " + Clip.Transform.Label)}";
 }

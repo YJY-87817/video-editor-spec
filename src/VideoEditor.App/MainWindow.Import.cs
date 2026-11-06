@@ -13,6 +13,7 @@ using VideoEditor.App.Preview;
 using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
+using VideoEditor.Core.Playback;
 using VideoEditor.Core.Timeline;
 using TimelineModel = VideoEditor.Core.Timeline.Timeline;
 
@@ -82,7 +83,7 @@ public partial class MainWindow
 
     private static string DescribeMedia(MediaInfo m)
     {
-        var lines = new List<string> { m.FileName, $"長度：{FormatDuration(m.Duration)}" };
+        var lines = new List<string> { m.FileName, $"長度：{PlaybackText.Duration(m.Duration)}" };
         if (m.BitRate > 0) lines.Add($"位元率：{m.BitRate / 1000.0:0} kb/s");
         if (m.HasVideo)
         {
