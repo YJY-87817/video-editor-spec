@@ -154,3 +154,40 @@ public class PreviewKeysTests
     [InlineData("")]
     public void OtherKeysAreIgnored(string key) => Assert.Null(PreviewKeys.FromKeyName(key));
 }
+
+public class FrameBatchTests
+{
+    [Theory]
+    [InlineData(10, 1, 0, 100, 12, 10, 12)]  // 往後：從目前這格起
+    [InlineData(10, -1, 0, 100, 12, 0, 11)]  // 往前：到目前這格為止，碰到片段開頭就停
+    [InlineData(50, -1, 0, 100, 12, 39, 12)]
+    [InlineData(95, 1, 0, 100, 12, 95, 6)]   // 碰到片段結尾就停
+    [InlineData(100, 1, 0, 100, 12, 100, 1)]
+    public void BatchIncludesTheFrameAndExtendsInTheStepDirection(long frame, int direction, long first, long last, int size,
+        long expectedStart, int expectedCount)
+    {
+        Assert.Equal((expectedStart, expectedCount), FrameBatch.Toward(frame, direction, first, last, size));
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(101)]
+    public void FrameOutsideTheClipHasNoBatch(long frame) => Assert.Null(FrameBatch.Toward(frame, 1, 0, 100, 12));
+
+    [Fact]
+    public void FirstMissingLooksOnlyWithinTheLeadInTheStepDirection()
+    {
+        var available = new HashSet<long> { 11, 12, 13, 9 };
+        Assert.Equal(14, FrameBatch.FirstMissing(10, 1, 0, 100, 4, available.Contains));
+        Assert.Null(FrameBatch.FirstMissing(10, 1, 0, 100, 3, available.Contains)); // 11–13 都有了
+        Assert.Equal(8, FrameBatch.FirstMissing(10, -1, 0, 100, 4, available.Contains));
+    }
+
+    [Fact]
+    public void FirstMissingStopsAtTheClipEdge()
+    {
+        Assert.Null(FrameBatch.FirstMissing(100, 1, 0, 100, 4, _ => false));
+        Assert.Null(FrameBatch.FirstMissing(0, -1, 0, 100, 4, _ => false));
+        Assert.Equal(99, FrameBatch.FirstMissing(98, 1, 0, 99, 4, f => f == 98));
+    }
+}

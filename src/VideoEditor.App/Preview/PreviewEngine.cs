@@ -8,6 +8,7 @@ using LibVLCSharp.Shared;
 using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
+using VideoEditor.Core.Playback;
 using VideoEditor.Core.Timeline;
 using MediaPlayer = LibVLCSharp.Shared.MediaPlayer;
 using TimelineModel = VideoEditor.Core.Timeline.Timeline;
@@ -32,6 +33,10 @@ public sealed class PreviewEngine : IDisposable
     private const int RewindBatchFrames = 12;
     private const int MaxRewindSpeed = 8;
     private const int MaxPlaybackRate = 8;
+    /// <summary>逐格移動時一次解出的格數。</summary>
+    private const int StepBatchFrames = 12;
+    /// <summary>逐格移動時，前方這幾格內有還沒解出的，就先解下一批。</summary>
+    private const int StepPrefetchLead = 4;
     /// <summary>這個倍速以上靜音：LibVLC 高倍速的聲音斷斷續續，聽起來只是雜音。</summary>
     private const int MuteFromRate = 4;
 
@@ -60,7 +65,13 @@ public sealed class PreviewEngine : IDisposable
     private bool _waitingForFirstFrame;
     private long _framesAtSwitch;
     private bool _acceptVlcFrames;
-    private (MediaInfo Media, FrameTransform Transform, double SourceTime, Size2 Size, long Frame, long Request)? _pendingFrame;
+    /// <summary>
+    /// 一個待解的預覽影格。Batch 不為 null 時一次解出整批（逐格移動用）；Show 為 false 表示只是預先解好放進快取。
+    /// </summary>
+    private readonly record struct FrameRequest(MediaInfo Media, FrameTransform Transform, Size2 Size, double Fps, long Frame, long Request,
+        (long Start, int Count)? Batch = null, bool Show = true);
+
+    private FrameRequest? _pendingFrame;
     private long _latestRequest;
     private long _shownRequest;
     private bool _extracting;
@@ -73,7 +84,8 @@ public sealed class PreviewEngine : IDisposable
     private readonly Stopwatch _rewindClock = new();
     private double _rewindBase;
     private bool _rewindFetching;
-    private readonly HashSet<(string Path, long Frame)> _rewindMissing = [];
+    // 來源結尾附近解不出的影格；倒帶與逐格預先解碼都不再重試。
+    private readonly HashSet<(string Path, long Frame)> _missingFrames = [];
 
     public PreviewEngine(FrameExtractor extractor, ReversePreviewCache proxies, Dispatcher dispatcher)
     {
@@ -217,12 +229,15 @@ public sealed class PreviewEngine : IDisposable
     }
 
     /// <summary>移動播放頭。播放中拖曳會先暫停。</summary>
-    public void Seek(double time)
+    public void Seek(double time) => SeekTo(time, 0);
+
+    /// <summary>sourceStep 不為 0 表示是逐格移動，值為來源影格的移動方向，用來一次多解幾格。</summary>
+    private void SeekTo(double time, int sourceStep)
     {
         Stop();
         Position = Math.Clamp(time, 0, Duration);
         PositionChanged?.Invoke();
-        ShowFrameAtPosition();
+        ShowFrameAtPosition(sourceStep);
     }
 
     public void StepFrame(int direction)
@@ -237,7 +252,7 @@ public sealed class PreviewEngine : IDisposable
         }
         // 倒放片段在時間軸上往後一格，是來源的前一格。
         var sourceStep = clip.Reversed ? -direction : direction;
-        Seek(clip.ToTimelineTime((FrameExtractor.FrameIndex(clip.ToSourceTime(Position), fps) + sourceStep) / fps));
+        SeekTo(clip.ToTimelineTime((FrameExtractor.FrameIndex(clip.ToSourceTime(Position), fps) + sourceStep) / fps), sourceStep);
     }
 
     /// <summary>時間軸內容改變（拖曳、修剪、刪除）後，重畫目前位置的影格。</summary>
@@ -491,8 +506,7 @@ public sealed class PreviewEngine : IDisposable
         // 時間軸往回走時，一般片段的來源時間變小，倒放片段的來源時間變大。
         var direction = clip.Reversed ? 1 : -1;
         var step = RewindSpeed;
-        var first = ReverseGraph.FirstFrameAtOrAfter(clip.SourceIn, fps);
-        var last = Math.Max(first, ReverseGraph.FirstFrameAtOrAfter(clip.SourceOut, fps) - 1);
+        var (first, last) = FrameRange(clip, fps);
 
         // 高倍速只解每 step 格中的一格，所以找最近的一格來顯示。
         for (var d = 0; d < step; d++)
@@ -507,7 +521,7 @@ public sealed class PreviewEngine : IDisposable
         {
             var target = frame + i * step * direction;
             if (target < first || target > last) return;
-            if (_frames.TryGet((media.Path, target), out _) || _rewindMissing.Contains((media.Path, target))) continue;
+            if (_frames.TryGet((media.Path, target), out _) || _missingFrames.Contains((media.Path, target))) continue;
             _ = FetchRewindFramesAsync(media, target, direction, step, fps, first, last);
             return;
         }
@@ -537,7 +551,7 @@ public sealed class PreviewEngine : IDisposable
             var frames = await _extractor.ExtractRangeAsync(media.Path, start, count, step, fps, size);
             for (var i = 0; i < frames.Count; i++) _frames.Add((media.Path, start + i * step), frames[i]);
             // 來源結尾附近可能解不出影格，記下來，之後不再重試。
-            if (frames.Count == 0) _rewindMissing.Add((media.Path, target));
+            if (frames.Count == 0) _missingFrames.Add((media.Path, target));
         }
         catch (Exception e) when (e is FfmpegException or System.ComponentModel.Win32Exception)
         {
@@ -565,7 +579,17 @@ public sealed class PreviewEngine : IDisposable
         });
     }
 
-    private void ShowFrameAtPosition()
+    /// <summary>片段在來源中的第一格與最後一格編號。</summary>
+    private static (long First, long Last) FrameRange(TimelineClip clip, double fps)
+    {
+        var first = ReverseGraph.FirstFrameAtOrAfter(clip.SourceIn, fps);
+        return (first, Math.Max(first, ReverseGraph.FirstFrameAtOrAfter(clip.SourceOut, fps) - 1));
+    }
+
+    private bool HasFrame(string path, long frame) => _frames.TryGet((path, frame), out _) || _missingFrames.Contains((path, frame));
+
+    /// <param name="sourceStep">逐格移動時為來源影格的移動方向（+1／-1），否則為 0。</param>
+    private void ShowFrameAtPosition(int sourceStep = 0)
     {
         var request = ++_latestRequest;
         var clip = _timeline.VideoClipAt(Position);
@@ -581,19 +605,33 @@ public sealed class PreviewEngine : IDisposable
         var fps = media.FrameRate.Value > 0 ? media.FrameRate.Value : DefaultFrameRate;
         var frame = FrameExtractor.FrameIndex(clip.ToSourceTime(Position), fps);
         var size = FrameExtractor.PreviewSize(media.DisplayWidth, media.DisplayHeight, MaxPreviewLongSide);
+        var (first, last) = FrameRange(clip, fps);
         if (_frames.TryGet((media.Path, frame), out var cached))
         {
             _pendingFrame = null;
             _shownRequest = request;
             ShowFrame(cached, media, clip.Transform);
+            if (sourceStep != 0) PrefetchStepFrames(media, frame, sourceStep, fps, size, first, last);
             return;
         }
 
-        _pendingFrame = (media, clip.Transform, FrameExtractor.FrameSeekTime(frame, fps), size, frame, request);
+        // 逐格移動時，連同同方向接下來的幾格一起解，下一步就直接從快取顯示。
+        var batch = sourceStep == 0 ? null : FrameBatch.Toward(frame, sourceStep, first, last, StepBatchFrames);
+        _pendingFrame = new FrameRequest(media, clip.Transform, size, fps, frame, request, batch);
         if (!_extracting) _ = ExtractPendingFramesAsync();
     }
 
-    /// <summary>一次只解一格，並只保留最新的請求，拖曳時才不會排隊落後。</summary>
+    /// <summary>逐格移動中，快取快用完時先在背景解下一批；正在解別的影格時不插隊。</summary>
+    private void PrefetchStepFrames(MediaInfo media, long frame, int sourceStep, double fps, Size2 size, long first, long last)
+    {
+        if (_extracting || _pendingFrame != null) return;
+        if (FrameBatch.FirstMissing(frame, sourceStep, first, last, StepPrefetchLead, f => HasFrame(media.Path, f)) is not { } missing) return;
+        _pendingFrame = new FrameRequest(media, FrameTransform.Identity, size, fps, missing, 0,
+            FrameBatch.Toward(missing, sourceStep, first, last, StepBatchFrames), Show: false);
+        _ = ExtractPendingFramesAsync();
+    }
+
+    /// <summary>一次只跑一個 FFmpeg，並只保留最新的請求，拖曳時才不會排隊落後。</summary>
     private async Task ExtractPendingFramesAsync()
     {
         _extracting = true;
@@ -602,13 +640,16 @@ public sealed class PreviewEngine : IDisposable
             while (_pendingFrame is { } request)
             {
                 _pendingFrame = null;
-                var frame = await _extractor.ExtractAsync(request.Media.Path, request.SourceTime, request.Size)
-                    // 來源結尾附近可能定位不到影格，退回前一小段。
-                    ?? await _extractor.ExtractAsync(request.Media.Path, Math.Max(0, request.SourceTime - 0.25), request.Size);
-                if (frame == null) continue;
-                _frames.Add((request.Media.Path, request.Frame), frame);
+                var key = (request.Media.Path, request.Frame);
+                // 前一批（例如逐格預先解碼）可能已經解出這一格。
+                var frame = _frames.TryGet(key, out var cached) ? cached : await ExtractRequestAsync(request);
+                if (frame == null)
+                {
+                    if (!request.Show) _missingFrames.Add(key);
+                    continue;
+                }
                 // 拖曳中也顯示解好的影格，畫面才會跟著動；但不可蓋掉較新的畫面（如空白處的黑畫面）。
-                if (IsPlaying || IsRewinding || request.Request < _shownRequest) continue;
+                if (!request.Show || IsPlaying || IsRewinding || request.Request < _shownRequest) continue;
                 _shownRequest = request.Request;
                 ShowFrame(frame, request.Media, request.Transform);
             }
@@ -621,6 +662,25 @@ public sealed class PreviewEngine : IDisposable
         {
             _extracting = false;
         }
+    }
+
+    /// <summary>解出請求的影格並放進快取；有 Batch 時一次解整批。</summary>
+    private async Task<RawFrame?> ExtractRequestAsync(FrameRequest request)
+    {
+        var path = request.Media.Path;
+        if (request.Batch is { } batch)
+        {
+            var frames = await _extractor.ExtractRangeAsync(path, batch.Start, batch.Count, 1, request.Fps, request.Size);
+            for (var i = 0; i < frames.Count; i++) _frames.Add((path, batch.Start + i), frames[i]);
+            if (_frames.TryGet((path, request.Frame), out var fromBatch)) return fromBatch;
+        }
+
+        var seek = FrameExtractor.FrameSeekTime(request.Frame, request.Fps);
+        var frame = await _extractor.ExtractAsync(path, seek, request.Size)
+            // 來源結尾附近可能定位不到影格，退回前一小段。
+            ?? await _extractor.ExtractAsync(path, Math.Max(0, seek - 0.25), request.Size);
+        if (frame != null) _frames.Add((path, request.Frame), frame);
+        return frame;
     }
 
     private void ShowFrame(RawFrame frame, MediaInfo media, FrameTransform transform)
