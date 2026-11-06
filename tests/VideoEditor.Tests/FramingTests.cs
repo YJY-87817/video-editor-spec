@@ -162,7 +162,8 @@ public class ClipFramingTimelineTests
 
         var fill = Graph(ExportPlanner.Build(t, new OutputSettings(AspectRatio.R1x1, FitMode.Fill), "o.mp4"));
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(fill, @"crop=w=iw\*"));
-        Assert.Contains("crop=w=iw*0.28125:h=ih*0.5:x=iw*0.109375:y=ih*0.25,scale=1080:1080", fill);
+        // 1:1 以較大邊為準：1920×1080 輸出 1920×1920；裁切比例只看長寬比。
+        Assert.Contains("crop=w=iw*0.28125:h=ih*0.5:x=iw*0.109375:y=ih*0.25,scale=1920:1920", fill);
 
         var pad = Graph(ExportPlanner.Build(t, new OutputSettings(AspectRatio.R1x1, FitMode.Pad), "o.mp4"));
         Assert.DoesNotContain("crop=w=", pad);
@@ -198,7 +199,7 @@ public class ClipFramingIntegrationTests(TestMedia media)
         t.SetFraming(t.Append(source, 0, 1), new ClipFraming(2, 0.25, 0.5));
         var result = await media.Export(t, new OutputSettings(AspectRatio.R1x1, FitMode.Fill, Crf: 0), "framing.mp4");
 
-        Assert.Equal((1080, 1080), (result.DisplayWidth, result.DisplayHeight));
+        Assert.Equal((1920, 1920), (result.DisplayWidth, result.DisplayHeight)); // 1:1 以較大邊為準
         var exported = await Frame(result.Path, "");
         var expected = await Frame(media.Landscape, "crop=540:540:210:270,");
         var centered = await Frame(media.Landscape, "crop=1080:1080:420:0,");
