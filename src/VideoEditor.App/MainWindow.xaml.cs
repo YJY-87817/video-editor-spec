@@ -1,4 +1,5 @@
 ﻿using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Windows;
@@ -95,6 +96,21 @@ public partial class MainWindow : Window, IExportView, IImportView
         : AspectRatio.Original;
 
     private FitMode SelectedMode => ModePad.IsChecked == true ? FitMode.Pad : FitMode.Fill;
+
+    private bool _closingAfterExport;
+
+    /// <summary>匯出中關閉視窗時先確認；確定關閉就取消匯出，等暫存檔清掉後再關，不留下半成品。</summary>
+    private async void OnClosing(object? sender, CancelEventArgs e)
+    {
+        if (_closingAfterExport || _export is not { IsRunning: true } export) return;
+        e.Cancel = true;
+        var answer = MessageBox.Show(this, "匯出還沒完成，關閉視窗會取消匯出。\n\n確定要關閉嗎？", "匯出中",
+            MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+        if (answer != MessageBoxResult.Yes) return;
+        _closingAfterExport = true;
+        await export.CancelAsync();
+        Close();
+    }
 
     private void OnClosed(object? sender, EventArgs e)
     {

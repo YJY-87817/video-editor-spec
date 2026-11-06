@@ -92,6 +92,60 @@ public class ExportControllerTests(TestMedia media)
     }
 
     [Fact]
+    public async Task TooManyClipsShowsAProblemInsteadOfThrowing()
+    {
+        // 片段多到超過 Windows 命令列長度上限時，規劃會失敗；要以一般提示告訴使用者，不能變成未處理的例外。
+        var source = new MediaInfo
+        {
+            Path = media.Output("many.mp4"), Duration = 10, HasVideo = true, HasAudio = true,
+            DisplayWidth = 1920, DisplayHeight = 1080, FrameRate = new Rational(30, 1), PixelFormat = "yuv420p",
+        };
+        var t = new TimelineModel();
+        for (var i = 0; i < 300; i++) t.Append(source, 0, 1);
+        var view = new FakeView();
+        var output = media.Output("too-many.mp4");
+
+        await new ExportController(media.Tools, view, 0).RunAsync(t, Default, output);
+
+        Assert.Equal("Problem", string.Join(",", view.Calls));
+        Assert.Contains("命令列長度上限", view.Problem);
+        Assert.False(File.Exists(output));
+    }
+
+    [Fact]
+    public async Task CancelAsyncWaitsUntilTheTemporaryFileIsGone()
+    {
+        var t = new TimelineModel();
+        t.Append(await media.Probe(media.Landscape), 0, 4);
+        var output = media.Output("controller-close.mp4");
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var view = new FakeView { OnProgress = () => started.TrySetResult() };
+        var controller = new ExportController(media.Tools, view, 0);
+        Assert.False(controller.IsRunning);
+
+        var run = controller.RunAsync(t, Default, output);
+        await started.Task;
+        Assert.True(controller.IsRunning);
+        await controller.CancelAsync();
+
+        // CancelAsync 完成時，FFmpeg 已結束、暫存檔已清掉、畫面已收到結束通知。
+        Assert.False(controller.IsRunning);
+        Assert.Contains("Ended", view.Calls);
+        Assert.False(File.Exists(media.Output("controller-close.part.mp4")));
+        Assert.False(File.Exists(output));
+        await run;
+        Assert.Equal("已取消匯出。", string.Join(",", view.Statuses));
+    }
+
+    [Fact]
+    public async Task CancelAsyncWithoutAnExportCompletesImmediately()
+    {
+        var controller = new ExportController(media.Tools, new FakeView(), 0);
+        Assert.True(controller.CancelAsync().IsCompleted);
+        await controller.CancelAsync();
+    }
+
+    [Fact]
     public void FormatSpanUsesTheLargestUnit()
     {
         Assert.Equal("1 秒", ExportController.FormatSpan(TimeSpan.FromMilliseconds(200)));

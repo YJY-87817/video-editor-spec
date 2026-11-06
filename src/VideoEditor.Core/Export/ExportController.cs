@@ -43,9 +43,20 @@ public sealed class ExportController(FfmpegTools tools, IExportView view, int do
     public const int DefaultDoneDisplayMs = 4000;
 
     private CancellationTokenSource? _cancel;
+    private Task _ended = Task.CompletedTask;
     private int _run;
 
+    /// <summary>是否有匯出正在執行（從開始呼叫 FFmpeg 到清掉暫存檔為止）。</summary>
+    public bool IsRunning => _cancel != null;
+
     public void Cancel() => _cancel?.Cancel();
+
+    /// <summary>取消匯出，並等到 FFmpeg 結束、暫存檔清掉為止。沒有匯出時立即完成。</summary>
+    public Task CancelAsync()
+    {
+        _cancel?.Cancel();
+        return _ended;
+    }
 
     public async Task RunAsync(TimelineModel timeline, OutputSettings settings, string output)
     {
@@ -56,12 +67,24 @@ public sealed class ExportController(FfmpegTools tools, IExportView view, int do
             return;
         }
 
-        var plan = ExportPlanner.Build(timeline, settings, output);
+        ExportPlan plan;
+        try
+        {
+            plan = ExportPlanner.Build(timeline, settings, output);
+        }
+        catch (InvalidOperationException error)
+        {
+            // 例如片段太多、超過 Windows 命令列長度上限：訊息本身就是給使用者看的說明。
+            view.ShowProblem(error.Message);
+            return;
+        }
         if (plan.Warnings.Count > 0 && !view.ConfirmWarnings(plan.Warnings)) return;
 
         view.PausePreview();
         var cancel = new CancellationTokenSource();
+        var ended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _cancel = cancel;
+        _ended = ended.Task;
         var title = $"匯出中：{Path.GetFileName(output)}（{plan.Size.Width}×{plan.Size.Height}）";
         var clock = Stopwatch.StartNew();
         var run = ++_run;
@@ -101,6 +124,7 @@ public sealed class ExportController(FfmpegTools tools, IExportView view, int do
             view.ShowEnded();
             _cancel = null;
             cancel.Dispose();
+            ended.TrySetResult();
         }
 
         // 完成訊息留幾秒再收起；期間若又開始新的匯出，就交給新的那次處理。
