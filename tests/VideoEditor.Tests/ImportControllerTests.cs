@@ -71,6 +71,24 @@ public class ImportControllerTests(TestMedia media)
     }
 
     [Fact]
+    public async Task StillImageIsRejectedAndTheRestStillImport()
+    {
+        // 靜態圖片放上時間軸會因為太短而出錯，匯入時就要擋下，而且不能中斷同一批的其他檔案。
+        var still = media.Output("still.png");
+        await ProcessRunner.RunForBytesAsync(media.Tools.Ffmpeg,
+            ["-hide_banner", "-y", "-v", "error", "-f", "lavfi", "-i", "color=c=red:s=64x64", "-frames:v", "1", still]);
+        var view = new FakeView();
+
+        await Create(view).ImportAsync([still, media.Landscape]);
+
+        var failure = Assert.Single(view.Failures);
+        Assert.Equal("still.png", failure.Name);
+        Assert.Contains("靜態圖片", failure.Message);
+        Assert.Equal(media.Landscape, Assert.Single(view.Added).Info.Path);
+        Assert.Equal("Hide", view.Events[^1]);
+    }
+
+    [Fact]
     public async Task SameFileDroppedAgainWhileImportingIsNotDuplicated()
     {
         var view = new FakeView();

@@ -290,6 +290,31 @@ public class ProbeParseTests
         Assert.True(info.HasAudio);
     }
 
+    [Theory]
+    [InlineData("\"0.040000\"", "太短")] // ffprobe 讀靜態圖片的結果
+    [InlineData("\"0.05\"", "太短")]
+    [InlineData("\"N/A\"", "無法讀取檔案長度")]
+    public void RejectsFilesTooShortForTheTimeline(string duration, string expected)
+    {
+        var json = $$"""
+            {"streams":[{"codec_type":"video","codec_name":"png","width":64,"height":64,"r_frame_rate":"25/1","avg_frame_rate":"25/1"}],
+             "format":{"duration":{{duration}}}}
+            """;
+        var error = Assert.Throws<InvalidDataException>(() => MediaProbe.Parse(json, "still.png"));
+        Assert.Contains(expected, error.Message);
+    }
+
+    [Fact]
+    public void AcceptsTheShortestClipTheTimelineAllows()
+    {
+        const string json = """
+            {"streams":[{"codec_type":"audio","codec_name":"aac","sample_rate":"48000","channels":2}],"format":{"duration":"0.1"}}
+            """;
+        var info = MediaProbe.Parse(json, "short.m4a");
+        Assert.Equal(0.1, info.Duration);
+        Assert.Equal(TrackKind.Music, new TimelineModel().Append(info, 0, info.Duration).Track);
+    }
+
     [Fact]
     public void RejectsFilesWithoutStreams() =>
         Assert.Throws<InvalidDataException>(() => MediaProbe.Parse("""{"streams":[],"format":{}}""", "x"));

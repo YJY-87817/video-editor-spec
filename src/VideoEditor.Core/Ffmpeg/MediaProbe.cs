@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using VideoEditor.Core.Models;
+using TimelineModel = VideoEditor.Core.Timeline.Timeline;
 
 namespace VideoEditor.Core.Ffmpeg;
 
@@ -31,6 +32,12 @@ public sealed class MediaProbe(FfmpegTools tools)
         var duration = Dbl(format, "duration");
         if (duration <= 0 && hasVideo) duration = Dbl(video, "duration");
         if (duration <= 0 && hasAudio) duration = Dbl(audio, "duration");
+        // 靜態圖片（ffprobe 讀成約 0.04 秒的影像）、極短或讀不到長度的檔案無法放上時間軸，匯入時就擋下。
+        if (duration < TimelineModel.MinClipDuration)
+            throw new InvalidDataException(duration <= 0
+                ? "無法讀取檔案長度，可能是靜態圖片或檔案已損毀。"
+                : string.Create(CultureInfo.InvariantCulture,
+                    $"檔案太短（{duration:0.###} 秒），可能是靜態圖片；片段至少要 {TimelineModel.MinClipDuration} 秒。"));
 
         var info = new MediaInfo
         {
