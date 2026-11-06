@@ -196,3 +196,40 @@ public class TimelineEditorTests
     public void VolumePercentBecomesLinearGainInWholePercents(double percent, double expected) =>
         Assert.Equal(expected, TimelineEditor.VolumeFromPercent(percent), 9);
 }
+
+public class TimelineSnapTests
+{
+    [Theory]
+    [InlineData(5.1, 5.0, 0.2, 5.0, true)]    // 在範圍內，貼齊播放頭
+    [InlineData(4.85, 5.0, 0.2, 5.0, true)]   // 播放頭前面也一樣
+    [InlineData(5.25, 5.0, 0.25, 5.0, true)]  // 剛好在邊界
+    [InlineData(5.3, 5.0, 0.2, 5.3, false)]   // 超出範圍，不動
+    [InlineData(5.1, 5.0, 0, 5.1, false)]     // 沒有吸附範圍時不吸附
+    public void SnapsToThePlayheadOnlyWhenClose(double time, double playhead, double tolerance, double expected, bool snapped)
+    {
+        var result = TimelineSnap.ToPlayhead(time, playhead, tolerance);
+        Assert.Equal(expected, result.Time, 9);
+        Assert.Equal(snapped, result.Snapped);
+    }
+
+    [Fact]
+    public void SnappedTrimPutsTheEdgeExactlyOnThePlayhead()
+    {
+        var timeline = new TimelineModel();
+        var clip = timeline.Append(new MediaInfo
+        {
+            Path = "a.mp4", Duration = 10, HasVideo = true, HasAudio = true,
+            DisplayWidth = 1920, DisplayHeight = 1080, FrameRate = new Rational(30, 1), PixelFormat = "yuv420p",
+        }, 0, 10);
+        const double playhead = 3.0;
+
+        var (end, _) = TimelineSnap.ToPlayhead(3.07, playhead, 0.1);
+        timeline.TrimEnd(clip, end);
+        var (start, _) = TimelineSnap.ToPlayhead(1.04, 1.0, 0.1);
+        timeline.TrimStart(clip, start);
+
+        Assert.Equal(playhead, clip.End, 9);
+        Assert.Equal(1.0, clip.Start, 9);
+        Assert.Equal((1.0, 3.0), (clip.SourceIn, clip.SourceOut));
+    }
+}

@@ -64,7 +64,9 @@ public class ExportControllerTests(TestMedia media)
         t.Append(await media.Probe(media.Landscape), 0, 4);
         var output = media.Output("controller-cancel.mp4");
         ExportController? controller = null;
-        var view = new FakeView { OnProgress = () => controller!.Cancel() };
+        // 在「開始匯出」通知時就取消：這時 FFmpeg 還沒跑完，結果固定。
+        // 不能等進度回報才取消：進度是非同步送回的，機器快的時候匯出會先完成，取消就來不及。
+        var view = new FakeView { OnStarted = () => controller!.Cancel() };
         controller = new ExportController(media.Tools, view, 0);
 
         await controller.RunAsync(t, Default, output);
@@ -118,15 +120,25 @@ public class ExportControllerTests(TestMedia media)
         var t = new TimelineModel();
         t.Append(await media.Probe(media.Landscape), 0, 4);
         var output = media.Output("controller-close.mp4");
-        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var view = new FakeView { OnProgress = () => started.TrySetResult() };
-        var controller = new ExportController(media.Tools, view, 0);
+        ExportController? controller = null;
+        Task? cancelled = null;
+        var runningWhenStarted = false;
+        // 與視窗關閉時相同：匯出進行中呼叫 CancelAsync，並且只等它（不等 RunAsync）。
+        var view = new FakeView
+        {
+            OnStarted = () =>
+            {
+                runningWhenStarted = controller!.IsRunning;
+                cancelled = controller.CancelAsync();
+            },
+        };
+        controller = new ExportController(media.Tools, view, 0);
         Assert.False(controller.IsRunning);
 
         var run = controller.RunAsync(t, Default, output);
-        await started.Task;
-        Assert.True(controller.IsRunning);
-        await controller.CancelAsync();
+        Assert.True(runningWhenStarted);
+        Assert.NotNull(cancelled);
+        await cancelled;
 
         // CancelAsync 完成時，FFmpeg 已結束、暫存檔已清掉、畫面已收到結束通知。
         Assert.False(controller.IsRunning);
@@ -161,6 +173,7 @@ public class ExportControllerTests(TestMedia media)
 
         public bool Confirm { get; init; } = true;
         public Action? OnProgress { get; init; }
+        public Action? OnStarted { get; init; }
         public IReadOnlyList<string> Calls => [.. _calls];
         public IReadOnlyList<string> Statuses => [.. _statuses];
         public IReadOnlyList<string> Warnings { get; private set; } = [];
@@ -179,7 +192,12 @@ public class ExportControllerTests(TestMedia media)
         }
 
         public void PausePreview() => _calls.Enqueue("PausePreview");
-        public void ShowStarted(string title) { _calls.Enqueue("Started"); StartedTitle = title; }
+        public void ShowStarted(string title)
+        {
+            _calls.Enqueue("Started");
+            StartedTitle = title;
+            OnStarted?.Invoke();
+        }
 
         public void ShowProgress(double value, string text)
         {

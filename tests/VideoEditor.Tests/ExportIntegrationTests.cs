@@ -256,6 +256,47 @@ public class ExportIntegrationTests(TestMedia media)
         Assert.Null(ExportService.Preflight(t, media.Output("ok.mp4")));
     }
 
+    [Fact]
+    public async Task PreflightRejectsOutputOpenedByAnotherProgram()
+    {
+        var t = new TimelineModel();
+        t.Append(await media.Probe(media.Landscape), 0, 1);
+        var output = media.Output("open-in-player.mp4");
+
+        // 模擬播放器開著上次匯出的檔案。
+        using (new FileStream(output, FileMode.Create, FileAccess.Write, FileShare.Read))
+            Assert.Contains("正被其他程式使用", ExportService.Preflight(t, output));
+
+        // 關掉之後就可以覆蓋。
+        Assert.Null(ExportService.Preflight(t, output));
+    }
+
+    [Fact]
+    public async Task PreflightRejectsReadOnlyOutput()
+    {
+        var t = new TimelineModel();
+        t.Append(await media.Probe(media.Landscape), 0, 1);
+        var output = media.Output("read-only.mp4");
+        await File.WriteAllBytesAsync(output, [0]);
+        File.SetAttributes(output, FileAttributes.ReadOnly);
+        try
+        {
+            Assert.Contains("唯讀", ExportService.Preflight(t, output));
+        }
+        finally
+        {
+            File.SetAttributes(output, FileAttributes.Normal);
+        }
+    }
+
+    [Fact]
+    public void FreeSpaceIsKnownLocallyAndUnknownForNetworkPaths()
+    {
+        Assert.NotNull(ExportService.FreeSpace(media.Output("local.mp4")));
+        // UNC 網路路徑查不到剩餘空間：回傳 null 而不是丟出例外，匯出前檢查會略過這一項。
+        Assert.Null(ExportService.FreeSpace(@"\\no-such-server\share\out.mp4"));
+    }
+
     private sealed class SyncProgress(Action<double> action) : IProgress<double>
     {
         public void Report(double value) => action(value);
