@@ -33,6 +33,7 @@ public partial class MainWindow
         TimeText.Text = PlaybackText.Position(position, _engine.Duration);
         if (IsTimelinePreview) Timeline.Playhead = position;
         UpdateMarkRange();
+        UpdateFramingForPosition();
     }
 
     private void OnScrubChanged(object sender, RoutedPropertyChangedEventArgs<double> e)

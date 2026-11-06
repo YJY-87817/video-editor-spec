@@ -27,6 +27,7 @@ public partial class MainWindow
         if (!IsInitialized) return;
         UpdateOutputInfo();
         UpdatePreviewLayout();
+        UpdateFramingControls(Timeline.SelectedClip);
     }
 
     private void UpdateOutputInfo()

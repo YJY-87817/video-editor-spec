@@ -95,8 +95,10 @@ public partial class MainWindow
         PreviewSurface? surface = _surfaceMedia == null
             ? null
             : new PreviewSurface(_surfaceMedia.HasVideo ? new Size2(_surfaceMedia.DisplayWidth, _surfaceMedia.DisplayHeight) : null, _surfaceTransform);
+        var framingClip = FramingClip();
         var plan = PreviewPlanner.Compute(PreviewArea.ActualWidth, PreviewArea.ActualHeight, OutputReferenceSize(),
-            SelectedRatio, SelectedMode, surface);
+            SelectedRatio, SelectedMode, surface, framingClip?.Framing);
+        UpdateFramingEditor(plan, framingClip);
 
         if (!plan.Visible)
         {

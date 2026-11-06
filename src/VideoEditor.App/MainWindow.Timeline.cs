@@ -63,6 +63,7 @@ public partial class MainWindow
         ReverseCheck.IsChecked = clip?.Reversed == true;
         _updatingReverse = false;
         UpdateTransformControls(clip);
+        UpdateFramingControls(clip);
     }
 
     // ---- 旋轉與鏡像 ----
@@ -84,6 +85,8 @@ public partial class MainWindow
         if (Timeline.SelectedClip is not { Track: TrackKind.Video } clip) return;
         var followUp = _editor.ChangeTransform(clip, change, IsTimelinePreview, Timeline.Playhead);
         UpdateTransformControls(clip);
+        // 方向改變時畫面位置會回到預設。
+        UpdateFramingControls(clip);
         OnClipsChanged();
         // 看得到效果：切到時間軸預覽，並把播放頭移進這個片段。
         switch (followUp)

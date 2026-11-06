@@ -24,6 +24,8 @@ public sealed class TimelineClip(MediaInfo media, TrackKind track, double source
     public bool Reversed { get; internal set; }
     /// <summary>旋轉與鏡像。只用於影片軌。</summary>
     public FrameTransform Transform { get; internal set; }
+    /// <summary>填滿裁切時取用畫面的哪一部分。只用於影片軌。</summary>
+    public ClipFraming Framing { get; internal set; } = ClipFraming.Default;
 
     /// <summary>套用旋轉後的畫面尺寸。</summary>
     public Size2 DisplaySize => Transform.Apply(new Size2(Media.DisplayWidth, Media.DisplayHeight));
@@ -91,11 +93,22 @@ public sealed class Timeline
 
     public void Remove(TimelineClip clip) => ListOf(clip.Track).Remove(clip);
 
-    /// <summary>設定旋轉與鏡像。位置與長度不變。</summary>
+    /// <summary>
+    /// 設定旋轉與鏡像。位置與長度不變。方向改變時畫面位置回到預設：
+    /// 畫面位置是以轉完的方向記錄的，換了方向就對不上原本選的範圍。
+    /// </summary>
     public void SetTransform(TimelineClip clip, FrameTransform transform)
     {
         if (clip.Track != TrackKind.Video) throw new ArgumentException("只有影片軌的片段可以旋轉或鏡像。");
+        if (clip.Transform != transform) clip.Framing = ClipFraming.Default;
         clip.Transform = transform;
+    }
+
+    /// <summary>設定填滿裁切時的畫面位置。位置與長度不變。</summary>
+    public void SetFraming(TimelineClip clip, ClipFraming framing)
+    {
+        if (clip.Track != TrackKind.Video) throw new ArgumentException("只有影片軌的片段可以調整畫面位置。");
+        clip.Framing = framing;
     }
 
     /// <summary>切換倒放。位置與長度不變，所以不會與其他片段重疊。</summary>
