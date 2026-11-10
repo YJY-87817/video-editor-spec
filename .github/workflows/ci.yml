@@ -49,10 +49,3 @@ jobs:
           if (-not (Test-Path publish/VideoEditor.App.exe)) { throw '找不到 publish/VideoEditor.App.exe' }
           if (-not (Test-Path publish/libvlc/win-x64/libvlc.dll)) { throw '找不到 publish/libvlc/win-x64/libvlc.dll' }
           Get-ChildItem publish -Recurse -File | Measure-Object Length -Sum | ForEach-Object { "發佈資料夾：$($_.Count) 個檔案，$([math]::Round($_.Sum / 1MB)) MB" }
-
-      - name: Upload publish output
-        uses: actions/upload-artifact@v4
-        with:
-          name: VideoEditor-win-x64
-          path: publish
-          retention-days: 7
