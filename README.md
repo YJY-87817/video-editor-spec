@@ -18,6 +18,20 @@ dotnet test
 
 GitHub Actions（`.github/workflows/ci.yml`）會在 Windows 上建置並執行測試，推送到 `main` 與每個 pull request 都會觸發。
 
+## 產出 exe（發佈）
+
+在 Windows 上執行下列指令，產生不需另外安裝 .NET 的資料夾版本：
+
+```bash
+dotnet publish src/VideoEditor.App -c Release -r win-x64 --self-contained true -o publish
+```
+
+- 執行檔是 `publish\VideoEditor.App.exe`，LibVLC 的原生檔會一起放在 `publish` 裡（`libvlc\win-x64`），所以要整個資料夾一起搬移或壓縮，不能只複製 exe。
+- `ffmpeg.exe` 與 `ffprobe.exe`（含 libx264、libx265）不會被打包，請放到 `publish\tools\ffmpeg`，或讓使用者的 PATH 找得到。
+- 不建議加 `-p:PublishSingleFile=true`：LibVLC 要掃描外掛資料夾，無法包進單一檔案。
+- 只支援 64 位元 Windows（專案已關閉 x86 的 LibVLC）。
+- 若只想給已安裝 .NET 10 桌面執行階段的電腦使用，可改成 `--self-contained false`，檔案會小很多。
+
 ## 操作
 
 | 按鍵 | 功能 |
