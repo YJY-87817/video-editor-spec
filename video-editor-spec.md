@@ -37,7 +37,8 @@
 - 維持動態連結：`libvlc.dll`、`libvlccore.dll` 與 `plugins` 資料夾保持獨立檔案，不合併、不靜態連結。使用者可自行替換成相容版本。
 - 在「關於」頁或隨附文件列出 LibVLCSharp 與 libvlc 的名稱、版本、LGPL 授權全文與 VideoLAN 版權聲明，並註明原始碼取得處（videolan.org 對應版本）。
 - 授權條款不得禁止為除錯所需的修改與逆向工程。
-- 預編譯的 plugins 可能含 GPL 授權的模組。發佈前須清查實際打包的 plugin，移除不需要的 GPL 模組（本專案只用解碼與播放），或自行編譯僅含 LGPL 模組的版本。
+- `VideoLAN.LibVLC.Windows` 3.0.24 的 x64 plugins 共 321 個 DLL，其中 4 個是 GPL v2+，其餘為 LGPL v2.1+：`libx26410b_plugin`（x264 編碼器）、`liblua_plugin`、`libdolby_surround_decoder_plugin`、`libheadphone_channel_mixer_plugin`。本專案都用不到，`VideoEditor.App.csproj` 在發佈時會把它們從 `publish` 刪除。
+- CI 的 Publish 步驟會掃描發佈資料夾，發現任何 GPL 模組或缺少授權檔（`LICENSE`、`THIRD-PARTY-NOTICES.md`、`licenses/LGPL-2.1.txt`）就失敗。升級 libvlc 版本時，這項檢查會自動重新驗證。
 
 **FFmpeg（不打包，獨立行程）**
 - 程式只以命令列呼叫 `ffmpeg.exe`，不連結其函式庫，因此本程式不受 GPL 傳染。
@@ -46,8 +47,7 @@
 
 **待辦**
 - 專案本身採 MIT 授權（`LICENSE`）。
-- 已新增 `THIRD-PARTY-NOTICES.md`；發佈時須隨 `publish` 一起附上。
-- 在 CI 的 publish 步驟檢查 `publish\libvlc\win-x64\plugins` 沒有未預期的 GPL 模組。
+- 已新增 `THIRD-PARTY-NOTICES.md` 與 `licenses/LGPL-2.1.txt`；發佈時會自動複製到 `publish`。
 
 ## 3. 功能需求
 

@@ -9,6 +9,33 @@
     <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.24" />
   </ItemGroup>
 
+  <!-- 授權檔隨發佈資料夾一起散佈（LGPL 要求附授權全文與聲明）。 -->
+  <ItemGroup>
+    <None Include="..\..\LICENSE" Link="LICENSE" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\licenses\LGPL-2.1.txt" Link="licenses\LGPL-2.1.txt" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!--
+    libvlc 預編譯 plugins 中有 4 個是 GPL v2+（其餘皆為 LGPL v2.1+），本專案都用不到，發佈時移除：
+    x264 編碼器（匯出用 FFmpeg）、Lua 腳本引擎、杜比環繞解碼、耳機聲道混音。
+    只刪發佈資料夾裡的副本。VLC 啟動時會重新掃描 plugins 並重建快取。
+  -->
+  <ItemGroup>
+    <GplLibVlcPlugin Include="codec\libx26410b_plugin.dll" />
+    <GplLibVlcPlugin Include="lua\liblua_plugin.dll" />
+    <GplLibVlcPlugin Include="audio_filter\libdolby_surround_decoder_plugin.dll" />
+    <GplLibVlcPlugin Include="audio_filter\libheadphone_channel_mixer_plugin.dll" />
+  </ItemGroup>
+
+  <Target Name="RemoveGplLibVlcPlugins" AfterTargets="Publish">
+    <ItemGroup>
+      <_GplPluginFile Include="$(PublishDir)libvlc\win-x64\plugins\%(GplLibVlcPlugin.Identity)" />
+      <_PluginCache Include="$(PublishDir)libvlc\win-x64\plugins\plugins.dat" />
+    </ItemGroup>
+    <Delete Files="@(_GplPluginFile);@(_PluginCache)" />
+  </Target>
+
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
