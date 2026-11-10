@@ -26,6 +26,41 @@ public class ExportControllerTests(TestMedia media)
     }
 
     [Fact]
+    public async Task MissingSourceIsReportedBeforeAnythingStarts()
+    {
+        var copy = media.Output("vanishing.mp4");
+        File.Copy(media.Landscape, copy, overwrite: true);
+        var t = new TimelineModel();
+        t.Append(await media.Probe(copy), 0, 1);
+        File.Delete(copy); // 匯入後素材被刪掉
+        var view = new FakeView();
+
+        await new ExportController(media.Tools, view, 0).RunAsync(t, Default, media.Output("never.mp4"));
+
+        Assert.Equal("Problem", string.Join(",", view.Calls));
+        Assert.Contains("找不到素材檔案", view.Problem);
+        Assert.Contains("vanishing.mp4", view.Problem);
+    }
+
+    [Fact]
+    public async Task ToolThatCannotStartIsReportedNotThrown()
+    {
+        var missing = Path.Combine(media.Directory, "no-such-tools");
+        var tools = new VideoEditor.Core.Ffmpeg.FfmpegTools(Path.Combine(missing, "ffmpeg.exe"), Path.Combine(missing, "ffprobe.exe"));
+        var t = new TimelineModel();
+        t.Append(await media.Probe(media.Landscape), 0, 1);
+        var view = new FakeView();
+        var output = media.Output("no-tool.mp4");
+
+        await new ExportController(tools, view, 0).RunAsync(t, Default, output); // 不能丟出例外
+
+        Assert.Contains("無法啟動 ffmpeg", view.Error);
+        Assert.Equal("PausePreview,Started,Error,Ended,HideProgress", string.Join(",", view.Calls.Where(c => c != "Progress")));
+        Assert.False(File.Exists(output));
+        Assert.Empty(Directory.GetFiles(media.Directory, "no-tool.*.part.mp4"));
+    }
+
+    [Fact]
     public async Task DeclinedWarningsDoNotStartTheExport()
     {
         var t = new TimelineModel();

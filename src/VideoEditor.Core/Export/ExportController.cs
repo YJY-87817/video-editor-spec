@@ -118,6 +118,12 @@ public sealed class ExportController(FfmpegTools tools, IExportView view, int do
             view.ShowStatus($"影片已做好，但未能存成輸出檔名，保留在：{error.TemporaryPath}");
             view.ShowError(error.Message);
         }
+        catch (System.ComponentModel.Win32Exception error)
+        {
+            // ffmpeg.exe 無法啟動（例如被防毒軟體擋下或被刪掉）。
+            view.ShowStatus("匯出失敗。");
+            view.ShowError($"無法啟動 ffmpeg，可能被防毒軟體擋下或檔案已被移除：{error.Message}");
+        }
         catch (Exception error) when (error is FfmpegException or IOException or UnauthorizedAccessException)
         {
             view.ShowStatus("匯出失敗。");
