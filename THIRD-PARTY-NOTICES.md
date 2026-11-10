@@ -15,7 +15,8 @@
 - 版權：VideoLAN 與 VLC 作者
 - 原始碼：https://www.videolan.org/vlc/ （對應 3.0.x 版本）
 - 隨 `publish\libvlc\win-x64` 以獨立動態連結檔案發佈，使用者可自行替換成相容版本。
-- 部分 plugin 模組可能採其他授權（含 GPL）。發佈前請清查 `plugins` 資料夾。
+- 授權全文見 `licenses/LGPL-2.1.txt`。
+- 預編譯 plugins 中有 4 個 GPL v2+ 模組（x264 編碼器、Lua、杜比環繞解碼、耳機聲道混音），本程式不使用，發佈時已移除。
 
 ## FFmpeg（不隨程式發佈）
 

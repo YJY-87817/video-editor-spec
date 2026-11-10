@@ -48,4 +48,15 @@ jobs:
           dotnet publish src/VideoEditor.App -c Release -r win-x64 --self-contained true -o publish
           if (-not (Test-Path publish/VideoEditor.App.exe)) { throw '找不到 publish/VideoEditor.App.exe' }
           if (-not (Test-Path publish/libvlc/win-x64/libvlc.dll)) { throw '找不到 publish/libvlc/win-x64/libvlc.dll' }
+          foreach ($f in 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'licenses/LGPL-2.1.txt') {
+            if (-not (Test-Path "publish/$f")) { throw "發佈資料夾缺少授權檔 $f" }
+          }
+          # libvlc plugins 不得含 GPL 模組（授權字串內嵌在每個 plugin DLL）
+          $gpl = Get-ChildItem publish/libvlc/win-x64 -Recurse -Filter *.dll | Where-Object {
+            $text = [System.Text.Encoding]::Latin1.GetString([System.IO.File]::ReadAllBytes($_.FullName))
+            $text -match 'Licensed under the terms of the GNU General Public License'
+          }
+          if ($gpl) { throw "發現 GPL 授權的 libvlc 模組：$($gpl.Name -join ', ')" }
+          $plugins = (Get-ChildItem publish/libvlc/win-x64/plugins -Recurse -Filter *.dll).Count
+          "libvlc plugins：$plugins 個，皆非 GPL"
           Get-ChildItem publish -Recurse -File | Measure-Object Length -Sum | ForEach-Object { "發佈資料夾：$($_.Count) 個檔案，$([math]::Round($_.Sum / 1MB)) MB" }
