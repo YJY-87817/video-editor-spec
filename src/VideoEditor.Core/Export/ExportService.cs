@@ -13,6 +13,12 @@ public sealed class ExportService(FfmpegTools tools)
     public static string? Preflight(TimelineModel timeline, string outputPath)
     {
         var fullPath = Path.GetFullPath(outputPath);
+        // 素材在匯入後被移動、刪除，或放在已拔掉的磁碟上：先說清楚，不要等 FFmpeg 失敗才丟出它的原始錯誤。
+        var missing = timeline.AllClips.Select(c => c.Media.Path).Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(path => !File.Exists(path)).ToList();
+        if (missing.Count > 0)
+            return $"找不到素材檔案：\n{string.Join('\n', missing.Select(path => "　" + path))}\n\n請確認檔案還在原位置（外接磁碟是否已連接），或把它從時間軸移除後重新匯入。";
+
         if (timeline.AllClips.Any(c => string.Equals(Path.GetFullPath(c.Media.Path), fullPath, StringComparison.OrdinalIgnoreCase)))
             return "輸出檔不能與來源素材相同。";
 

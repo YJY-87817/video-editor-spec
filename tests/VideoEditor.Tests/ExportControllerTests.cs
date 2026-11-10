@@ -26,6 +26,41 @@ public class ExportControllerTests(TestMedia media)
     }
 
     [Fact]
+    public async Task MissingSourceIsReportedBeforeAnythingStarts()
+    {
+        var copy = media.Output("vanishing.mp4");
+        File.Copy(media.Landscape, copy, overwrite: true);
+        var t = new TimelineModel();
+        t.Append(await media.Probe(copy), 0, 1);
+        File.Delete(copy); // 匯入後素材被刪掉
+        var view = new FakeView();
+
+        await new ExportController(media.Tools, view, 0).RunAsync(t, Default, media.Output("never.mp4"));
+
+        Assert.Equal("Problem", string.Join(",", view.Calls));
+        Assert.Contains("找不到素材檔案", view.Problem);
+        Assert.Contains("vanishing.mp4", view.Problem);
+    }
+
+    [Fact]
+    public async Task ToolThatCannotStartIsReportedNotThrown()
+    {
+        var missing = Path.Combine(media.Directory, "no-such-tools");
+        var tools = new VideoEditor.Core.Ffmpeg.FfmpegTools(Path.Combine(missing, "ffmpeg.exe"), Path.Combine(missing, "ffprobe.exe"));
+        var t = new TimelineModel();
+        t.Append(await media.Probe(media.Landscape), 0, 1);
+        var view = new FakeView();
+        var output = media.Output("no-tool.mp4");
+
+        await new ExportController(tools, view, 0).RunAsync(t, Default, output); // 不能丟出例外
+
+        Assert.Contains("無法啟動 ffmpeg", view.Error);
+        Assert.Equal("PausePreview,Started,Error,Ended,HideProgress", string.Join(",", view.Calls.Where(c => c != "Progress")));
+        Assert.False(File.Exists(output));
+        Assert.Empty(Directory.GetFiles(media.Directory, "no-tool.*.part.mp4"));
+    }
+
+    [Fact]
     public async Task DeclinedWarningsDoNotStartTheExport()
     {
         var t = new TimelineModel();
@@ -82,13 +117,16 @@ public class ExportControllerTests(TestMedia media)
     {
         var source = await media.Probe(media.Landscape);
         var t = new TimelineModel();
-        t.Append(source with { Path = media.Output("missing-source.mp4") }, 0, 1);
+        // 檔案存在（通過匯出前檢查）但內容不是影片，FFmpeg 會失敗。素材不存在的情況由匯出前檢查處理。
+        var broken = media.Output("broken-source.mp4");
+        await File.WriteAllTextAsync(broken, "這不是影片");
+        t.Append(source with { Path = broken }, 0, 1);
         var view = new FakeView();
 
         await new ExportController(media.Tools, view, 0).RunAsync(t, Default, media.Output("controller-fail.mp4"));
 
         Assert.Equal("匯出失敗。", string.Join(",", view.Statuses));
-        Assert.Contains("missing-source.mp4", view.Error);
+        Assert.Contains("broken-source.mp4", view.Error);
         Assert.Contains("Ended", view.Calls);
         Assert.DoesNotContain("Succeeded", view.Calls);
     }
@@ -99,7 +137,7 @@ public class ExportControllerTests(TestMedia media)
         // 片段多到超過 Windows 命令列長度上限時，規劃會失敗；要以一般提示告訴使用者，不能變成未處理的例外。
         var source = new MediaInfo
         {
-            Path = media.Output("many.mp4"), Duration = 10, HasVideo = true, HasAudio = true,
+            Path = media.Landscape, Duration = 10, HasVideo = true, HasAudio = true,
             DisplayWidth = 1920, DisplayHeight = 1080, FrameRate = new Rational(30, 1), PixelFormat = "yuv420p",
         };
         var t = new TimelineModel();

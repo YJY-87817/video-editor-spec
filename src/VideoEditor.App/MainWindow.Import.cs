@@ -25,7 +25,21 @@ public partial class MainWindow
 
     private void OnFileDrop(object sender, DragEventArgs e)
     {
-        if (e.Data.GetData(DataFormats.FileDrop) is string[] files) _ = _import?.ImportAsync(files);
+        if (e.Data.GetData(DataFormats.FileDrop) is string[] files) RunImport(files);
+    }
+
+    /// <summary>匯入不等結果；預料之外的錯誤要顯示出來，否則檔案沒出現也沒有任何說明。</summary>
+    private async void RunImport(IEnumerable<string> paths)
+    {
+        if (_import == null) return;
+        try
+        {
+            await _import.ImportAsync(paths);
+        }
+        catch (Exception e)
+        {
+            StatusText.Text = $"匯入時發生錯誤：{e.Message}";
+        }
     }
 
     private void OnImportClick(object sender, RoutedEventArgs e)
@@ -35,7 +49,7 @@ public partial class MainWindow
             Multiselect = true,
             Filter = "影音檔|*.mp4;*.mov;*.m4v;*.mkv;*.avi;*.webm;*.mts;*.m2ts;*.mp3;*.m4a;*.wav;*.aac;*.flac|所有檔案|*.*",
         };
-        if (dialog.ShowDialog(this) == true) _ = _import?.ImportAsync(dialog.FileNames);
+        if (dialog.ShowDialog(this) == true) RunImport(dialog.FileNames);
     }
 
     // ---- IImportView：匯入流程需要的畫面更新 ----

@@ -524,7 +524,7 @@ public sealed class PreviewEngine : IDisposable
             var target = frame + i * step * direction;
             if (target < first || target > last) return;
             if (_frames.TryGet((media.Path, target), out _) || _missingFrames.Contains((media.Path, target))) continue;
-            _ = FetchRewindFramesAsync(media, target, direction, step, fps, first, last);
+            Observe(FetchRewindFramesAsync(media, target, direction, step, fps, first, last));
             return;
         }
     }
@@ -622,7 +622,7 @@ public sealed class PreviewEngine : IDisposable
         _pendingFrame = new FrameRequest(media, clip.Transform, size, fps, frame, request, batch);
         // 背景正在預先解下一批時中止它：一次只跑一個 FFmpeg，不中止的話要等那一批解完才輪到這一格。
         _prefetchCancel?.Cancel();
-        if (!_extracting) _ = ExtractPendingFramesAsync();
+        if (!_extracting) Observe(ExtractPendingFramesAsync());
     }
 
     /// <summary>逐格移動中，快取快用完時先在背景解下一批；正在解別的影格時不插隊。</summary>
@@ -632,8 +632,16 @@ public sealed class PreviewEngine : IDisposable
         if (FrameBatch.FirstMissing(frame, sourceStep, first, last, StepPrefetchLead, f => HasFrame(media.Path, f)) is not { } missing) return;
         _pendingFrame = new FrameRequest(media, FrameTransform.Identity, size, fps, missing, 0,
             FrameBatch.Toward(missing, sourceStep, first, last, StepBatchFrames), Show: false);
-        _ = ExtractPendingFramesAsync();
+        Observe(ExtractPendingFramesAsync());
     }
+
+    /// <summary>
+    /// 背景工作不等結果。預料之外的錯誤若不處理就會被默默吞掉，使用者只看到畫面不更新；
+    /// 在這裡轉成錯誤訊息。已知的錯誤（FFmpeg 失敗等）各工作自己處理，不會走到這裡。
+    /// </summary>
+    private void Observe(Task task) =>
+        task.ContinueWith(t => _dispatcher.BeginInvoke(() => Error?.Invoke($"預覽發生錯誤：{t.Exception!.GetBaseException().Message}")),
+            CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
 
     /// <summary>一次只跑一個 FFmpeg，並只保留最新的請求，拖曳時才不會排隊落後。</summary>
     private async Task ExtractPendingFramesAsync()
