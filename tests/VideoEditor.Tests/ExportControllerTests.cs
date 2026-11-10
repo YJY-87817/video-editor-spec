@@ -117,13 +117,16 @@ public class ExportControllerTests(TestMedia media)
     {
         var source = await media.Probe(media.Landscape);
         var t = new TimelineModel();
-        t.Append(source with { Path = media.Output("missing-source.mp4") }, 0, 1);
+        // 檔案存在（通過匯出前檢查）但內容不是影片，FFmpeg 會失敗。素材不存在的情況由匯出前檢查處理。
+        var broken = media.Output("broken-source.mp4");
+        await File.WriteAllTextAsync(broken, "這不是影片");
+        t.Append(source with { Path = broken }, 0, 1);
         var view = new FakeView();
 
         await new ExportController(media.Tools, view, 0).RunAsync(t, Default, media.Output("controller-fail.mp4"));
 
         Assert.Equal("匯出失敗。", string.Join(",", view.Statuses));
-        Assert.Contains("missing-source.mp4", view.Error);
+        Assert.Contains("broken-source.mp4", view.Error);
         Assert.Contains("Ended", view.Calls);
         Assert.DoesNotContain("Succeeded", view.Calls);
     }
@@ -134,7 +137,7 @@ public class ExportControllerTests(TestMedia media)
         // 片段多到超過 Windows 命令列長度上限時，規劃會失敗；要以一般提示告訴使用者，不能變成未處理的例外。
         var source = new MediaInfo
         {
-            Path = media.Output("many.mp4"), Duration = 10, HasVideo = true, HasAudio = true,
+            Path = media.Landscape, Duration = 10, HasVideo = true, HasAudio = true,
             DisplayWidth = 1920, DisplayHeight = 1080, FrameRate = new Rational(30, 1), PixelFormat = "yuv420p",
         };
         var t = new TimelineModel();
