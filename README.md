@@ -91,6 +91,7 @@ dotnet publish src/VideoEditor.App -c Release -r win-x64 --self-contained true -
 
 ## 授權
 
+- **本專案**：MIT 授權（見 `LICENSE`）。第三方元件的聲明見 `THIRD-PARTY-NOTICES.md`。
 - **LibVLCSharp、libvlc**：LGPL v2.1+。`publish` 資料夾內的 libvlc 原生檔必須維持獨立檔案（動態連結），散佈時請一併附上授權聲明。
 - **FFmpeg**：不打包，程式以獨立行程呼叫。含 libx264／libx265 的組建多為 GPL；若你自行把 FFmpeg 一起散佈，須遵守 GPL 並提供原始碼取得方式。
 - 散佈前請清查 `publish\libvlc\win-x64\plugins` 是否含 GPL 模組；完整說明見 `video-editor-spec.md` 的 2.1 節。

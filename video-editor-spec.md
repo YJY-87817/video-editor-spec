@@ -45,8 +45,8 @@
 - 編碼格式（H.264／HEVC 等）的專利授權不在 LGPL／GPL 範圍內，個人使用以外的散佈須另行評估。
 
 **待辦**
-- 專案本身的授權尚未指定，散佈前需決定並加入 `LICENSE`。
-- 新增 `THIRD-PARTY-NOTICES`，隨 `publish` 一起發佈。
+- 專案本身採 MIT 授權（`LICENSE`）。
+- 已新增 `THIRD-PARTY-NOTICES.md`；發佈時須隨 `publish` 一起附上。
 - 在 CI 的 publish 步驟檢查 `publish\libvlc\win-x64\plugins` 沒有未預期的 GPL 模組。
 
 ## 3. 功能需求
