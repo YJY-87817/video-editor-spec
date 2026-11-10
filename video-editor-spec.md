@@ -23,6 +23,32 @@
 | 影音處理 | FFmpeg（以命令列方式呼叫 `ffmpeg.exe` 與 `ffprobe.exe`） |
 | 播放預覽 | LibVLCSharp（或以 FFmpeg 解出影格顯示） |
 
+### 2.1 第三方授權
+
+本專案本身不含 LibVLC 與 FFmpeg 的原始碼，兩者的使用方式不同，義務也不同。
+
+| 元件 | 授權 | 使用方式 | 義務 |
+|---|---|---|---|
+| LibVLCSharp 3.10.2 | LGPL v2.1+ | NuGet 套件，動態參考 | 保留授權聲明 |
+| libvlc／libvlccore（`VideoLAN.LibVLC.Windows` 3.0.24） | LGPL v2.1+ | 隨 `publish` 一起發佈（`libvlc\win-x64`） | 見下方「LibVLC」 |
+| FFmpeg（`ffmpeg.exe`、`ffprobe.exe`，含 libx264、libx265） | 含 libx264／libx265 的組建通常為 GPL v2+ | 以獨立行程呼叫，不打包 | 見下方「FFmpeg」 |
+
+**LibVLC（隨程式發佈）**
+- 維持動態連結：`libvlc.dll`、`libvlccore.dll` 與 `plugins` 資料夾保持獨立檔案，不合併、不靜態連結。使用者可自行替換成相容版本。
+- 在「關於」頁或隨附文件列出 LibVLCSharp 與 libvlc 的名稱、版本、LGPL 授權全文與 VideoLAN 版權聲明，並註明原始碼取得處（videolan.org 對應版本）。
+- 授權條款不得禁止為除錯所需的修改與逆向工程。
+- 預編譯的 plugins 可能含 GPL 授權的模組。發佈前須清查實際打包的 plugin，移除不需要的 GPL 模組（本專案只用解碼與播放），或自行編譯僅含 LGPL 模組的版本。
+
+**FFmpeg（不打包，獨立行程）**
+- 程式只以命令列呼叫 `ffmpeg.exe`，不連結其函式庫，因此本程式不受 GPL 傳染。
+- 目前不隨程式發佈 FFmpeg，由使用者自備。若日後決定打包，則發佈者須遵守 GPL：附授權全文，並提供該組建的對應原始碼或書面取得方式。
+- 編碼格式（H.264／HEVC 等）的專利授權不在 LGPL／GPL 範圍內，個人使用以外的散佈須另行評估。
+
+**待辦**
+- 專案本身採 MIT 授權（`LICENSE`）。
+- 已新增 `THIRD-PARTY-NOTICES.md`；發佈時須隨 `publish` 一起附上。
+- 在 CI 的 publish 步驟檢查 `publish\libvlc\win-x64\plugins` 沒有未預期的 GPL 模組。
+
 ## 3. 功能需求
 
 ### 3.1 階段一：能剪能匯出
