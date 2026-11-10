@@ -43,6 +43,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <VlcWindowsX86Enabled>false</VlcWindowsX86Enabled>
+    <VlcWindowsArm64Enabled>false</VlcWindowsArm64Enabled>
     <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
 
