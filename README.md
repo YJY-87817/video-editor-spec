@@ -89,6 +89,12 @@ dotnet publish src/VideoEditor.App -c Release -r win-x64 --self-contained true -
 - **倒帶（J）**：只用於預覽，不影響匯出。由 FFmpeg 一次解出多格來顯示，沒有聲音；高倍速時每隔幾格才取一格。
 - **逐格移動（← →）**：暫停時的畫面由 FFmpeg 解出。手機影片等關鍵影格間隔長的來源，每解一格都要從前一個關鍵影格解起，所以逐格移動時會連同同方向接下來的 12 格一起解，快用完前再於背景解下一批，連續按方向鍵時不必每一步都等。背景那一批還在解時若改去拖曳播放頭，會先中止它，優先解要顯示的那一格。
 
+## 授權
+
+- **LibVLCSharp、libvlc**：LGPL v2.1+。`publish` 資料夾內的 libvlc 原生檔必須維持獨立檔案（動態連結），散佈時請一併附上授權聲明。
+- **FFmpeg**：不打包，程式以獨立行程呼叫。含 libx264／libx265 的組建多為 GPL；若你自行把 FFmpeg 一起散佈，須遵守 GPL 並提供原始碼取得方式。
+- 散佈前請清查 `publish\libvlc\win-x64\plugins` 是否含 GPL 模組；完整說明見 `video-editor-spec.md` 的 2.1 節。
+
 ## 已知限制
 
 - 很長的高解析度倒放片段（例如數分鐘的 4K 10-bit）會切成很多小段，可能超過 Windows 命令列長度上限而無法匯出，需要把片段剪短。
