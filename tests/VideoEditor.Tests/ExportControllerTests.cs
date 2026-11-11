@@ -69,6 +69,24 @@ public class ExportControllerTests(TestMedia media)
         Assert.Null(VideoEditor.Core.Ffmpeg.FfmpegEncoders.MissingMessage(["libx264", "libx265", "aac", "ffv1", "pcm_f32le"], available));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LowDiskSpaceAsksInsteadOfBlocking(bool confirm)
+    {
+        var t = new TimelineModel();
+        t.Append(await media.Probe(media.Landscape), 0, 1);
+        var view = new FakeView { Confirm = confirm };
+        var output = media.Output($"low-space-{confirm}.mp4");
+
+        // 估算說空間不夠（剩 1 位元組），實際上放得下。
+        await new ExportController(media.Tools, view, 0, freeSpace: _ => 1).RunAsync(t, Default, output);
+
+        Assert.Contains(view.Warnings, warning => warning.Contains("磁碟空間可能不足"));
+        Assert.Null(view.Problem);
+        Assert.Equal(confirm, File.Exists(output));
+    }
+
     [Fact]
     public async Task ToolThatCannotStartIsReportedNotThrown()
     {

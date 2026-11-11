@@ -17,9 +17,11 @@ public sealed class ExportService(FfmpegTools tools)
     private const double H265BitsPerPixel = 0.15;
     private const double DefaultFrameRate = 30;
 
-    /// <summary>匯出前檢查：路徑可寫入、不覆蓋來源、磁碟空間足夠。回傳錯誤訊息，通過時為 null。</summary>
-    /// <param name="settings">輸出設定，用來依輸出解析度估算檔案大小；沒有給時只依來源位元率估算。</param>
-    public static string? Preflight(TimelineModel timeline, string outputPath, Models.OutputSettings? settings = null)
+    /// <summary>
+    /// 匯出前檢查：素材都還在、路徑可寫入、不覆蓋來源、輸出檔能覆蓋。回傳錯誤訊息，通過時為 null。
+    /// 磁碟空間不在這裡擋，見 <see cref="SpaceWarning"/>。
+    /// </summary>
+    public static string? Preflight(TimelineModel timeline, string outputPath)
     {
         var fullPath = Path.GetFullPath(outputPath);
         // 素材在匯入後被移動、刪除，或放在已拔掉的磁碟上：先說清楚，不要等 FFmpeg 失敗才丟出它的原始錯誤。
@@ -45,13 +47,22 @@ public sealed class ExportService(FfmpegTools tools)
         }
 
         // 輸出檔已存在時先確認能覆蓋：否則要到匯出跑完、改名時才失敗，做好的影片也會被丟掉。
-        if (File.Exists(fullPath) && CannotOverwrite(fullPath) is { } reason) return reason;
+        return File.Exists(fullPath) ? CannotOverwrite(fullPath) : null;
+    }
 
+    /// <summary>
+    /// 磁碟空間可能不夠時的提醒；夠用或查不到剩餘空間時為 null。
+    /// 只是提醒、不擋下匯出：需要的空間是粗估（依畫面內容可能差上好幾倍），估得偏高時不該讓放得下的匯出做不了。
+    /// 真的不夠時 FFmpeg 會失敗，暫存檔會清掉。
+    /// </summary>
+    /// <param name="freeSpace">查詢輸出位置的剩餘空間；預設用 <see cref="FreeSpace"/>，測試時可替換。</param>
+    public static string? SpaceWarning(TimelineModel timeline, string outputPath, Models.OutputSettings settings, Func<string, long?>? freeSpace = null)
+    {
         var estimate = EstimateBytes(timeline, settings);
-        // 網路路徑（\\伺服器\共用資料夾）等查不到剩餘空間的位置就略過這項檢查；能否寫入上面已經確認過。
-        return FreeSpace(fullPath) is { } free && free < estimate
-            ? $"磁碟空間可能不足：粗估需要 {estimate / 1_048_576} MB（實際大小依畫面內容而定），剩餘 {free / 1_048_576} MB。"
-            : null;
+        // 網路路徑（\\伺服器\共用資料夾）等查不到剩餘空間的位置就略過。
+        if ((freeSpace ?? FreeSpace)(Path.GetFullPath(outputPath)) is not { } free || free >= estimate) return null;
+        var reversed = timeline.VideoClips.Any(c => c.Reversed) ? "，其中包含倒放片段匯出期間的暫存檔" : "";
+        return $"磁碟空間可能不足：粗估需要 {estimate / 1_048_576} MB{reversed}，剩餘 {free / 1_048_576} MB。這只是粗估，實際大小依畫面內容而定；空間真的不夠時匯出會中途失敗。";
     }
 
     /// <summary>輸出位置所在磁碟的剩餘空間；查不到（例如 UNC 網路路徑）時回傳 null。</summary>

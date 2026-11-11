@@ -40,7 +40,7 @@ public interface IExportView
 /// <summary>檢查、規劃、執行匯出，並把進度與結果交給 <see cref="IExportView"/>。</summary>
 /// <param name="listEncoders">取得這份 FFmpeg 內含的編碼器；預設實際詢問 FFmpeg（只問一次），測試時可替換。</param>
 public sealed class ExportController(FfmpegTools tools, IExportView view, int doneDisplayMs = ExportController.DefaultDoneDisplayMs,
-    Func<Task<IReadOnlySet<string>>>? listEncoders = null)
+    Func<Task<IReadOnlySet<string>>>? listEncoders = null, Func<string, long?>? freeSpace = null)
 {
     private readonly Func<Task<IReadOnlySet<string>>> _listEncoders = listEncoders ?? new FfmpegEncoders(tools).GetAsync;
 
@@ -64,7 +64,7 @@ public sealed class ExportController(FfmpegTools tools, IExportView view, int do
 
     public async Task RunAsync(TimelineModel timeline, OutputSettings settings, string output)
     {
-        var problem = ExportService.Preflight(timeline, output, settings);
+        var problem = ExportService.Preflight(timeline, output);
         if (problem != null)
         {
             view.ShowProblem(problem);
@@ -82,7 +82,11 @@ public sealed class ExportController(FfmpegTools tools, IExportView view, int do
             view.ShowProblem(error.Message);
             return;
         }
-        if (plan.Warnings.Count > 0 && !view.ConfirmWarnings(plan.Warnings)) return;
+        // 磁碟空間可能不足也只是提醒：估算是粗估，由使用者決定要不要繼續。
+        var warnings = ExportService.SpaceWarning(timeline, output, settings, freeSpace) is { } space
+            ? plan.Warnings.Append(space).ToList()
+            : plan.Warnings;
+        if (warnings.Count > 0 && !view.ConfirmWarnings(warnings)) return;
 
         view.PausePreview();
         var cancel = new CancellationTokenSource();

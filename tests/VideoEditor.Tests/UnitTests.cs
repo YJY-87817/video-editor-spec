@@ -523,6 +523,24 @@ public class DiskEstimateTests
     }
 
     [Fact]
+    public void LowDiskSpaceIsAWarningThatSaysItIsAnEstimate()
+    {
+        var t = new TimelineModel();
+        var clip = t.Append(Media(8_000_000), 0, 60);
+        var estimate = ExportService.EstimateBytes(t, Settings);
+
+        Assert.Null(ExportService.SpaceWarning(t, "o.mp4", Settings, _ => estimate));
+        Assert.Null(ExportService.SpaceWarning(t, "o.mp4", Settings, _ => null)); // 查不到剩餘空間（網路路徑）
+        var warning = ExportService.SpaceWarning(t, "o.mp4", Settings, _ => estimate - 1);
+        Assert.Contains("磁碟空間可能不足", warning);
+        Assert.Contains("粗估", warning);
+        Assert.DoesNotContain("倒放", warning);
+
+        t.SetReversed(clip, true);
+        Assert.Contains("倒放", ExportService.SpaceWarning(t, "o.mp4", Settings, _ => 1));
+    }
+
+    [Fact]
     public void MusicOnlyTimelineUsesTheSourceEstimate()
     {
         var t = new TimelineModel();

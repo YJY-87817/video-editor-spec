@@ -301,11 +301,11 @@ public sealed class TimelineView : FrameworkElement
                 break;
             case DragKind.TrimStart:
                 _timeline.TrimStart(_dragClip!, SnapToPlayhead(time));
-                _snapped = _snapped && IsAtPlayhead(_dragClip!.Start);
+                _snapped = _snapped && IsAtPlayhead(_dragClip!, _dragClip!.Start);
                 break;
             case DragKind.TrimEnd:
                 _timeline.TrimEnd(_dragClip!, SnapToPlayhead(time));
-                _snapped = _snapped && IsAtPlayhead(_dragClip!.End);
+                _snapped = _snapped && IsAtPlayhead(_dragClip!, _dragClip!.End);
                 break;
         }
         InvalidateVisual();
@@ -354,7 +354,7 @@ public sealed class TimelineView : FrameworkElement
         return snappedTime;
     }
 
-    private bool IsAtPlayhead(double time) => Math.Abs(time - _playhead) < 1e-6;
+    private bool IsAtPlayhead(TimelineClip clip, double time) => TimelineSnap.IsAtPlayhead(time, _playhead, clip.Media.FrameRate.Value);
 
     protected override void OnMouseWheel(MouseWheelEventArgs e)
     {
