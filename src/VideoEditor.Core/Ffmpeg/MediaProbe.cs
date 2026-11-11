@@ -85,25 +85,10 @@ public sealed class MediaProbe(FfmpegTools tools)
         };
     }
 
-    /// <summary>
-    /// 由像素格式名稱判斷每個色版的位元數。只看名稱裡表示位元數的位置，
-    /// 不能看到數字就算：nv12、yuv410p 的數字是排列方式與色度取樣，兩者都是 8-bit。
-    /// </summary>
     public static int BitDepthOf(string pixelFormat)
     {
-        // yuv420p10le、gbrp12be、gray16le、yuva444p10le：結尾是「p 或 gray + 位元數 + le／be」。
-        var planar = System.Text.RegularExpressions.Regex.Match(pixelFormat, @"(?:p|gray|ya)(9|10|12|14|16)(?:le|be)$");
-        if (planar.Success) return int.Parse(planar.Groups[1].Value, CultureInfo.InvariantCulture);
-        // p010le、p212be、p416le：硬體解碼常見的半平面格式，後兩位是位元數。
-        var semiPlanar = System.Text.RegularExpressions.Regex.Match(pixelFormat, @"^p[024](10|12|16)(?:le|be)?$");
-        if (semiPlanar.Success) return int.Parse(semiPlanar.Groups[1].Value, CultureInfo.InvariantCulture);
-        // y210le、y212le（封裝 4:2:2）與 nv20le（10-bit 版的 nv16）。
-        var packed = System.Text.RegularExpressions.Regex.Match(pixelFormat, @"^y2(10|12)(?:le|be)?$");
-        if (packed.Success) return int.Parse(packed.Groups[1].Value, CultureInfo.InvariantCulture);
-        if (pixelFormat.StartsWith("nv20", StringComparison.Ordinal)) return 10;
-        if (pixelFormat.StartsWith("x2rgb10", StringComparison.Ordinal) || pixelFormat.StartsWith("x2bgr10", StringComparison.Ordinal)) return 10;
-        // rgb48、bgr48、rgba64、bgra64：每個色版 16-bit。
-        if (System.Text.RegularExpressions.Regex.IsMatch(pixelFormat, @"^(?:rgb48|bgr48|rgba64|bgra64)")) return 16;
+        foreach (var depth in new[] { 16, 14, 12, 10, 9 })
+            if (pixelFormat.Contains(depth.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)) return depth;
         return 8;
     }
 

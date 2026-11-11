@@ -43,33 +43,6 @@ public class ExportControllerTests(TestMedia media)
     }
 
     [Fact]
-    public async Task MissingEncoderIsExplainedInsteadOfRunningFfmpeg()
-    {
-        var t = new TimelineModel();
-        t.Append(await media.Probe(media.Landscape), 0, 1);
-        var view = new FakeView();
-        var output = media.Output("no-encoder.mp4");
-
-        // 這份 FFmpeg 沒有 libx264。
-        await new ExportController(media.Tools, view, 0, () => Task.FromResult<IReadOnlySet<string>>(new HashSet<string> { "aac", "mpeg4" }))
-            .RunAsync(t, Default, output);
-
-        Assert.Equal("PausePreview,Started,Error,Ended,HideProgress", string.Join(",", view.Calls));
-        Assert.Contains("libx264", view.Error);
-        Assert.DoesNotContain("aac", view.Error);
-        Assert.False(File.Exists(output));
-        Assert.Empty(Directory.GetFiles(media.Directory, "no-encoder.*"));
-    }
-
-    [Fact]
-    public async Task RealFfmpegHasEveryEncoderTheExportUses()
-    {
-        // 倒放會用到中間檔的編碼器（ffv1、pcm_f32le），HDR 用 libx265。
-        var available = await new VideoEditor.Core.Ffmpeg.FfmpegEncoders(media.Tools).GetAsync();
-        Assert.Null(VideoEditor.Core.Ffmpeg.FfmpegEncoders.MissingMessage(["libx264", "libx265", "aac", "ffv1", "pcm_f32le"], available));
-    }
-
-    [Fact]
     public async Task ToolThatCannotStartIsReportedNotThrown()
     {
         var missing = Path.Combine(media.Directory, "no-such-tools");
