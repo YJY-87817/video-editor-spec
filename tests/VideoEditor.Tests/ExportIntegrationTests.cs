@@ -111,6 +111,48 @@ public class ExportIntegrationTests(TestMedia media)
     }
 
     [Fact]
+    public async Task UnalignedGapsDoNotDelayLaterClips()
+    {
+        var source = await media.Probe(media.Landscape);
+        var t = new TimelineModel();
+        t.Append(source, 0, 1);
+        var b = t.Append(source, 1, 2);
+        t.Move(b, 1.515);
+        var c = t.Append(source, 2, 3);
+        t.Move(c, 3.03);
+        var result = await media.Export(t, Default, "unaligned-gaps.mp4");
+
+        Assert.Equal(121, await media.CountFrames(result.Path));
+        // 每段空白之後，聲音在時間軸位置的半格以內就開始；空白各自進位的話會晚 18 ms、34 ms。
+        Assert.True(await media.MeanVolume(result.Path, b.Start + 0.005, 0.01) > -40);
+        Assert.True(await media.MeanVolume(result.Path, c.Start + 0.01, 0.01) > -40);
+        // 空白本身仍是靜音。
+        Assert.True(await media.MeanVolume(result.Path, 1.05, 0.4) < -80);
+    }
+
+    [Fact]
+    public async Task WholeMediaWithLongerAudioJoinsOnTheFrameGrid()
+    {
+        // 畫面 2 秒、聲音 2.05 秒：沒標入出點整段加入，後面再接一段。
+        var odd = await media.Probe(media.MakeClip("longer-audio.mp4", "testsrc2=s=1920x1080:r=30:d=2", "sine=f=440:d=2.05", "-pix_fmt", "yuv420p"));
+        var t = new TimelineModel();
+        var editor = new TimelineEditor(t);
+        Assert.NotNull(editor.Add(odd, new InOutPoints()).Clip);
+        t.Append(await media.Probe(media.Landscape), 0, 1);
+        var result = await media.Export(t, Default, "longer-audio-joined.mp4");
+
+        var output = await ProcessRunner.RunForBytesAsync(media.Tools.Ffprobe,
+            ["-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts_time", "-of", "csv=p=0", result.Path]);
+        var times = System.Text.Encoding.ASCII.GetString(output).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(line => double.Parse(line.TrimEnd(','), System.Globalization.CultureInfo.InvariantCulture)).Order().ToList();
+        var steps = times.Zip(times.Skip(1), (a, b) => b - a).ToList();
+        Assert.Equal(90, times.Count);
+        // 沒有時間戳記重複的影格；除了接點那一格多停一格，其餘間隔都是 1/30 秒。
+        Assert.DoesNotContain(steps, step => step < 0.03);
+        Assert.True(steps.Count(step => Math.Abs(step - 1 / 30.0) > 0.001) <= 1);
+    }
+
+    [Fact]
     public async Task MixedSourcesAreConformedToFirstClip()
     {
         var t = new TimelineModel();
