@@ -151,7 +151,7 @@ public sealed class Timeline
 
     /// <summary>
     /// 拖曳左緣：片段右緣固定，受來源範圍、左鄰與最短長度限制。
-    /// 倒放時左緣是來源的結尾，所以改的是 SourceOut。
+    /// 倒放時左緣是來源的結尾，所以改的是 SourceOut。改動的入出點會對齊來源影格（見 AlignToFrame）。
     /// </summary>
     public void TrimStart(TimelineClip clip, double targetStart)
     {
@@ -159,27 +159,57 @@ public sealed class Timeline
             .Select(c => c.End).DefaultIfEmpty(0).Max();
         var available = clip.Reversed ? clip.Media.Duration - clip.SourceOut : clip.SourceIn;
         var earliest = Math.Max(previousEnd, clip.Start - available);
-        var latest = clip.End - MinClipDuration;
-        var start = Math.Clamp(targetStart, earliest, Math.Max(earliest, latest));
-        if (clip.Reversed) clip.SourceOut -= start - clip.Start;
-        else clip.SourceIn += start - clip.Start;
+        var latest = Math.Max(earliest, clip.End - MinClipDuration);
+        var start = Math.Clamp(targetStart, earliest, latest);
+        // 左緣往右移 d 秒：正放時 SourceIn 加 d，倒放時 SourceOut 減 d。
+        var sign = clip.Reversed ? -1 : 1;
+        var edge = clip.Reversed ? clip.SourceOut : clip.SourceIn;
+        double Source(double time) => edge + sign * (time - clip.Start);
+        var source = AlignToFrame(Source(start), Math.Min(Source(earliest), Source(latest)),
+            Math.Max(Source(earliest), Source(latest)), clip.Media);
+        start = clip.Start + sign * (source - edge);
+        if (clip.Reversed) clip.SourceOut = source;
+        else clip.SourceIn = source;
         clip.Start = start;
     }
 
     /// <summary>
     /// 拖曳右緣：片段左緣固定，受來源範圍、右鄰與最短長度限制。
-    /// 倒放時右緣是來源的開頭，所以改的是 SourceIn。
+    /// 倒放時右緣是來源的開頭，所以改的是 SourceIn。改動的入出點會對齊來源影格（見 AlignToFrame）。
     /// </summary>
     public void TrimEnd(TimelineClip clip, double targetEnd)
     {
         var nextStart = ListOf(clip.Track).Where(c => c != clip && c.Start >= clip.End - Epsilon)
             .Select(c => c.Start).DefaultIfEmpty(double.MaxValue).Min();
         var available = clip.Reversed ? clip.SourceOut : clip.Media.Duration - clip.SourceIn;
-        var latest = Math.Min(nextStart, clip.Start + available);
         var earliest = clip.Start + MinClipDuration;
-        var end = Math.Clamp(targetEnd, earliest, Math.Max(earliest, latest));
-        if (clip.Reversed) clip.SourceIn = clip.SourceOut - (end - clip.Start);
-        else clip.SourceOut = clip.SourceIn + (end - clip.Start);
+        var latest = Math.Max(earliest, Math.Min(nextStart, clip.Start + available));
+        var end = Math.Clamp(targetEnd, earliest, latest);
+        // 右緣位置對應的來源時間：正放是出點，倒放是入點。
+        var sign = clip.Reversed ? -1 : 1;
+        var edge = clip.Reversed ? clip.SourceOut : clip.SourceIn;
+        double Source(double time) => edge + sign * (time - clip.Start);
+        var source = AlignToFrame(Source(end), Math.Min(Source(earliest), Source(latest)),
+            Math.Max(Source(earliest), Source(latest)), clip.Media);
+        if (clip.Reversed) clip.SourceIn = source;
+        else clip.SourceOut = source;
+    }
+
+    /// <summary>
+    /// 把拖曳修剪的切點對齊來源影格：與 InOutPoints.Snap 相同，取畫面上顯示的那一格（四捨五入）。
+    /// 畫面長度只能是整數格，切點沒對齊時聲音會比畫面短，接合時以靜音補齊、後面的片段跟著延後。
+    /// 四捨五入後超出允許範圍（會蓋到相鄰片段、短於最短長度或超出素材）時，改取範圍內最近的一格；
+    /// 範圍內沒有任何一格，或素材沒有影格率（純音訊）時，維持原本的時間。
+    /// </summary>
+    private static double AlignToFrame(double source, double min, double max, MediaInfo media)
+    {
+        var fps = media.FrameRate.Value;
+        if (fps <= 0) return source;
+        double frame = Ffmpeg.FrameExtractor.FrameIndex(source, fps);
+        if (frame / fps < min - Epsilon) frame = Math.Ceiling(min * fps - Epsilon);
+        if (frame / fps > max + Epsilon) frame = Math.Floor(max * fps + Epsilon);
+        var aligned = frame / fps;
+        return aligned >= min - Epsilon && aligned <= max + Epsilon ? aligned : source;
     }
 
     /// <summary>與相鄰片段交換順序；兩段合占的範圍與中間空白不變，不影響其他片段。</summary>

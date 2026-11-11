@@ -73,6 +73,24 @@ public sealed class TestMedia : IDisposable
         return match.Groups[1].Value == "-inf" ? double.NegativeInfinity : double.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
     }
 
+    /// <summary>產生單色短片，pixelFormat 用 yuvj420p 即為全範圍（full range）來源。</summary>
+    public string MakeSolid(string name, string color, string pixelFormat, double duration = 1) =>
+        Make(name, $"color={color}:s=640x360:r=30:d={duration.ToString(System.Globalization.CultureInfo.InvariantCulture)}", null,
+            "-vf", $"format={pixelFormat}", "-pix_fmt", pixelFormat);
+
+    /// <summary>指定時間那一格的 Y 最小與最大值，讀的是檔案裡的原始像素值，不做色彩範圍轉換。</summary>
+    public async Task<(int Min, int Max)> LumaRange(string path, double time)
+    {
+        var args = new[] { "-hide_banner", "-ss", time.ToString(System.Globalization.CultureInfo.InvariantCulture), "-i", path, "-vf", "signalstats,metadata=print", "-frames:v", "1", "-f", "null", "-" };
+        var info = new System.Diagnostics.ProcessStartInfo(Tools.Ffmpeg) { RedirectStandardError = true, UseShellExecute = false };
+        foreach (var arg in args) info.ArgumentList.Add(arg);
+        using var process = System.Diagnostics.Process.Start(info)!;
+        var stderr = await process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        int Value(string key) => int.Parse(System.Text.RegularExpressions.Regex.Match(stderr, $@"lavfi\.signalstats\.{key}=(\d+)").Groups[1].Value);
+        return (Value("YMIN"), Value("YMAX"));
+    }
+
     /// <summary>計算輸出影片的影格數。</summary>
     public async Task<int> CountFrames(string path)
     {
