@@ -677,6 +677,15 @@ public sealed class PreviewEngine : IDisposable
                     {
                         continue; // 被要顯示的畫面插隊，這一批之後需要時再解
                     }
+                    catch (Exception e) when (e is FfmpegException or System.ComponentModel.Win32Exception)
+                    {
+                        // 這一格解不出來：回報後繼續處理期間排進來的請求。
+                        // 在這裡結束迴圈的話，排進來的請求會留在 _pendingFrame 沒人處理，畫面要等下次移動播放頭才更新。
+                        Error?.Invoke($"無法解出預覽影格：{e.Message}");
+                        // 記下背景預先解碼失敗的那一格，否則逐格移動時會一再重試同一批。
+                        if (!request.Show) _missingFrames.Add(key);
+                        continue;
+                    }
                     finally
                     {
                         _prefetchCancel = null;
@@ -692,10 +701,6 @@ public sealed class PreviewEngine : IDisposable
                 _shownRequest = request.Request;
                 ShowFrame(frame, request.Media, request.Transform);
             }
-        }
-        catch (Exception e) when (e is FfmpegException or System.ComponentModel.Win32Exception)
-        {
-            Error?.Invoke($"無法解出預覽影格：{e.Message}");
         }
         finally
         {
