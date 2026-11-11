@@ -576,6 +576,34 @@ public class ExportPlannerTests
     }
 
     [Fact]
+    public void GapLengthsFollowTheFrameGridWithoutAccumulatingError()
+    {
+        // 兩段 0.515 秒（15.45 格）的空白。每段各自進位成 16 格的話，後面的片段會一段比一段晚。
+        var t = new TimelineModel();
+        t.Append(Media(), 0, 1);
+        t.Move(t.Append(Media(), 1, 2), 1.515);
+        t.Move(t.Append(Media(), 2, 3), 3.03);
+        var plan = ExportPlanner.Build(t, new OutputSettings(AspectRatio.Original, FitMode.Fill), "o.mp4");
+        var graph = plan.Arguments[plan.Arguments.ToList().IndexOf("-filter_complex") + 1];
+
+        // 第二段從第 45 格（1.515 秒最接近的格）開始，第三段從第 91 格（3.03 秒）開始：空白是 15 格與 16 格。
+        var gaps = System.Text.RegularExpressions.Regex.Matches(graph, @"trim=end_frame=(\d+)").Select(m => m.Groups[1].Value).ToList();
+        Assert.Equal(["15", "16"], gaps);
+        Assert.Contains("anullsrc=r=48000:cl=stereo:d=0.5[", graph);
+        Assert.Contains("anullsrc=r=48000:cl=stereo:d=0.533333[", graph);
+    }
+
+    [Fact]
+    public void GapShorterThanHalfAFrameIsDropped()
+    {
+        var t = new TimelineModel();
+        t.Append(Media(), 0, 1);
+        t.Move(t.Append(Media(), 1, 2), 1.01); // 0.3 格
+        var plan = ExportPlanner.Build(t, new OutputSettings(AspectRatio.Original, FitMode.Fill), "o.mp4");
+        Assert.DoesNotContain("color=c=black", plan.Arguments[plan.Arguments.ToList().IndexOf("-filter_complex") + 1]);
+    }
+
+    [Fact]
     public void GapsBecomeBlackAndSilence()
     {
         var t = new TimelineModel();
@@ -583,8 +611,9 @@ public class ExportPlannerTests
         var b = t.Append(Media(), 0, 1);
         t.Move(b, 3);
         var graph = Graph(ExportPlanner.Build(t, new OutputSettings(AspectRatio.R16x9, FitMode.Pad), "o.mp4"));
-        Assert.Contains("color=c=black:s=1920x1080:r=30/1:d=2", graph);
-        Assert.Contains("anullsrc=r=48000:cl=stereo:d=2", graph);
+        // 2 秒 = 60 格：格數由 trim 決定，d 只是多給半格的上限。
+        Assert.Contains("color=c=black:s=1920x1080:r=30/1:d=2.016667,trim=end_frame=60,", graph);
+        Assert.Contains("anullsrc=r=48000:cl=stereo:d=2[", graph);
         Assert.Contains("concat=n=3:v=1:a=1", graph);
     }
 

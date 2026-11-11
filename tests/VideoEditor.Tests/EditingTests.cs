@@ -80,6 +80,29 @@ public class InOutPointsTests
         Assert.Equal(expected, InOutPoints.Snap(position, Media()), 9);
 
     [Fact]
+    public void DefaultOutPointIsTheLastWholeFrameOfTheMedia()
+    {
+        // 聲音比畫面長的素材：長度 2.05 秒是 61.5 格，沒標出點時取 61 格，片段長度才是整數格。
+        var media = Media(duration: 2.05);
+        Assert.Equal(61 / 30.0, new InOutPoints().OutPoint(media), 9);
+        // 長度本來就是整數格的不變。
+        Assert.Equal(10, new InOutPoints().OutPoint(Media()), 9);
+        // 29.97 fps：2 秒是 59.94 格，取 59 格。
+        var ntsc = Media(duration: 2) with { FrameRate = new Rational(30000, 1001) };
+        Assert.Equal(59 * 1001 / 30000.0, new InOutPoints().OutPoint(ntsc), 9);
+        // 純音訊沒有影格，維持素材長度。
+        Assert.Equal(2.05, new InOutPoints().OutPoint(new MediaInfo { Path = "m.m4a", Duration = 2.05, HasAudio = true }));
+    }
+
+    [Fact]
+    public void MarkAtTheEndStaysOnAWholeFrame()
+    {
+        // 在素材結尾按 O：不超過最後一個整數格。
+        Assert.Equal(61 / 30.0, InOutPoints.Snap(2.05, Media(duration: 2.05)), 9);
+        Assert.Equal(61 / 30.0, InOutPoints.Snap(99, Media(duration: 2.05)), 9);
+    }
+
+    [Fact]
     public void WithoutFrameRateTheExactPositionIsKept() =>
         Assert.Equal(1.234, InOutPoints.Snap(1.234, Media() with { FrameRate = new Rational(0, 1) }));
 }

@@ -28,6 +28,7 @@ public static class ExportPlanner
     private const long MinAudioBitRate = 192_000;
     private const long MaxAudioBitRate = 512_000;
     private const int MaxCommandLength = 30000;
+    private const double DefaultFrameRate = 30;
 
     /// <param name="reverseBufferBytes">倒放時每一小段的記憶體上限，測試時可調小以驗證分段。</param>
     public static ExportPlan Build(TimelineModel timeline, OutputSettings settings, string outputPath,
@@ -58,20 +59,33 @@ public static class ExportPlanner
         var segments = 0;
         var input = 0;
 
-        void AddGap(double length)
+        // 空白以輸出的影格為單位。黑畫面只能是整數格，空白長度若照時間軸的秒數給，
+        // 每段都會被進位成整數格，後面的片段一段比一段晚，配樂（照絕對時間放）也跟著與畫面錯開。
+        // 所以記下已經輸出了幾格，每段空白補到「下一個片段的位置最接近的那一格」，誤差不累積，最多半格。
+        var gridRate = reference.FrameRate.Value > 0 ? reference.FrameRate.Value : DefaultFrameRate;
+        long GridFrame(double seconds) => (long)Math.Round(seconds * gridRate);
+        long framesDone = 0;
+
+        void AddGap(long frames)
         {
             var label = segments++;
-            graph.Add($"color=c=black:s={size.Width}x{size.Height}:r={reference.FrameRate}:d={Num(length)},{outputFormat},setsar=1[v{label}]");
+            var length = frames / gridRate;
+            // d 多給半格、再以 trim 取準確的格數：只靠 d 的話，秒數的捨入可能讓它多出或少掉一格。
+            graph.Add($"color=c=black:s={size.Width}x{size.Height}:r={reference.FrameRate}:d={Num(length + 0.5 / gridRate)},trim=end_frame={frames},{outputFormat},setsar=1[v{label}]");
             concatInputs.Append($"[v{label}]");
             if (!hasAudio) return;
             graph.Add($"anullsrc=r={AudioSampleRate}:cl=stereo:d={Num(length)}[a{label}]");
             concatInputs.Append($"[a{label}]");
         }
 
-        var cursor = 0.0;
         foreach (var clip in clips)
         {
-            if (clip.Start - cursor > 0.001) AddGap(clip.Start - cursor);
+            var gap = GridFrame(clip.Start) - framesDone;
+            if (gap >= 1)
+            {
+                AddGap(gap);
+                framesDone += gap;
+            }
 
             var label = segments++;
             var withAudio = hasAudio && clip.Media.HasAudio;
@@ -106,11 +120,11 @@ public static class ExportPlanner
                 concatInputs.Append($"[a{label}]");
             }
 
-            cursor = clip.End;
+            framesDone += Math.Max(1, GridFrame(clip.Duration));
         }
 
         // 配樂比影片長時，以黑畫面補到時間軸結束。
-        if (duration - cursor > 0.001) AddGap(duration - cursor);
+        if (GridFrame(duration) - framesDone >= 1) AddGap(GridFrame(duration) - framesDone);
 
         var hasMusic = timeline.MusicClips.Count > 0;
         var concatAudio = hasMusic ? "acat" : "aout";
