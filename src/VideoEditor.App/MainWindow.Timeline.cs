@@ -29,6 +29,8 @@ public partial class MainWindow
         UpdateTimelineScrollBar();
         UpdateOutputInfo();
         UpdatePreviewLayout();
+        // 先在背景產生倒放預覽檔，按播放時多半已經好了；修剪後舊範圍的預覽檔也在這裡停掉。
+        _engine?.SyncReverse(_timeline);
         if (IsTimelinePreview) _engine?.Refresh();
     }
 
@@ -106,8 +108,6 @@ public partial class MainWindow
         if (_updatingReverse || Timeline.SelectedClip is not { Track: TrackKind.Video } clip) return;
         _engine?.Pause();
         _timeline.SetReversed(clip, ReverseCheck.IsChecked == true);
-        // 先在背景產生倒放預覽檔，按播放時多半已經好了。
-        _engine?.PrepareReverse(clip);
         OnClipsChanged();
     }
 
