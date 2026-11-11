@@ -38,8 +38,12 @@ public interface IExportView
 }
 
 /// <summary>檢查、規劃、執行匯出，並把進度與結果交給 <see cref="IExportView"/>。</summary>
-public sealed class ExportController(FfmpegTools tools, IExportView view, int doneDisplayMs = ExportController.DefaultDoneDisplayMs)
+/// <param name="listEncoders">取得這份 FFmpeg 內含的編碼器；預設實際詢問 FFmpeg（只問一次），測試時可替換。</param>
+public sealed class ExportController(FfmpegTools tools, IExportView view, int doneDisplayMs = ExportController.DefaultDoneDisplayMs,
+    Func<Task<IReadOnlySet<string>>>? listEncoders = null)
 {
+    private readonly Func<Task<IReadOnlySet<string>>> _listEncoders = listEncoders ?? new FfmpegEncoders(tools).GetAsync;
+
     public const int DefaultDoneDisplayMs = 4000;
 
     private CancellationTokenSource? _cancel;
@@ -60,7 +64,7 @@ public sealed class ExportController(FfmpegTools tools, IExportView view, int do
 
     public async Task RunAsync(TimelineModel timeline, OutputSettings settings, string output)
     {
-        var problem = ExportService.Preflight(timeline, output);
+        var problem = ExportService.Preflight(timeline, output, settings);
         if (problem != null)
         {
             view.ShowProblem(problem);
@@ -104,10 +108,20 @@ public sealed class ExportController(FfmpegTools tools, IExportView view, int do
 
         try
         {
-            await new ExportService(tools).ExportAsync(plan, output, progress, cancel.Token);
-            finished = true;
-            succeeded = true;
-            view.ShowSucceeded(output, FormatSpan(clock.Elapsed));
+            // 先確認 FFmpeg 有這次要用的編碼器：缺少時直接說明，不要等 FFmpeg 跑到一半才丟出它的原始錯誤。
+            // 放在開始之後才問，RunAsync 一呼叫就進入「匯出中」，這段時間內關閉視窗或再按一次匯出才會被正確處理。
+            if (await MissingEncodersAsync(plan) is { } missing)
+            {
+                view.ShowStatus("匯出失敗。");
+                view.ShowError(missing);
+            }
+            else
+            {
+                await new ExportService(tools).ExportAsync(plan, output, progress, cancel.Token);
+                finished = true;
+                succeeded = true;
+                view.ShowSucceeded(output, FormatSpan(clock.Elapsed));
+            }
         }
         catch (OperationCanceledException)
         {
@@ -142,6 +156,23 @@ public sealed class ExportController(FfmpegTools tools, IExportView view, int do
         if (succeeded) await Task.Delay(doneDisplayMs);
         if (run != _run) return;
         view.HideProgress();
+    }
+
+    /// <summary>
+    /// 確認 FFmpeg 有這次要用的編碼器，缺少時回傳說明。
+    /// 連編碼器清單都問不到（例如 ffmpeg 無法啟動）時不在這裡擋：照常開始匯出，由匯出的錯誤處理說明原因。
+    /// </summary>
+    private async Task<string?> MissingEncodersAsync(ExportPlan plan)
+    {
+        try
+        {
+            var commands = plan.ReverseJobs.SelectMany(job => job.Steps).Select(step => step.Arguments).Append(plan.Arguments);
+            return FfmpegEncoders.MissingMessage(FfmpegEncoders.Required(commands), await _listEncoders());
+        }
+        catch (Exception e) when (e is FfmpegException or System.ComponentModel.Win32Exception or IOException)
+        {
+            return null;
+        }
     }
 
     public static string FormatSpan(TimeSpan span) =>

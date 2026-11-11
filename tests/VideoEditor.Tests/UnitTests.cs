@@ -393,6 +393,144 @@ public class ProbeParseTests
         Assert.Throws<InvalidDataException>(() => MediaProbe.Parse("""{"streams":[],"format":{}}""", "x"));
 }
 
+public class BitDepthTests
+{
+    [Theory]
+    [InlineData("yuv420p", 8)]
+    [InlineData("yuvj420p", 8)]
+    [InlineData("nv12", 8)]      // 12 是每像素的位元數，不是位元深度
+    [InlineData("nv16", 8)]
+    [InlineData("nv21", 8)]
+    [InlineData("yuv410p", 8)]   // 4:1:0 色度取樣
+    [InlineData("yuv411p", 8)]
+    [InlineData("yuv440p", 8)]
+    [InlineData("rgb24", 8)]
+    [InlineData("gray", 8)]
+    [InlineData("", 8)]
+    [InlineData("yuv420p9le", 9)]
+    [InlineData("yuv420p10le", 10)]
+    [InlineData("yuv422p10be", 10)]
+    [InlineData("yuv440p10le", 10)]
+    [InlineData("yuva444p10le", 10)]
+    [InlineData("gbrp10le", 10)]
+    [InlineData("p010le", 10)]
+    [InlineData("p210le", 10)]
+    [InlineData("nv20le", 10)]
+    [InlineData("y210le", 10)]
+    [InlineData("x2rgb10le", 10)]
+    [InlineData("yuv420p12le", 12)]
+    [InlineData("yuv444p12le", 12)]
+    [InlineData("p012le", 12)]
+    [InlineData("gray12le", 12)]
+    [InlineData("yuv420p14le", 14)]
+    [InlineData("yuv420p16le", 16)]
+    [InlineData("p016le", 16)]
+    [InlineData("gray16be", 16)]
+    [InlineData("rgb48le", 16)]
+    public void DepthComesFromTheDepthPartOfTheName(string pixelFormat, int expected) =>
+        Assert.Equal(expected, MediaProbe.BitDepthOf(pixelFormat));
+
+    [Fact]
+    public void EightBitSemiPlanarSourceIsNotMistakenForHighBitDepth()
+    {
+        // 硬體解碼常見的 nv12 以前被當成 12-bit，因而選了 H.265。
+        var media = new MediaInfo { Path = "a.mp4", PixelFormat = "nv12", BitDepth = MediaProbe.BitDepthOf("nv12") };
+        Assert.Equal(("libx264", "yuv420p"), ExportPlanner.ChooseVideoFormat(media));
+    }
+}
+
+public class FfmpegEncodersTests
+{
+    private const string Listing = """
+        Encoders:
+         V..... = Video
+         A..... = Audio
+         ------
+         V....D ffv1                 FFmpeg video codec #1
+         V....D libx264              libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10 (codec h264)
+         A....D aac                  AAC (Advanced Audio Coding)
+         A....D pcm_f32le            PCM 32-bit floating point little-endian
+        """;
+
+    [Fact]
+    public void ParseReadsNamesAfterTheSeparator()
+    {
+        var names = FfmpegEncoders.Parse(Listing.ReplaceLineEndings("\r\n"));
+        Assert.Equal(["aac", "ffv1", "libx264", "pcm_f32le"], names.Order());
+    }
+
+    [Fact]
+    public void RequiredListsEveryCodecTheCommandsUse()
+    {
+        var required = FfmpegEncoders.Required([
+            ["-i", "a.mp4", "-c:v", "ffv1", "-c:a", "pcm_f32le", "x.nut"],
+            ["-i", "x", "-c:v", "libx265", "-c:a", "aac", "o.mp4"],
+            ["-i", "y", "-c:v", "libx265", "o2.mp4"],
+        ]);
+        Assert.Equal(["ffv1", "pcm_f32le", "libx265", "aac"], required);
+    }
+
+    [Fact]
+    public void MissingEncoderIsExplained()
+    {
+        var available = FfmpegEncoders.Parse(Listing);
+        Assert.Null(FfmpegEncoders.MissingMessage(["libx264", "aac"], available));
+        var message = FfmpegEncoders.MissingMessage(["libx265", "aac"], available);
+        Assert.Contains("libx265", message);
+        Assert.DoesNotContain("aac。", message);
+    }
+}
+
+public class DiskEstimateTests
+{
+    private static MediaInfo Media(long bitRate, string pixelFormat = "yuv420p", int bitDepth = 8) => new()
+    {
+        Path = "a.mp4", Duration = 60, HasVideo = true, HasAudio = true, DisplayWidth = 1920, DisplayHeight = 1080,
+        FrameRate = new Rational(30, 1), PixelFormat = pixelFormat, BitDepth = bitDepth, BitRate = bitRate, AudioBitRate = 128000,
+    };
+
+    private static readonly OutputSettings Settings = new(AspectRatio.Original, FitMode.Fill);
+
+    [Fact]
+    public void HighlyCompressedSourceIsEstimatedFromTheOutputResolution()
+    {
+        // 2 Mbps 的 1080p HEVC：只看來源位元率是 22 MB，CRF 18 重新編碼實際會大好幾倍。
+        var t = new TimelineModel();
+        t.Append(Media(2_000_000), 0, 60);
+        var fromSource = ExportService.EstimateBytes(t);
+        var estimate = ExportService.EstimateBytes(t, Settings);
+        Assert.Equal(22_500_000, fromSource);
+        // 1920×1080×30 fps×0.2 bpp ≈ 12.4 Mbps，加上聲音。
+        Assert.InRange(estimate, 90_000_000, 100_000_000);
+    }
+
+    [Fact]
+    public void HighBitRateSourceKeepsTheSourceBasedEstimate()
+    {
+        var t = new TimelineModel();
+        t.Append(Media(50_000_000), 0, 60);
+        Assert.Equal(ExportService.EstimateBytes(t), ExportService.EstimateBytes(t, Settings));
+    }
+
+    [Fact]
+    public void EstimateFollowsTheOutputSizeNotTheSourceSize()
+    {
+        var t = new TimelineModel();
+        t.Append(Media(2_000_000), 0, 60);
+        // 16:9 的來源輸出成 1:1 是 1920×1920，像素比原尺寸多，估算也跟著變大。
+        var square = ExportService.EstimateBytes(t, new OutputSettings(AspectRatio.R1x1, FitMode.Fill));
+        Assert.True(square > ExportService.EstimateBytes(t, Settings) * 1.5);
+    }
+
+    [Fact]
+    public void MusicOnlyTimelineUsesTheSourceEstimate()
+    {
+        var t = new TimelineModel();
+        t.Append(new MediaInfo { Path = "m.m4a", Duration = 10, HasAudio = true, BitRate = 128000 }, 0, 10);
+        Assert.Equal(ExportService.EstimateBytes(t), ExportService.EstimateBytes(t, Settings));
+    }
+}
+
 public class ExportPlannerTests
 {
     private static MediaInfo Media(string pixelFormat = "yuv420p", int bitDepth = 8, string? transfer = null, long audioBitRate = 128000) => new()
