@@ -1,4 +1,4 @@
-﻿using VideoEditor.Core.Export;
+using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
 using VideoEditor.Core.Timeline;

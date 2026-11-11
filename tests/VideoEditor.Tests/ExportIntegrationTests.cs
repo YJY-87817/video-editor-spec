@@ -1,4 +1,4 @@
-﻿using VideoEditor.Core.Export;
+using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
 using VideoEditor.Core.Timeline;
@@ -193,6 +193,35 @@ public class ExportIntegrationTests(TestMedia media)
         var result = await media.Export(t, new OutputSettings(AspectRatio.Original, FitMode.Pad), "original-mixed.mp4");
         Assert.Equal((1080, 1920), (result.DisplayWidth, result.DisplayHeight));
         Assert.Equal(30, await media.CountFrames(result.Path));
+    }
+
+    [Theory]
+    [InlineData("white", 255)]
+    [InlineData("black", 0)]
+    public async Task FullRangeSourceKeepsItsPixelValues(string color, int expected)
+    {
+        var source = await media.Probe(media.MakeSolid($"full-{color}.mp4", color, "yuvj420p"));
+        Assert.Equal("pc", source.ColorRange);
+        var t = new TimelineModel();
+        t.Append(source, 0, 0.5);
+        var result = await media.Export(t, Default, $"full-{color}-out.mp4");
+
+        // 像素值與標記一致：仍是全範圍，純白 255、純黑 0，不是被壓成 235／16。
+        Assert.Equal("pc", result.ColorRange);
+        Assert.Equal((expected, expected), await media.LumaRange(result.Path, 0.1));
+    }
+
+    [Fact]
+    public async Task LimitedRangeClipIsConvertedWhenTheOutputIsFullRange()
+    {
+        var t = new TimelineModel();
+        t.Append(await media.Probe(media.MakeSolid("mixed-full.mp4", "black", "yuvj420p")), 0, 0.5);
+        t.Append(await media.Probe(media.MakeSolid("mixed-limited.mp4", "white", "yuv420p")), 0, 0.5);
+        var result = await media.Export(t, Default, "mixed-range-out.mp4");
+
+        // 輸出以第一段的全範圍為準；第二段的白色（limited 235）要轉成 255，否則會變灰。
+        Assert.Equal("pc", result.ColorRange);
+        Assert.Equal((255, 255), await media.LumaRange(result.Path, 0.75));
     }
 
     [Fact]

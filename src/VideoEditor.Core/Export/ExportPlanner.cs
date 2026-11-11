@@ -171,6 +171,9 @@ public static class ExportPlanner
     /// <summary>
     /// 統一像素格式並標記色彩資訊。新版 FFmpeg 的編碼器色彩標記取自影格，
     /// 所以要用 setparams 寫到影格上；它只改標記，不轉換像素值。
+    /// 因此色彩範圍要先用 scale 明確轉成輸出的範圍，像素值才會與標記一致：
+    /// 只寫 format=yuv420p 時，全範圍（yuvj420p）來源會被轉成 limited，再被標回 full，白色變灰、黑色變淺。
+    /// 輸入範圍取自每一格的標記，所以 limited 的片段接在 full 的輸出裡也會正確轉換。
     /// </summary>
     private static string OutputFormatFilter(MediaInfo source, string pixelFormat)
     {
@@ -178,8 +181,14 @@ public static class ExportPlanner
         if (source.ColorPrimaries is { } primaries) tags.Add($"color_primaries={primaries}");
         if (source.ColorTransfer is { } transfer) tags.Add($"color_trc={transfer}");
         if (source.ColorSpace is { } space) tags.Add($"colorspace={space}");
-        if (source.ColorRange is { } range) tags.Add($"range={range}");
-        return tags.Count == 0 ? $"format={pixelFormat}" : $"format={pixelFormat},setparams={string.Join(':', tags)}";
+        var rangeConversion = "";
+        if (source.ColorRange is "pc" or "tv")
+        {
+            rangeConversion = $"scale=out_range={source.ColorRange},";
+            tags.Add($"range={source.ColorRange}");
+        }
+        var format = $"{rangeConversion}format={pixelFormat}";
+        return tags.Count == 0 ? format : $"{format},setparams={string.Join(':', tags)}";
     }
 
     private static List<string> CollectWarnings(TimelineModel timeline, MediaInfo reference, Size2 referenceSize, FitMode mode)
