@@ -1,4 +1,4 @@
-using VideoEditor.Core.Export;
+﻿using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
 using VideoEditor.Core.Timeline;
@@ -91,6 +91,23 @@ public class ExportIntegrationTests(TestMedia media)
         t.Append(source, 1, 1.5);
         var result = await media.Export(t, Default, "multi.mp4");
         Assert.Equal(75, await media.CountFrames(result.Path));
+    }
+
+    [Fact]
+    public async Task TrimmedJoinHasNoSilenceAndKeepsTimelineLength()
+    {
+        var source = await media.Probe(media.Landscape);
+        var t = new TimelineModel();
+        var a = t.Append(source, 0, 2);
+        var b = t.Append(source, 2, 3);
+        t.TrimEnd(a, 1.015); // 拖曳邊緣：30.45 格
+        t.Move(b, a.End);
+        var result = await media.Export(t, Default, "trimmed-join.mp4");
+
+        // 畫面格數與時間軸長度一致，後面的片段沒有被延後。
+        Assert.Equal((int)Math.Round(t.Duration * 30), await media.CountFrames(result.Path));
+        // 接點之後馬上是下一段的聲音，不是補上的靜音。
+        Assert.True(await media.MeanVolume(result.Path, a.End, 0.015) > -40);
     }
 
     [Fact]

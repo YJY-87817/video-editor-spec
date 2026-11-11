@@ -1,4 +1,4 @@
-using VideoEditor.Core.Export;
+﻿using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
 using VideoEditor.Core.Timeline;
@@ -205,6 +205,79 @@ public class TimelineTests
         t.TrimEnd(a, 2);
         Assert.Equal(2, a.End, 6);
         Assert.Equal(3, a.SourceOut, 6);
+    }
+
+    private static bool OnFrame(double time, double fps) => Math.Abs(time * fps - Math.Round(time * fps)) < 1e-6;
+
+    [Fact]
+    public void TrimAlignsTheCutToTheNearestSourceFrame()
+    {
+        var t = new TimelineModel();
+        var a = t.Append(Media(), 0, 2);
+        t.TrimEnd(a, 1.015); // 30.45 格 → 30 格
+        Assert.Equal(1.0, a.SourceOut, 9);
+        Assert.Equal(1.0, a.End, 9);
+        t.TrimEnd(a, 1.02); // 30.6 格 → 31 格
+        Assert.Equal(31 / 30.0, a.SourceOut, 9);
+
+        var end = a.End;
+        t.TrimStart(a, 0.51); // 15.3 格 → 15 格，右緣不動
+        Assert.Equal(0.5, a.SourceIn, 9);
+        Assert.Equal(0.5, a.Start, 9);
+        Assert.Equal(end, a.End, 9);
+    }
+
+    [Fact]
+    public void TrimOfReversedClipAlignsTheSourceToFrames()
+    {
+        var t = new TimelineModel();
+        var a = t.Append(Media(), 2, 5);
+        t.SetReversed(a, true);
+        t.TrimStart(a, 0.51);  // 改 SourceOut：5 − 0.51 = 4.49 → 134.7 格 → 135 格
+        Assert.Equal(4.5, a.SourceOut, 9);
+        t.TrimEnd(a, 2.013); // 改 SourceIn
+        Assert.True(OnFrame(a.SourceIn, 30));
+        Assert.True(OnFrame(a.Duration, 30));
+    }
+
+    [Fact]
+    public void AlignedTrimNeverOverlapsTheNeighbour()
+    {
+        var t = new TimelineModel();
+        var a = t.Append(Media(), 0, 2);
+        var b = t.Append(Media(), 3, 5);
+        t.Move(b, 2.49);
+        // 拉到左鄰時，來源 2.51 秒四捨五入是 2.5 秒，會蓋到左鄰，所以改取下一格。
+        t.TrimStart(b, 0);
+        Assert.True(b.Start >= a.End - 1e-9);
+        Assert.Equal(76 / 30.0, b.SourceIn, 9);
+        Assert.Equal(4.49, b.End, 9);
+    }
+
+    [Theory]
+    [InlineData(30, 1)]
+    [InlineData(30000, 1001)]
+    public void AfterTrimPreviewAndExportStartAtTheSameFrame(int num, int den)
+    {
+        var media = Media() with { FrameRate = new Rational(num, den) };
+        var fps = media.FrameRate.Value;
+        for (var target = 0.0; target < 1; target += 0.0137)
+        {
+            var t = new TimelineModel();
+            var clip = t.Append(media, 30 / fps, 90 / fps); // 以 I／O 標記加入時，入出點已對齊影格
+            t.TrimStart(clip, target);
+            Assert.Equal(FrameExtractor.FrameIndex(clip.SourceIn, fps), ReverseGraph.FirstFrameAtOrAfter(clip.SourceIn, fps));
+            Assert.True(OnFrame(clip.Duration, fps));
+        }
+    }
+
+    [Fact]
+    public void TrimWithoutFrameRateKeepsTheExactPosition()
+    {
+        var t = new TimelineModel();
+        var a = t.Append(Media() with { FrameRate = new Rational(0, 1) }, 0, 2);
+        t.TrimEnd(a, 1.015);
+        Assert.Equal(1.015, a.SourceOut, 9);
     }
 
     [Fact]
