@@ -11,9 +11,17 @@ public sealed record ExportPlan(
     Size2 Size,
     string VideoCodec,
     string PixelFormat,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings,
+    IReadOnlyList<ReverseJob> ReverseJobs)
+{
+    /// <summary>全部工作量（秒）：倒放片段的準備加上最後的編碼，用來換算整體進度。</summary>
+    public double TotalWork => ReverseJobs.Sum(job => job.Duration) + Duration;
+}
 
-/// <summary>由時間軸與輸出設定產生 FFmpeg 參數。不執行任何程序，方便測試。</summary>
+/// <summary>
+/// 由時間軸與輸出設定產生 FFmpeg 參數。不執行任何程序，方便測試。
+/// 有倒放片段時，要先執行 <see cref="ExportPlan.ReverseJobs"/> 產生中間檔，Arguments 才讀得到（見 <see cref="ReverseGraph"/>）。
+/// </summary>
 public static class ExportPlanner
 {
     private const int AudioSampleRate = 48000;
@@ -45,6 +53,7 @@ public static class ExportPlanner
 
         var args = new List<string> { "-hide_banner", "-nostats", "-progress", "pipe:1", "-y" };
         var graph = new List<string>();
+        var reverseJobs = new List<ReverseJob>();
         var concatInputs = new StringBuilder();
         var segments = 0;
         var input = 0;
@@ -70,9 +79,13 @@ public static class ExportPlanner
             if (clip.Reversed)
             {
                 var frameBytes = ReverseGraph.FrameBytes(clip.Media, clip.Media.DisplayWidth, clip.Media.DisplayHeight);
-                ReverseGraph.Add(args, graph, ref input, $"r{label}", clip.Media, clip.SourceIn, clip.SourceOut, withAudio, "", frameBytes, reverseBufferBytes);
-                videoSource = $"[r{label}v]";
-                audioSource = $"[r{label}a]";
+                var job = ReverseGraph.Plan($"r{label}", clip.Media, clip.SourceIn, clip.SourceOut, withAudio, "", frameBytes, reverseBufferBytes);
+                reverseJobs.Add(job);
+                // 中間檔已經倒放好，這裡只是照順序讀進來。
+                args.AddRange(["-f", "concat", "-i", job.ListPath]);
+                videoSource = $"[{input}:v]setpts=PTS-STARTPTS,{ReverseGraph.InputFilter(clip.Media)}";
+                audioSource = $"[{input}:a]asetpts=PTS-STARTPTS,";
+                input++;
             }
             else
             {
@@ -132,10 +145,8 @@ public static class ExportPlanner
         args.AddRange(["-t", Num(duration), "-movflags", "+faststart", outputPath]);
 
         if (args.Sum(a => a.Length + 3) > MaxCommandLength)
-            throw new InvalidOperationException(timeline.VideoClips.Any(c => c.Reversed)
-                ? "片段數量過多（倒放片段會分成多段處理），超過 Windows 命令列長度上限。請縮短倒放片段。"
-                : "片段數量過多，超過 Windows 命令列長度上限。");
-        return new ExportPlan(args, duration, size, codec, pixelFormat, CollectWarnings(timeline, reference, referenceSize, settings.Mode));
+            throw new InvalidOperationException("片段數量過多，超過 Windows 命令列長度上限。");
+        return new ExportPlan(args, duration, size, codec, pixelFormat, CollectWarnings(timeline, reference, referenceSize, settings.Mode), reverseJobs);
     }
 
     /// <summary>決策：8-bit 用 H.264；10-bit 以上或 HDR 用 H.265，並維持來源色彩格式。</summary>

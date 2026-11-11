@@ -4,9 +4,14 @@ using VideoEditor.Core.Models;
 
 namespace VideoEditor.Core.Ffmpeg;
 
+/// <summary>一個倒放片段需要的預覽檔：來源、入出點與預覽尺寸。</summary>
+public sealed record ReversePreviewRequest(MediaInfo Media, double SourceIn, double SourceOut, Size2 Size);
+
 /// <summary>
 /// 倒放片段的預覽檔。LibVLC 不能倒著播放，所以先用 FFmpeg 產生一個已倒放、縮小的暫存檔，
-/// 播放時改播這個檔案。檔案依來源與入出點快取，關閉時刪除。
+/// 播放時改播這個檔案。檔案依來源與入出點快取，關閉時刪除；
+/// 片段修剪、刪除或取消倒放後，以 <see cref="Sync"/> 停掉並刪除不再需要的預覽檔。
+/// 產生方式與匯出相同（見 <see cref="ReverseGraph"/>）：每小段各跑一次 FFmpeg，記憶體用量不隨片段長度增加。
 /// </summary>
 /// <param name="progress">產生中回報 0–1；產生結束（成功或失敗）時回報 null。</param>
 public sealed class ReversePreviewCache(FfmpegTools tools, string? directory = null, IProgress<double?>? progress = null) : IDisposable
@@ -19,60 +24,102 @@ public sealed class ReversePreviewCache(FfmpegTools tools, string? directory = n
 
     private readonly string _directory = directory ?? Path.Combine(DefaultRoot, FolderPrefix + Guid.NewGuid().ToString("N"));
     private FileStream? _lock;
-    private readonly Dictionary<(string Path, long In, long Out, int Width, int Height), Task<string>> _files = [];
+    private sealed record Entry(Task<string> File, CancellationTokenSource Cancel);
+
+    private readonly Dictionary<(string Path, long In, long Out, int Width, int Height), Entry> _files = [];
     // 一次只產生一個，避免同時跑多個 FFmpeg 拖慢播放。
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly CancellationTokenSource _disposed = new();
-    // 關閉時 FFmpeg 剛被停止，可能還佔用預覽檔一下子；刪不掉就稍等再試。
-    private const int DeleteAttempts = 20;
-    private const int DeleteRetryDelayMs = 100;
+
+    private static (string Path, long In, long Out, int Width, int Height) Key(MediaInfo media, double sourceIn, double sourceOut, Size2 size) =>
+        (media.Path, Ticks(sourceIn), Ticks(sourceOut), size.Width, size.Height);
 
     /// <summary>取得（必要時開始產生）預覽檔。檔案從片段第一格（來源的 sourceOut 前一格）開始，長度等於片段。</summary>
     public Task<string> GetAsync(MediaInfo media, double sourceIn, double sourceOut, Size2 size)
     {
-        var key = (media.Path, Ticks(sourceIn), Ticks(sourceOut), size.Width, size.Height);
-        if (_files.TryGetValue(key, out var existing) && !existing.IsFaulted && !existing.IsCanceled) return existing;
-        var task = RenderAsync(media, sourceIn, sourceOut, size, _disposed.Token);
-        _files[key] = task;
-        return task;
+        var key = Key(media, sourceIn, sourceOut, size);
+        lock (_files)
+        {
+            if (_files.TryGetValue(key, out var existing) && !existing.File.IsFaulted && !existing.File.IsCanceled) return existing.File;
+            var cancel = CancellationTokenSource.CreateLinkedTokenSource(_disposed.Token);
+            var task = RenderAsync(media, sourceIn, sourceOut, size, cancel.Token);
+            _files[key] = new Entry(task, cancel);
+            return task;
+        }
     }
 
-    public static IReadOnlyList<string> BuildArguments(MediaInfo media, double sourceIn, double sourceOut, Size2 size, string output)
+    /// <summary>
+    /// 讓快取只留下 wanted 列出的預覽檔：其他的若還在產生（或排隊）就中止，已產生的檔案刪除；
+    /// wanted 裡還沒有的依序開始產生。時間軸每次編輯後呼叫，
+    /// 修剪倒放片段後舊範圍的預覽檔才不會繼續占用 FFmpeg 與磁碟，新範圍也不必等到播放才開始產生。
+    /// </summary>
+    public void Sync(IReadOnlyCollection<ReversePreviewRequest> wanted)
     {
-        var args = new List<string> { "-hide_banner", "-nostats", "-v", "error", "-progress", "pipe:1", "-y" };
-        var graph = new List<string>();
-        var input = 0;
-        var frameBytes = ReverseGraph.FrameBytes(media, size.Width, size.Height);
-        // 先縮小再倒放，記憶體用量依預覽尺寸計算。
-        ReverseGraph.Add(args, graph, ref input, "r", media, sourceIn, sourceOut, media.HasAudio,
-            $"scale={size.Width}:{size.Height},setsar=1", frameBytes);
-        args.AddRange(["-filter_complex", string.Join(';', graph), "-map", "[rv]"]);
-        if (media.HasAudio) args.AddRange(["-map", "[ra]", "-c:a", "aac", "-b:a", "160k"]);
+        var keep = wanted.Select(r => Key(r.Media, r.SourceIn, r.SourceOut, r.Size)).ToHashSet();
+        List<Entry> dropped;
+        lock (_files)
+        {
+            var keys = _files.Keys.Where(key => !keep.Contains(key)).ToList();
+            dropped = keys.Select(key => _files[key]).ToList();
+            foreach (var key in keys) _files.Remove(key);
+        }
+        foreach (var entry in dropped)
+        {
+            entry.Cancel.Cancel(); // 產生中的 FFmpeg 會立刻終止；產生到一半的檔案由 RenderAsync 自己刪
+            entry.File.ContinueWith(task =>
+            {
+                // 已經做好的檔案：可能還被播放器開著一下子，刪不掉時留給關閉程式時整個資料夾一起刪。
+                if (task.IsCompletedSuccessfully) TemporaryFiles.DeleteFile(task.Result);
+                entry.Cancel.Dispose();
+            }, TaskScheduler.Default);
+        }
+        foreach (var request in wanted) GetAsync(request.Media, request.SourceIn, request.SourceOut, request.Size);
+    }
+
+    /// <summary>把倒放好的中間檔編碼成預覽檔的參數。</summary>
+    public static IReadOnlyList<string> EncodeArguments(MediaInfo media, string list, double duration, string output)
+    {
+        var args = new List<string> { "-hide_banner", "-nostats", "-v", "error", "-progress", "pipe:1", "-y", "-f", "concat", "-i", list, "-map", "0:v" };
+        if (media.HasAudio) args.AddRange(["-map", "0:a", "-c:a", "aac", "-b:a", "160k"]);
         // 短 GOP：播放時常從片段中間開始，定位才快。
         args.AddRange(["-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-g", "10", "-pix_fmt", "yuv420p",
-            "-t", (sourceOut - sourceIn).ToString("0.######", CultureInfo.InvariantCulture), output]);
+            "-t", duration.ToString("0.######", CultureInfo.InvariantCulture), output]);
         return args;
     }
 
     private async Task<string> RenderAsync(MediaInfo media, double sourceIn, double sourceOut, Size2 size, CancellationToken token)
     {
-        await _gate.WaitAsync(token);
+        // 不回到呼叫端的執行緒：結束時刪暫存檔可能要等，別卡住畫面。進度由 IProgress 自己送回。
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        var name = Guid.NewGuid().ToString("N");
+        var output = Path.Combine(_directory, name + ".mp4");
+        var work = Path.Combine(_directory, name + ".parts");
+        var finished = false;
         try
         {
-            Directory.CreateDirectory(_directory);
+            Directory.CreateDirectory(work);
             // 標記這個資料夾正在使用，另一個同時執行的程式清理時才不會刪掉它。
             _lock ??= new FileStream(Path.Combine(_directory, LockFileName), FileMode.Create, FileAccess.ReadWrite, FileShare.None);
-            var output = Path.Combine(_directory, $"{Guid.NewGuid():N}.mp4");
             var duration = sourceOut - sourceIn;
+            // 先縮小再倒放，記憶體用量與中間檔大小都依預覽尺寸計算。
+            var job = ReverseGraph.Plan("r", media, sourceIn, sourceOut, media.HasAudio,
+                $"scale={size.Width}:{size.Height},setsar=1", ReverseGraph.FrameBytes(media, size.Width, size.Height));
+            // 進度：倒放各小段與最後的編碼各算一半。
+            var total = job.Duration + duration;
             progress?.Report(0);
-            await ProcessRunner.RunWithLinesAsync(tools.Ffmpeg, BuildArguments(media, sourceIn, sourceOut, size, output), line =>
+            await ReverseGraph.RunAsync(tools, job, work, seconds => progress?.Report(Math.Clamp(seconds / total, 0, 1)), token).ConfigureAwait(false);
+            var args = EncodeArguments(media, ReverseGraph.ResolvePath(job.ListPath, work), duration, output);
+            await ProcessRunner.RunWithLinesAsync(tools.Ffmpeg, args, line =>
             {
-                if (ExportService.ParseProgress(line, duration) is { } value) progress?.Report(value);
-            }, token);
+                if (ExportService.ParseProgress(line, duration) is { } value) progress?.Report((job.Duration + value * duration) / total);
+            }, token).ConfigureAwait(false);
+            finished = true;
             return output;
         }
         finally
         {
+            TemporaryFiles.DeleteDirectory(work);
+            if (!finished) TemporaryFiles.DeleteFile(output);
             progress?.Report(null);
             _gate.Release();
         }
@@ -110,19 +157,7 @@ public sealed class ReversePreviewCache(FfmpegTools tools, string? directory = n
         _disposed.Cancel(); // 會立刻終止產生中的 FFmpeg
         _lock?.Dispose();
         _lock = null;
-        for (var attempt = 1; ; attempt++)
-        {
-            try
-            {
-                if (Directory.Exists(_directory)) Directory.Delete(_directory, true);
-                return;
-            }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-            {
-                // 仍刪不掉就放棄：只是暫存目錄裡留下一些檔案，不影響程式關閉。
-                if (attempt >= DeleteAttempts) return;
-                Thread.Sleep(DeleteRetryDelayMs);
-            }
-        }
+        // 仍刪不掉就放棄：只是暫存目錄裡留下一些檔案，不影響程式關閉。
+        TemporaryFiles.DeleteDirectory(_directory);
     }
 }

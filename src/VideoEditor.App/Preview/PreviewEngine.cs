@@ -222,13 +222,14 @@ public sealed class PreviewEngine : IDisposable
         RewindTick();
     }
 
-    /// <summary>預先產生倒放預覽檔，播放到該片段時就不必等待。</summary>
-    public void PrepareReverse(TimelineClip clip)
-    {
-        if (!clip.Reversed) return;
-        var size = FrameExtractor.PreviewSize(clip.Media.DisplayWidth, clip.Media.DisplayHeight, ReverseProxyLongSide);
-        _ = _proxies.GetAsync(clip.Media, clip.SourceIn, clip.SourceOut, size).ContinueWith(_ => { }, TaskScheduler.Default);
-    }
+    /// <summary>
+    /// 時間軸編輯後呼叫：預先產生每個倒放片段的預覽檔，播放到該片段時就不必等待；
+    /// 範圍已經改掉（修剪、刪除、取消倒放）的舊預覽檔則停止產生並刪除。
+    /// </summary>
+    public void SyncReverse(TimelineModel timeline) =>
+        _proxies.Sync(timeline.VideoClips.Where(clip => clip.Reversed).Select(clip => new ReversePreviewRequest(
+            clip.Media, clip.SourceIn, clip.SourceOut,
+            FrameExtractor.PreviewSize(clip.Media.DisplayWidth, clip.Media.DisplayHeight, ReverseProxyLongSide))).ToList());
 
     /// <summary>移動播放頭。播放中拖曳會先暫停。</summary>
     public void Seek(double time) => SeekTo(time, 0);
@@ -307,6 +308,13 @@ public sealed class PreviewEngine : IDisposable
             if (!wait.File.IsCompleted) return;
             _proxyWait = null;
             Enqueue(() => _musicPlayer.SetPause(false));
+            if (wait.File.IsCanceled)
+            {
+                // 等待期間片段被修剪或刪除，這個預覽檔已經不需要了，不是錯誤。
+                Status?.Invoke("");
+                Pause();
+                return;
+            }
             if (!wait.File.IsCompletedSuccessfully)
             {
                 var reason = wait.File.Exception?.InnerException is FfmpegException f ? f.Stderr : wait.File.Exception?.InnerException?.Message;

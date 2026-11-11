@@ -76,8 +76,10 @@ public sealed class ExportService(FfmpegTools tools)
         }
     }
 
+    /// <summary>輸出檔的預估大小，加上倒放片段匯出期間暫存的中間檔（與輸出檔放在同一個磁碟）。</summary>
     public static long EstimateBytes(TimelineModel timeline) =>
-        (long)(timeline.AllClips.Sum(c => c.Media.BitRate / 8.0 * c.Duration) * SizeSafetyFactor);
+        (long)(timeline.AllClips.Sum(c => c.Media.BitRate / 8.0 * c.Duration) * SizeSafetyFactor)
+        + timeline.VideoClips.Where(c => c.Reversed).Sum(c => ReverseGraph.IntermediateBytes(c.Media, c.SourceIn, c.SourceOut));
 
     /// <summary>
     /// 匯出時先寫入的暫存檔，與輸出檔放在同一個資料夾（改名才不必跨磁碟複製）。
@@ -96,21 +98,36 @@ public sealed class ExportService(FfmpegTools tools)
         }
     }
 
+    /// <summary>倒放中間檔的暫存資料夾，放在暫存檔旁邊，名稱取自暫存檔所以同樣不會與現有檔案同名。</summary>
+    public static string WorkDirectory(string temporaryPath) => temporaryPath + ".reverse";
+
     /// <summary>
+    /// 有倒放片段時先逐段產生中間檔（放在輸出檔旁的暫存資料夾，結束時一定刪除），再編碼成輸出檔。
     /// 先寫入暫存檔，成功才改名；取消或 FFmpeg 失敗時清掉暫存檔，不留下殘缺影片。
     /// 已經做好、只是改名失敗（例如匯出途中用播放器打開了舊的輸出檔）時保留暫存檔，丟出 <see cref="ExportRenameException"/>。
     /// </summary>
     public async Task ExportAsync(ExportPlan plan, string outputPath, IProgress<double>? progress, CancellationToken token = default)
     {
         var temporary = TemporaryPath(outputPath);
-        var args = plan.Arguments.Take(plan.Arguments.Count - 1).Append(temporary);
+        var work = WorkDirectory(temporary);
+        var args = ReverseGraph.Resolve(plan.Arguments.Take(plan.Arguments.Count - 1), work).Append(temporary);
         var finished = false;
+        // 進度依處理的秒數計：先是各個倒放片段，最後才是編碼。
+        var total = plan.TotalWork;
+        var prepared = 0.0;
 
         try
         {
+            if (plan.ReverseJobs.Count > 0) Directory.CreateDirectory(work);
+            foreach (var job in plan.ReverseJobs)
+            {
+                var before = prepared;
+                await ReverseGraph.RunAsync(tools, job, work, seconds => progress?.Report(Math.Clamp((before + seconds) / total, 0, 1)), token);
+                prepared = before + job.Duration;
+            }
             await ProcessRunner.RunWithLinesAsync(tools.Ffmpeg, args, line =>
             {
-                if (ParseProgress(line, plan.Duration) is { } value) progress?.Report(value);
+                if (ParseProgress(line, plan.Duration) is { } value) progress?.Report((prepared + value * plan.Duration) / total);
             }, token);
             finished = true;
             try
@@ -126,6 +143,7 @@ public sealed class ExportService(FfmpegTools tools)
         finally
         {
             if (!finished) DeleteQuietly(temporary);
+            if (plan.ReverseJobs.Count > 0) TemporaryFiles.DeleteDirectory(work);
         }
     }
 

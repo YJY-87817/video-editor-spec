@@ -73,6 +73,45 @@ public sealed class TestMedia : IDisposable
         return match.Groups[1].Value == "-inf" ? double.NegativeInfinity : double.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
     }
 
+    /// <summary>產生測試專用的短片（lavfi 來源），參數同共用短片。</summary>
+    public string MakeClip(string name, string video, string? audio, params string[] options) => Make(name, video, audio, options);
+
+    /// <summary>
+    /// 執行 action 期間，量測參數裡含有 marker 的 FFmpeg 程序用過的最大記憶體（位元組）。
+    /// 以 marker 篩選，才不會算到同時在跑的其他測試。
+    /// </summary>
+    public static async Task<long> PeakMemory(string marker, Func<Task> action)
+    {
+        long peak = 0;
+        var watchers = new System.Collections.Concurrent.ConcurrentBag<Task>();
+        void OnStarted(System.Diagnostics.Process process)
+        {
+            if (!process.StartInfo.ArgumentList.Any(arg => arg.Contains(marker, StringComparison.Ordinal))) return;
+            watchers.Add(Task.Run(async () =>
+            {
+                try
+                {
+                    while (!process.HasExited)
+                    {
+                        process.Refresh();
+                        var now = Math.Max(process.PeakWorkingSet64, process.WorkingSet64);
+                        long seen;
+                        while (now > (seen = Interlocked.Read(ref peak)) && Interlocked.CompareExchange(ref peak, now, seen) != seen) { }
+                        await Task.Delay(5);
+                    }
+                }
+                // 程序在讀取途中結束或已被釋放：量到這裡為止。
+                catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException) { }
+            }));
+        }
+
+        ProcessRunner.Started += OnStarted;
+        try { await action(); }
+        finally { ProcessRunner.Started -= OnStarted; }
+        await Task.WhenAll(watchers);
+        return Interlocked.Read(ref peak);
+    }
+
     /// <summary>產生單色短片，pixelFormat 用 yuvj420p 即為全範圍（full range）來源。</summary>
     public string MakeSolid(string name, string color, string pixelFormat, double duration = 1) =>
         Make(name, $"color={color}:s=640x360:r=30:d={duration.ToString(System.Globalization.CultureInfo.InvariantCulture)}", null,

@@ -12,6 +12,9 @@ public static class ProcessRunner
 {
     private const int MaxErrorLines = 40;
 
+    /// <summary>診斷用：每啟動一個程序就通知（測試用它量測 FFmpeg 的記憶體用量）。處理常式不可丟出例外。</summary>
+    public static event Action<Process>? Started;
+
     private static Process Start(string exe, IEnumerable<string> args)
     {
         var info = new ProcessStartInfo(exe)
@@ -23,7 +26,9 @@ public static class ProcessRunner
             StandardErrorEncoding = Encoding.UTF8,
         };
         foreach (var arg in args) info.ArgumentList.Add(arg);
-        return Process.Start(info) ?? throw new InvalidOperationException($"無法啟動 {exe}");
+        var process = Process.Start(info) ?? throw new InvalidOperationException($"無法啟動 {exe}");
+        Started?.Invoke(process);
+        return process;
     }
 
     private static async Task<string> ReadErrorTailAsync(Process process)
