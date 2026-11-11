@@ -72,20 +72,55 @@ public static class ReverseGraph
     /// <summary>
     /// 規劃一個倒放片段。中間檔是 FFV1 影像加 PCM 聲音（都不損畫質與音質），放在 NUT 容器裡以保留來源的時間基準。
     /// videoFilter 會套在每一小段倒放之前（例如預覽時先縮小，可減少記憶體與中間檔大小）。
+    /// 可變影格率的來源會多一個步驟：先把片段轉成固定影格率的中間檔，再對它分段倒放。
+    /// 分段的切點是照影格率算的，影格間隔不固定時切不準，會重複或漏掉影格；
+    /// reverse 濾鏡也只把畫面倒過來、時間戳記沿用原本的順序，原本慢的段落會變成用快的節奏播。
     /// </summary>
     public static ReverseJob Plan(string name, MediaInfo media, double sourceIn, double sourceOut, bool withAudio,
         string videoFilter, long frameBytes, long bufferBytes = DefaultBufferBytes)
     {
         var fps = media.FrameRate.Value > 0 ? media.FrameRate.Value : DefaultFrameRate;
-        var chunks = Split(sourceIn, sourceOut, fps, frameBytes, bufferBytes);
         var prefilter = videoFilter.Length == 0 ? "" : videoFilter + ",";
         // FFV1 沒有全範圍專用的 yuvj 格式；直接交給編碼器會被轉成 limited range。
         // 明確指定輸入輸出都是全範圍，只換格式名稱、不動像素值。
         var keepRange = media.PixelFormat.StartsWith("yuvj", StringComparison.Ordinal)
             ? $",scale=in_range=pc:out_range=pc,format=yuv{media.PixelFormat[4..]}"
             : "";
+        // 明確告訴編碼器來源的色彩範圍。新版 FFmpeg 會在濾鏡與編碼器之間協商色彩範圍，
+        // 沒有指定時全範圍的畫面可能在交給編碼器前被轉成 limited，中間檔就不是無損的了。
+        string[] colorRange = media.ColorRange is "pc" or "tv" ? ["-color_range", media.ColorRange] : [];
+        string[] common = ["-hide_banner", "-nostats", "-v", "error", "-progress", "pipe:1", "-y"];
 
         var steps = new List<ReverseStep>();
+        var input = media.Path;
+        // 讀自己產生的中間檔時，把來源的色彩範圍標回影格上（中間檔不記錄），之後才不會被當成另一種範圍來轉換。
+        var inputTag = "";
+        if (media.IsVariableFrameRate && media.FrameRate.Value > 0)
+        {
+            var length = sourceOut - sourceIn;
+            var frames = Math.Max(1, (long)Math.Round(length * fps));
+            var conformed = $"{WorkToken}/{name}-cfr.nut";
+            var args = new List<string>(common);
+            args.AddRange(["-ss", Num(sourceIn), "-t", Num(length), "-i", media.Path]);
+            // start_time=0：影格從入點起算，第一格之前的空檔以第一格補上。
+            // tpad 加 trim：結尾不足的以最後一格補上、多的切掉，剛好是片段長度該有的格數，之後的分段才不會落空。
+            args.AddRange(["-filter_complex",
+                $"[0:v]{prefilter}fps={media.FrameRate}:start_time=0,tpad=stop_mode=clone:stop_duration=1,trim=end_frame={frames}{keepRange}[v]", "-map", "[v]"]);
+            if (withAudio) args.AddRange(["-map", "0:a:0", "-c:a", "pcm_f32le"]);
+            args.AddRange(colorRange);
+            args.AddRange(["-c:v", "ffv1", "-level", "3", "-g", "1", "-fps_mode", "passthrough", "-f", "nut", conformed]);
+            steps.Add(new ReverseStep(args, length));
+
+            input = conformed;
+            sourceIn = 0;
+            sourceOut = frames / fps;
+            inputTag = InputFilter(media);
+            // 縮放與色彩範圍已經在這一步做完。
+            prefilter = "";
+            keepRange = "";
+        }
+
+        var chunks = Split(sourceIn, sourceOut, fps, frameBytes, bufferBytes);
         var list = new System.Text.StringBuilder("ffconcat version 1.0\n");
         long Microseconds(double seconds) => (long)Math.Round(seconds * 1_000_000);
         var elapsed = 0.0;
@@ -95,21 +130,19 @@ public static class ReverseGraph
         {
             var chunk = chunks[i];
             var file = $"{name}-{i:D5}.nut";
-            var args = new List<string> { "-hide_banner", "-nostats", "-v", "error", "-progress", "pipe:1", "-y" };
-            args.AddRange(["-ss", Num(chunk.Start), "-t", Num(chunk.Length), "-i", media.Path]);
-            var graph = $"[0:v]setpts=PTS-STARTPTS,{prefilter}reverse{keepRange}[v]";
+            var args = new List<string>(common);
+            args.AddRange(["-ss", Num(chunk.Start), "-t", Num(chunk.Length), "-i", input]);
+            var graph = $"[0:v]setpts=PTS-STARTPTS,{inputTag}{prefilter}reverse{keepRange}[v]";
             if (withAudio)
             {
                 // 聲音取這幾格實際顯示的時間範圍；影像的定位點提前半格只是為了不漏掉第一格。
-                args.AddRange(["-ss", Num(chunk.AudioStart), "-t", Num(chunk.AudioLength), "-vn", "-i", media.Path]);
+                args.AddRange(["-ss", Num(chunk.AudioStart), "-t", Num(chunk.AudioLength), "-vn", "-i", input]);
                 // 先補齊到這一小段的長度再倒放，聲音才不會與畫面錯開。
                 graph += $";[1:a]asetpts=PTS-STARTPTS,apad,atrim=0:{Num(chunk.AudioLength)},areverse[a]";
             }
             args.AddRange(["-filter_complex", graph, "-map", "[v]"]);
             if (withAudio) args.AddRange(["-map", "[a]", "-c:a", "pcm_f32le"]);
-            // 明確告訴編碼器來源的色彩範圍。新版 FFmpeg 會在濾鏡與編碼器之間協商色彩範圍，
-            // 沒有指定時全範圍的畫面可能在交給編碼器前被轉成 limited，中間檔就不是無損的了。
-            if (media.ColorRange is "pc" or "tv") args.AddRange(["-color_range", media.ColorRange]);
+            args.AddRange(colorRange);
             // -g 1：每格都是關鍵影格。passthrough：保留來源的時間戳記，不補格、不丟格。
             args.AddRange(["-c:v", "ffv1", "-level", "3", "-g", "1", "-fps_mode", "passthrough", "-f", "nut", $"{WorkToken}/{file}"]);
             steps.Add(new ReverseStep(args, chunk.AudioLength));
@@ -120,7 +153,7 @@ public static class ReverseGraph
             elapsed = next;
         }
 
-        return new ReverseJob($"{WorkToken}/{name}.ffconcat", list.ToString(), steps, elapsed);
+        return new ReverseJob($"{WorkToken}/{name}.ffconcat", list.ToString(), steps, steps.Sum(step => step.Duration));
     }
 
     /// <summary>
@@ -137,7 +170,8 @@ public static class ReverseGraph
         var frames = Math.Max(1, FirstFrameAtOrAfter(sourceOut, fps) - FirstFrameAtOrAfter(sourceIn, fps));
         var video = frames * FrameBytes(media, media.DisplayWidth, media.DisplayHeight) * IntermediateCompression;
         var audio = media.HasAudio ? (sourceOut - sourceIn) * Math.Max(1, media.AudioSampleRate) * Math.Max(1, media.AudioChannels) * 4 : 0;
-        return (long)(video + audio);
+        // 可變影格率的來源多一份固定影格率的中間檔。
+        return (long)(video + audio) * (media.IsVariableFrameRate ? 2 : 1);
     }
 
     /// <summary>把參數裡的 <see cref="WorkToken"/> 換成實際的暫存資料夾。</summary>

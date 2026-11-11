@@ -235,6 +235,35 @@ public class TimelineSnapTests
         Assert.Equal(snapped, result.Snapped);
     }
 
+    [Theory]
+    [InlineData(3.0, 3.0, 30, true)]
+    [InlineData(3.0, 3.016, 30, true)]    // 切點對齊影格後與播放頭差不到半格：仍算貼齊
+    [InlineData(3.0, 2.984, 30, true)]
+    [InlineData(3.0, 3.02, 30, false)]    // 超過半格：邊緣被擋住，沒有貼到
+    [InlineData(3.0, 3.0001, 0, false)]   // 純音訊不對齊影格，要完全相同
+    [InlineData(3.0, 3.0, 0, true)]
+    public void EdgeWithinHalfAFrameOfThePlayheadCountsAsSnapped(double edge, double playhead, double fps, bool expected) =>
+        Assert.Equal(expected, TimelineSnap.IsAtPlayhead(edge, playhead, fps));
+
+    [Fact]
+    public void TrimSnappedToAnOffGridPlayheadStillCountsAsSnapped()
+    {
+        // 播放頭停在兩格之間（拖曳或暫停後多半如此）。
+        var timeline = new TimelineModel();
+        var clip = timeline.Append(new MediaInfo
+        {
+            Path = "a.mp4", Duration = 10, HasVideo = true, HasAudio = true,
+            DisplayWidth = 1920, DisplayHeight = 1080, FrameRate = new Rational(30, 1), PixelFormat = "yuv420p",
+        }, 0, 10);
+        const double playhead = 3.012;
+        var (end, snapped) = TimelineSnap.ToPlayhead(3.07, playhead, 0.1);
+        timeline.TrimEnd(clip, end);
+
+        Assert.True(snapped);
+        Assert.Equal(3.0, clip.End, 9); // 對齊到最接近的影格
+        Assert.True(TimelineSnap.IsAtPlayhead(clip.End, playhead, 30));
+    }
+
     [Fact]
     public void SnappedTrimPutsTheEdgeExactlyOnThePlayhead()
     {

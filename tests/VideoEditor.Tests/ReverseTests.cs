@@ -198,6 +198,45 @@ public class ReverseGraphTests
     }
 
     [Fact]
+    public void VariableFrameRateSourceIsConformedBeforeReversing()
+    {
+        // 影格間隔不固定時，用平均影格率算的切點切不準，所以先轉成固定影格率的中間檔，再對它分段倒放。
+        var media = PlanMedia with { IsVariableFrameRate = true, FrameRate = new Rational(24, 1) };
+        var job = ReverseGraph.Plan("r", media, 1, 3, true, "scale=640:360", frameBytes: 100, bufferBytes: 1600);
+
+        var conform = job.Steps[0].Arguments.ToList();
+        Assert.Equal("a.mp4", conform[conform.IndexOf("-i") + 1]);
+        Assert.Equal("1", conform[conform.IndexOf("-ss") + 1]);
+        Assert.Equal("2", conform[conform.IndexOf("-t") + 1]);
+        var graph = conform[conform.IndexOf("-filter_complex") + 1];
+        Assert.Contains("scale=640:360,fps=24/1:start_time=0,tpad=stop_mode=clone:stop_duration=1,trim=end_frame=48", graph);
+        Assert.DoesNotContain("reverse", graph);
+        Assert.Equal(ReverseGraph.WorkToken + "/r-cfr.nut", conform[^1]);
+
+        // 48 格、每段 16 格：三段，都讀固定影格率的中間檔，從 0 秒算起，不再套縮放。
+        Assert.Equal(4, job.Steps.Count);
+        foreach (var step in job.Steps.Skip(1))
+        {
+            var args = step.Arguments.ToList();
+            Assert.Equal(ReverseGraph.WorkToken + "/r-cfr.nut", args[args.IndexOf("-i") + 1]);
+            Assert.DoesNotContain("scale=640:360", args[args.IndexOf("-filter_complex") + 1]);
+        }
+        var last = job.Steps[^1].Arguments.ToList();
+        Assert.Equal("0", last[last.IndexOf("-ss") + 1]);
+        // 進度包含轉檔那一步：2 秒轉檔加 2 秒倒放。
+        Assert.Equal(4, job.Duration, 6);
+    }
+
+    [Fact]
+    public void ConstantFrameRateSourceIsReversedDirectly()
+    {
+        var job = ReverseGraph.Plan("r", PlanMedia, 1, 3, true, "", frameBytes: 100, bufferBytes: 100_000);
+        var step = Assert.Single(job.Steps);
+        Assert.Equal("a.mp4", step.Arguments[step.Arguments.ToList().IndexOf("-i") + 1]);
+        Assert.Equal(2, job.Duration, 6);
+    }
+
+    [Fact]
     public void WorkTokenIsReplacedByTheDirectory()
     {
         var resolved = ReverseGraph.Resolve(["-i", "a.mp4", ReverseGraph.WorkToken + "/r0.ffconcat"], Path.Combine("x", "work")).ToList();
@@ -365,6 +404,78 @@ public class ReverseIntegrationTests(TestMedia media)
         var luma = await media.LumaRange(chunk, 0.1);
         Assert.True(luma == (expected, expected),
             $"中間檔的 Y 值是 {luma}，應為 {expected}（像素格式 {info.PixelFormat}，色彩範圍標記 {info.ColorRange ?? "無"}）");
+    }
+
+    [Theory]
+    [InlineData(1000)]
+    [InlineData(7)]
+    public async Task VariableFrameRateSourceReversesWithoutDuplicateOrMissingFrames(int framesPerChunk)
+    {
+        // 前 1 秒 30 fps、後 1 秒 15 fps。
+        var source = await media.Probe(media.MakeClip("vfr.mp4", "testsrc2=s=640x360:r=30:d=2", "sine=f=440:d=2",
+            "-vf", "select='lt(t,1)+not(mod(n,2))'", "-fps_mode", "vfr", "-pix_fmt", "yuv420p"));
+        Assert.True(source.IsVariableFrameRate);
+        var t = new TimelineModel();
+        t.SetReversed(t.Append(source, 0, 2), true);
+        var output = media.Output($"vfr-reversed-{framesPerChunk}.mp4");
+        var plan = ExportPlanner.Build(t, new OutputSettings(AspectRatio.Original, FitMode.Fill), output,
+            ReverseGraph.FrameBytes(source, source.DisplayWidth, source.DisplayHeight) * framesPerChunk);
+        await new ExportService(media.Tools).ExportAsync(plan, output, null);
+
+        var bytes = await ProcessRunner.RunForBytesAsync(media.Tools.Ffprobe,
+            ["-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts_time", "-of", "csv=p=0", output]);
+        var times = System.Text.Encoding.ASCII.GetString(bytes).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(line => double.Parse(line.TrimEnd(','), System.Globalization.CultureInfo.InvariantCulture)).Order().ToList();
+        var steps = times.Zip(times.Skip(1), (a, b) => b - a).ToList();
+        // 固定影格率：每格間隔相同，沒有重複的時間戳記，格數等於片段長度 × 影格率。
+        var fps = source.FrameRate.Value;
+        Assert.Equal((int)Math.Round(2 * fps), times.Count);
+        Assert.All(steps, step => Assert.Equal(1 / fps, step, 3));
+
+        // 倒放後開頭是來源的結尾（慢的那一段），結尾是來源的開頭。
+        async Task<byte[]> At(string path, double time) => await ProcessRunner.RunForBytesAsync(media.Tools.Ffmpeg,
+            ["-v", "error", "-ss", time.ToString(System.Globalization.CultureInfo.InvariantCulture), "-i", path, "-vf", "scale=64:36", "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1"]);
+        var first = await At(output, 0.1);
+        Assert.True(Difference(first, await At(source.Path, 1.85)) < Difference(first, await At(source.Path, 0.15)));
+        var last = await At(output, 1.8);
+        Assert.True(Difference(last, await At(source.Path, 0.15)) < Difference(last, await At(source.Path, 1.85)));
+    }
+
+    [Fact]
+    public async Task ReversedClipWhoseLastChunkHasNoPictureStillExports()
+    {
+        // 畫面 2 秒（60 格）、聲音 2.1 秒：整段加入時片段是 63 格，最後 3 格只有聲音。
+        // 每段 20 格 → 最後一小段（第 60–62 格）完全沒有畫面。
+        var source = await media.Probe(media.MakeClip("tail-audio.mp4", "testsrc2=s=640x360:r=30:d=2", "sine=f=440:d=2.1", "-pix_fmt", "yuv420p"));
+        var t = new TimelineModel();
+        var clip = new TimelineEditor(t).Add(source, new InOutPoints()).Clip!;
+        t.SetReversed(clip, true);
+        Assert.Equal(63, (int)Math.Round(clip.Duration * 30));
+        var output = media.Output("tail-audio-reversed.mp4");
+        var plan = ExportPlanner.Build(t, new OutputSettings(AspectRatio.Original, FitMode.Fill), output,
+            ReverseGraph.FrameBytes(source, source.DisplayWidth, source.DisplayHeight) * 20);
+        await new ExportService(media.Tools).ExportAsync(plan, output, null);
+
+        var result = await media.Probe(output);
+        Assert.InRange(await media.CountFrames(output), 60, 63);
+        Assert.Equal(2.1, result.Duration, 1);
+    }
+
+    [Fact]
+    public async Task ReversedExportWorksInAFolderWithNonAsciiNameSpacesAndQuotes()
+    {
+        // 預設檔名「輸出.mp4」就含中文；倒放的中間檔與接合清單都放在輸出檔旁邊。
+        var source = await media.Probe(media.Landscape);
+        var directory = Directory.CreateDirectory(Path.Combine(media.Directory, "輸出 資料夾's (1)")).FullName;
+        var output = Path.Combine(directory, "輸出 影片's.mp4");
+        var t = new TimelineModel();
+        t.SetReversed(t.Append(source, 0, 1), true);
+        var plan = ExportPlanner.Build(t, new OutputSettings(AspectRatio.Original, FitMode.Fill), output,
+            ReverseGraph.FrameBytes(source, source.DisplayWidth, source.DisplayHeight) * 10);
+        await new ExportService(media.Tools).ExportAsync(plan, output, null);
+
+        Assert.Equal(30, await media.CountFrames(output));
+        Assert.Equal([output], Directory.GetFileSystemEntries(directory));
     }
 
     [Fact]
