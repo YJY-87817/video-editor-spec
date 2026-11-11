@@ -349,6 +349,24 @@ public class ReverseIntegrationTests(TestMedia media)
         Assert.Equal((expected, expected), await media.LumaRange(result.Path, 0.1));
     }
 
+    [Theory]
+    [InlineData("white", 255)]
+    [InlineData("black", 0)]
+    public async Task IntermediateFileKeepsFullRangePixelValues(string color, int expected)
+    {
+        // 直接檢查中間檔：全範圍來源的像素值在倒放這一步就不能被轉成 limited（235／16）。
+        var source = await media.Probe(media.MakeSolid($"intermediate-{color}.mp4", color, "yuvj420p"));
+        var job = ReverseGraph.Plan("r", source, 0, 0.5, false, "", ReverseGraph.FrameBytes(source, source.DisplayWidth, source.DisplayHeight) * 100);
+        var work = Directory.CreateDirectory(Path.Combine(media.Directory, $"intermediate-{color}")).FullName;
+        await ReverseGraph.RunAsync(media.Tools, job, work, null, CancellationToken.None);
+
+        var chunk = Assert.Single(Directory.GetFiles(work, "*.nut"));
+        var info = await media.Probe(chunk);
+        var luma = await media.LumaRange(chunk, 0.1);
+        Assert.True(luma == (expected, expected),
+            $"中間檔的 Y 值是 {luma}，應為 {expected}（像素格式 {info.PixelFormat}，色彩範圍標記 {info.ColorRange ?? "無"}）");
+    }
+
     [Fact]
     public async Task ReversedAudioIsMirroredAcrossChunks()
     {

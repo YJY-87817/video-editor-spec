@@ -107,6 +107,9 @@ public static class ReverseGraph
             }
             args.AddRange(["-filter_complex", graph, "-map", "[v]"]);
             if (withAudio) args.AddRange(["-map", "[a]", "-c:a", "pcm_f32le"]);
+            // 明確告訴編碼器來源的色彩範圍。新版 FFmpeg 會在濾鏡與編碼器之間協商色彩範圍，
+            // 沒有指定時全範圍的畫面可能在交給編碼器前被轉成 limited，中間檔就不是無損的了。
+            if (media.ColorRange is "pc" or "tv") args.AddRange(["-color_range", media.ColorRange]);
             // -g 1：每格都是關鍵影格。passthrough：保留來源的時間戳記，不補格、不丟格。
             args.AddRange(["-c:v", "ffv1", "-level", "3", "-g", "1", "-fps_mode", "passthrough", "-f", "nut", $"{WorkToken}/{file}"]);
             steps.Add(new ReverseStep(args, chunk.AudioLength));
