@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Automation.Peers;
 using System.Windows.Input;
 using System.Windows.Media;
+using VideoEditor.Core.Models;
 using VideoEditor.Core.Timeline;
 using TimelineModel = VideoEditor.Core.Timeline.Timeline;
 
@@ -14,7 +15,7 @@ public sealed class TimelineView : FrameworkElement
     private const double HeaderWidth = 44;
     private const double RulerHeight = 24;
     private const double VideoRowHeight = 56;
-    private const double AudioRowHeight = 36;
+    private const double AudioRowHeight = 48;
     private const double RowGap = 4;
     private const double EdgeGrab = 7;
     private const double MinPixelsPerSecond = 2;
@@ -31,6 +32,11 @@ public sealed class TimelineView : FrameworkElement
     private static readonly Brush SilentClipBrush = Frozen("#3A3A3A");
     private static readonly Brush TextBrush = Frozen("#E8E8E8");
     private static readonly Brush DimTextBrush = Frozen("#9A9A9A");
+    private static readonly Brush WaveBrush = Frozen("#8CFFFFFF");
+    /// <summary>音量放大後超過 0 dB、匯出時會破音的部分。</summary>
+    private static readonly Brush ClippingBrush = Frozen("#C8FF4040");
+    /// <summary>波形上的文字墊一層深色底，才看得清楚。</summary>
+    private static readonly Brush LabelBackBrush = Frozen("#B4141414");
     private static readonly Pen TickPen = FrozenPen(Frozen("#555555"), 1);
     private static readonly Pen SelectedPen = FrozenPen(Frozen("#FFD24A"), 2);
     private static readonly Pen PlayheadPen = FrozenPen(Frozen("#FF4D4D"), 1.5);
@@ -64,6 +70,11 @@ public sealed class TimelineView : FrameworkElement
     public event Action? ClipsChanged;
     /// <summary>捲動或縮放改變。</summary>
     public event Action? ViewChanged;
+
+    /// <summary>取得素材已產生好的波形；還沒好或沒有時回傳 null。沒設定就不畫波形。</summary>
+    public Func<MediaInfo, WaveformData?>? WaveformOf { get; set; }
+    /// <summary>素材的波形是否還在產生中（片段上會加註）。</summary>
+    public Func<MediaInfo, bool>? WaveformPending { get; set; }
 
     public double PixelsPerSecond => _pixelsPerSecond;
     public double ScrollOffset => _scrollOffset;
@@ -155,10 +166,10 @@ public sealed class TimelineView : FrameworkElement
             DrawClip(dc, clip, VideoRowY, VideoRowHeight, VideoClipBrush, ClipLabel(clip));
             var hasAudio = clip.Media.HasAudio;
             DrawClip(dc, clip, OriginalAudioRowY, AudioRowHeight, hasAudio ? AudioClipBrush : SilentClipBrush,
-                hasAudio ? VolumeLabel(clip) : "無音訊");
+                hasAudio ? VolumeLabel(clip) : "無音訊", audio: hasAudio);
         }
         foreach (var clip in _timeline.MusicClips)
-            DrawClip(dc, clip, MusicRowY, AudioRowHeight, MusicClipBrush, $"{clip.Media.FileName}  {VolumeLabel(clip)}");
+            DrawClip(dc, clip, MusicRowY, AudioRowHeight, MusicClipBrush, $"{clip.Media.FileName}  {VolumeLabel(clip)}", audio: true);
 
         var playheadX = TimeToX(_playhead);
         dc.DrawLine(_snapped ? SnappedPlayheadPen : PlayheadPen, new Point(playheadX, 0), new Point(playheadX, ActualHeight));
@@ -207,17 +218,69 @@ public sealed class TimelineView : FrameworkElement
         return span.Milliseconds > 0 ? $"{(int)span.TotalMinutes}:{span.Seconds:00}.{span.Milliseconds / 100}" : $"{(int)span.TotalMinutes}:{span.Seconds:00}";
     }
 
-    private void DrawClip(DrawingContext dc, TimelineClip clip, double y, double height, Brush brush, string label)
+    private void DrawClip(DrawingContext dc, TimelineClip clip, double y, double height, Brush brush, string label, bool audio = false)
     {
         var x = TimeToX(clip.Start);
         var w = clip.Duration * _pixelsPerSecond;
         if (x + w < HeaderWidth || x > ActualWidth) return;
         var rect = new Rect(x, y + 1, Math.Max(1, w), height - 2);
-        dc.DrawRoundedRectangle(brush, clip == SelectedClip ? SelectedPen : null, rect, 3, 3);
-        if (w > 24) DrawText(dc, label, Math.Max(x, HeaderWidth) + 6, y + 4, TextBrush, x + w - Math.Max(x, HeaderWidth) - 10);
+        dc.DrawRoundedRectangle(brush, null, rect, 3, 3);
+        Brush? labelBack = null;
+        if (audio)
+        {
+            if (WaveformOf?.Invoke(clip.Media) is { } waveform)
+            {
+                DrawWaveform(dc, clip, waveform, rect);
+                labelBack = LabelBackBrush;
+            }
+            else if (WaveformPending?.Invoke(clip.Media) == true)
+            {
+                label += "（波形產生中）";
+            }
+        }
+        // 選取框畫在波形上面，才不會被蓋住。
+        if (clip == SelectedClip) dc.DrawRoundedRectangle(null, SelectedPen, rect, 3, 3);
+        if (w > 24) DrawText(dc, label, Math.Max(x, HeaderWidth) + 6, y + 4, TextBrush, x + w - Math.Max(x, HeaderWidth) - 10, labelBack);
     }
 
-    private void DrawText(DrawingContext dc, string text, double x, double y, Brush brush, double maxWidth)
+    /// <summary>
+    /// 以片段中線上下對稱畫出波形，只算畫面上看得到的部分，每像素一欄。
+    /// 整段組成一個圖形一次畫出，播放中每次重畫的成本才低。超過 0 dB（會破音）的欄另外塗紅。
+    /// </summary>
+    private void DrawWaveform(DrawingContext dc, TimelineClip clip, WaveformData data, Rect rect)
+    {
+        if (rect.Width < 3) return;
+        var columns = WaveformColumns.Build(clip, data, rect.Left, _pixelsPerSecond, HeaderWidth, ActualWidth);
+        if (columns.Count == 0) return;
+        var mid = rect.Top + rect.Height / 2;
+        var half = rect.Height / 2 - 2;
+        // 靜音處留一條細線，看得出片段有音訊、只是沒聲音。
+        double Top(WaveformColumn c) => mid - Math.Max(0.5, c.Level * half);
+        double Bottom(WaveformColumn c) => mid + Math.Max(0.5, c.Level * half);
+
+        var points = new List<Point>(columns.Count * 2 + 2);
+        foreach (var c in columns) points.Add(new Point(c.X + c.Width / 2, Top(c)));
+        points.Add(new Point(columns[^1].X + columns[^1].Width, mid));
+        for (var i = columns.Count - 1; i >= 0; i--) points.Add(new Point(columns[i].X + columns[i].Width / 2, Bottom(columns[i])));
+        var geometry = new StreamGeometry();
+        using (var context = geometry.Open())
+        {
+            context.BeginFigure(new Point(columns[0].X, mid), isFilled: true, isClosed: true);
+            context.PolyLineTo(points, isStroked: false, isSmoothJoin: false);
+        }
+        geometry.Freeze();
+        dc.DrawGeometry(WaveBrush, null, geometry);
+
+        for (var i = 0; i < columns.Count; i++)
+        {
+            if (!columns[i].Clipped) continue;
+            var start = columns[i].X;
+            while (i + 1 < columns.Count && columns[i + 1].Clipped) i++;
+            dc.DrawRectangle(ClippingBrush, null, new Rect(start, mid - half, columns[i].X + columns[i].Width - start, half * 2));
+        }
+    }
+
+    private void DrawText(DrawingContext dc, string text, double x, double y, Brush brush, double maxWidth, Brush? background = null)
     {
         if (maxWidth <= 0) return;
         var formatted = new FormattedText(text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, Face, 11, brush,
@@ -227,6 +290,8 @@ public sealed class TimelineView : FrameworkElement
             MaxLineCount = 1,
             Trimming = TextTrimming.CharacterEllipsis,
         };
+        if (background != null)
+            dc.DrawRoundedRectangle(background, null, new Rect(x - 3, y - 1, formatted.WidthIncludingTrailingWhitespace + 6, formatted.Height + 2), 2, 2);
         dc.DrawText(formatted, new Point(x, y));
     }
 

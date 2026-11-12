@@ -1,6 +1,6 @@
 # 時間軸聲音波形：規劃
 
-2026-11-12 規劃，尚未實作。目標：時間軸的 A1（影片原音）與 A2（配樂）片段上畫出聲音波形，剪輯時看得出哪裡有聲音、哪裡是靜音、拍點在哪，方便對齊切點。
+2026-11-12 規劃並實作完成（見第七節）。目標：時間軸的 A1（影片原音）與 A2（配樂）片段上畫出聲音波形，剪輯時看得出哪裡有聲音、哪裡是靜音、拍點在哪，方便對齊切點。
 
 ## 一、範圍
 
@@ -90,9 +90,34 @@ ffmpeg -v error -i <檔案> -map 0:a:0 -vn -sn -dn -ac 2(只在超過 2 聲道�
 - 音量滑桿拖動時波形即時變化。
 - 長片段在最小縮放下播放，時間軸不卡。
 
-## 五、待決定
+## 五、決定（2026-11-12，全部採用建議）
 
-1. **刻度**：分貝（建議，起伏明顯）還是線性（與音量百分比直覺一致，但小聲的地方看不到）？
-2. **軌道高度**：音訊軌加高到 48、時間軸區域加高 24 像素，可以嗎？
-3. **開始計算的時機**：匯入後就算（建議，加入時間軸時通常已經好了），還是加入時間軸才算（不用的素材不浪費時間）？
-4. **破音提示**：音量放大後超過 0 dB 的部分要不要改色？
+1. **刻度**：分貝，-48 dB 到 0 dB 對應到 0 到半高。
+2. **軌道高度**：音訊軌 36 → 48，時間軸區域 230 → 254。
+3. **開始計算的時機**：匯入完成就排入背景計算。
+4. **破音提示**：峰值乘上音量後超過 0 dB 的部分改用紅色。
+
+## 六、細部步驟
+
+| # | 檔案 | 內容 |
+|---|---|---|
+| 1 | `Core/Models/WaveformData.cs` | 峰值陣列＋多層級；`Peak(from, to)`；`static ToHeight(peak, volume)` 分貝換算；`FromSamples` 建構 |
+| 2 | `Core/Ffmpeg/ProcessRunner.cs` | `RunWithStreamAsync`：把標準輸出交給呼叫端邊讀邊處理 |
+| 3 | `Core/Ffmpeg/WaveformExtractor.cs` | FFmpeg 輸出 s16le，逐 2 ms 取各聲道絕對值最大值 |
+| 4 | `Core/Ffmpeg/WaveformCache.cs` | 以路徑為鍵、一次一個、`Ready` 事件、失敗事件、`Dispose` 取消 |
+| 5 | `Core/Timeline/WaveformColumns.cs` | 片段可見範圍 → 每像素欄的來源區間與高度（含倒放），供繪製與測試 |
+| 6 | `App`：`MainWindow.Import.cs`、`MainWindow.xaml(.cs)` | 匯入後排入、Ready 時重畫、關閉時 Dispose、時間軸區域加高 |
+| 7 | `App/Controls/TimelineView.cs` | A1／A2 畫波形、破音紅色、「波形產生中」、文字底色、音訊軌 48 |
+| 8 | 測試、README、規格 4.1 | 單元與整合測試；文件補上波形 |
+
+## 七、實作結果（2026-11-12）
+
+照第六節完成。驗證（Linux、FFmpeg 6.1.1、.NET 10）：
+
+- 新增 31 個測試（`WaveformTests.cs`）全部通過：峰值查詢與逐格計算一致、分貝換算、取樣點跨區塊、左右反相、5.1 聲道、靜音轉有聲的位置、倒放翻轉、只算可見範圍、音量與破音、快取去重／一次一個／失敗／Dispose 取消。
+- 全部測試 354 個中 3 個失敗，都與波形無關、改動前就失敗：檔案占用與唯讀檔的測試在 Linux 以 root 執行時不成立（`StartupCleanupRemovesOnlyFoldersNobodyUses`、`FinishedVideoIsKeptWhenTheOutputCannotBeReplaced`、`PreflightRejectsReadOnlyOutput`），Windows CI 上應該正常。
+- App 以 `EnableWindowsTargeting` 在 Linux 編譯通過，沒有警告。
+- 一小時 AAC 立體聲素材：產生波形 12.2 秒（其中 FFmpeg 解碼本身約 11 秒），FFmpeg 最大記憶體 57 MB，波形資料約 27 MB；一個片段在畫面寬 1600 像素時，計算波形欄約 0.3–0.6 ms。
+- 實作與設計的差異：倒放片段的聲音對應改用「從出點往回算」（`WaveformColumns.SourceTime`），與匯出時 areverse 的聲音一致，而不是畫面用的「出點前最後一格」，兩者差不到一格。
+
+仍需在 Windows 上手動驗證：第四節列的四項，以及波形顏色與文字底色是否清楚。
