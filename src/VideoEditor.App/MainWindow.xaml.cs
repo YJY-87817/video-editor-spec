@@ -30,6 +30,7 @@ public partial class MainWindow : Window, IExportView, IImportView
     private readonly FfmpegTools? _tools;
     private readonly ImportController? _import;
     private readonly PreviewEngine? _engine;
+    private readonly WaveformCache? _waveforms;
     private TimelineModel? _sourcePreview;
     private MediaItem? _selectedMedia;
     private readonly InOutPoints _points = new();
@@ -78,6 +79,18 @@ public partial class MainWindow : Window, IExportView, IImportView
         _engine.Status += message => StatusText.Text = message;
         _engine.SurfaceChanged += OnSurfaceChanged;
         _engine.Error += message => StatusText.Text = message;
+        // 聲音波形：匯入後在背景產生，好了就重畫時間軸。這兩個事件在背景執行緒觸發。
+        _waveforms = new WaveformCache(new WaveformExtractor(_tools));
+        _waveforms.Ready += _ => Dispatcher.BeginInvoke(Timeline.InvalidateVisual);
+        _waveforms.Failed += (media, error) => Dispatcher.BeginInvoke(() =>
+        {
+            var stderr = (error as FfmpegException)?.Stderr;
+            var detail = (string.IsNullOrWhiteSpace(stderr) ? error.Message : stderr).Split('\n')[0];
+            StatusText.Text = $"無法產生 {media.FileName} 的聲音波形：{detail}";
+            Timeline.InvalidateVisual();
+        });
+        Timeline.WaveformOf = _waveforms.Get;
+        Timeline.WaveformPending = _waveforms.IsPending;
         UpdateOutputInfo();
         UpdateMarks();
 
@@ -118,5 +131,6 @@ public partial class MainWindow : Window, IExportView, IImportView
     {
         _export?.Cancel();
         _engine?.Dispose();
+        _waveforms?.Dispose();
     }
 }

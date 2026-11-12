@@ -97,6 +97,30 @@ public static class ProcessRunner
         return chunks;
     }
 
+    /// <summary>
+    /// 執行並把標準輸出交給 consume 邊讀邊處理（例如解出整段聲音來算波形），不必整段放進記憶體。
+    /// consume 沒讀完的部分會在之後讀掉，程序才不會因管線塞滿而卡住。
+    /// </summary>
+    public static async Task RunWithStreamAsync(string exe, IEnumerable<string> args, Func<Stream, Task> consume,
+        CancellationToken token = default)
+    {
+        using var process = Start(exe, args);
+        using var kill = token.Register(() => KillQuietly(process));
+        var error = ReadErrorTailAsync(process);
+        var output = process.StandardOutput.BaseStream;
+        try
+        {
+            await consume(output);
+        }
+        catch
+        {
+            KillQuietly(process);
+            throw;
+        }
+        await output.CopyToAsync(Stream.Null, CancellationToken.None);
+        await FinishAsync(process, exe, error, token);
+    }
+
     /// <summary>執行並逐行回報標準輸出，用於讀取 -progress 進度。</summary>
     public static async Task RunWithLinesAsync(string exe, IEnumerable<string> args, Action<string> onLine, CancellationToken token = default)
     {

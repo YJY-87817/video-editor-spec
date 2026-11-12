@@ -65,6 +65,8 @@ public partial class MainWindow
     {
         var item = new MediaItem(info) { Thumbnail = thumbnail == null ? null : CreateThumbnail(thumbnail) };
         _media.Add(item);
+        // 不等加入時間軸就先算波形，加入時多半已經好了。
+        _waveforms?.Request(info);
         MediaList.SelectedItem ??= item;
     }
 
