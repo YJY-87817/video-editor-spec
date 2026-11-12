@@ -201,7 +201,10 @@
                 <Button Content="－" AutomationProperties.AutomationId="ZoomOutButton" Click="OnZoomOut" />
                 <Button Content="＋" AutomationProperties.AutomationId="ZoomInButton" Click="OnZoomIn" />
                 <Button Content="顯示全部" AutomationProperties.AutomationId="ZoomFitButton" Click="OnZoomFit" />
-                <TextBlock Text="Ctrl + 滾輪縮放；拖曳片段移動，拖曳邊緣調整長度" Foreground="#777777" FontSize="12" VerticalAlignment="Center" Margin="8,0,0,0" />
+                <CheckBox x:Name="SilenceSnapCheck" AutomationProperties.AutomationId="SilenceSnapCheck" Content="吸附靜音" IsChecked="True"
+                          Foreground="#E0E0E0" VerticalAlignment="Center" Margin="8,0,0,0" Click="OnSilenceSnapClick"
+                          ToolTip="拖曳邊緣修剪時，吸附到片段聲音的停頓處（左緣停在聲音開始前、右緣停在聲音結束後）" />
+                <TextBlock Text="Ctrl + 滾輪縮放；拖曳片段移動，拖曳邊緣調整長度；按住 Alt 暫停吸附" Foreground="#777777" FontSize="12" VerticalAlignment="Center" Margin="8,0,0,0" />
             </DockPanel>
             <ScrollBar x:Name="TimelineScroll" DockPanel.Dock="Bottom" Orientation="Horizontal" Scroll="OnTimelineScroll" />
             <controls:TimelineView x:Name="Timeline" AutomationProperties.AutomationId="Timeline" />

@@ -32,6 +32,9 @@ public sealed class WaveformData
     }
 
     public int Count => _levels[0].Length;
+
+    /// <summary>第 index 格的峰值（每格 <see cref="SecondsPerPeak"/> 秒）。</summary>
+    public float this[int index] => _levels[0][index];
     public double Duration => Count * SecondsPerPeak;
 
     /// <summary>來源時間 [from, to) 之間的最大峰值。區間比一格還短時取所在的那一格；超出素材範圍的部分當成靜音。</summary>
