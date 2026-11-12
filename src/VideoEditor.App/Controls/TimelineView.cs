@@ -37,6 +37,8 @@ public sealed class TimelineView : FrameworkElement
     private static readonly Brush ClippingBrush = Frozen("#C8FF4040");
     /// <summary>波形上的文字墊一層深色底，才看得清楚。</summary>
     private static readonly Brush LabelBackBrush = Frozen("#B4141414");
+    /// <summary>拖曳邊緣時，把會被當成停頓的靜音範圍塗暗。</summary>
+    private static readonly Brush SilenceShadeBrush = Frozen("#80000000");
     private static readonly Pen TickPen = FrozenPen(Frozen("#555555"), 1);
     private static readonly Pen SelectedPen = FrozenPen(Frozen("#FFD24A"), 2);
     private static readonly Pen PlayheadPen = FrozenPen(Frozen("#FF4D4D"), 1.5);
@@ -53,7 +55,11 @@ public sealed class TimelineView : FrameworkElement
     private DragKind _drag;
     private TimelineClip? _dragClip;
     private double _dragGrabOffset;
-    private bool _snapped;
+    private SnapKind _snapKind;
+    private double _snapTarget;
+    // 拖曳邊緣時這個片段聲音的靜音區間（來源時間）與吸附點（時間軸時間、已排序）；開始拖曳時算一次。
+    private IReadOnlyList<TimeRange>? _dragSilences;
+    private IReadOnlyList<double> _dragSilenceTargets = [];
 
     public TimelineView()
     {
@@ -75,6 +81,9 @@ public sealed class TimelineView : FrameworkElement
     public Func<MediaInfo, WaveformData?>? WaveformOf { get; set; }
     /// <summary>素材的波形是否還在產生中（片段上會加註）。</summary>
     public Func<MediaInfo, bool>? WaveformPending { get; set; }
+
+    /// <summary>修剪時是否吸附到片段聲音的靜音處（時間軸工具列的「吸附靜音」）。</summary>
+    public bool SnapToSilence { get; set; } = true;
 
     public double PixelsPerSecond => _pixelsPerSecond;
     public double ScrollOffset => _scrollOffset;
@@ -171,8 +180,9 @@ public sealed class TimelineView : FrameworkElement
         foreach (var clip in _timeline.MusicClips)
             DrawClip(dc, clip, MusicRowY, AudioRowHeight, MusicClipBrush, $"{clip.Media.FileName}  {VolumeLabel(clip)}", audio: true);
 
+        DrawSilenceSnapMark(dc);
         var playheadX = TimeToX(_playhead);
-        dc.DrawLine(_snapped ? SnappedPlayheadPen : PlayheadPen, new Point(playheadX, 0), new Point(playheadX, ActualHeight));
+        dc.DrawLine(_snapKind == SnapKind.Playhead ? SnappedPlayheadPen : PlayheadPen, new Point(playheadX, 0), new Point(playheadX, ActualHeight));
         dc.Pop();
     }
 
@@ -231,6 +241,7 @@ public sealed class TimelineView : FrameworkElement
             if (WaveformOf?.Invoke(clip.Media) is { } waveform)
             {
                 DrawWaveform(dc, clip, waveform, rect);
+                DrawSilenceShade(dc, clip, rect);
                 labelBack = LabelBackBrush;
             }
             else if (WaveformPending?.Invoke(clip.Media) == true)
@@ -278,6 +289,31 @@ public sealed class TimelineView : FrameworkElement
             while (i + 1 < columns.Count && columns[i + 1].Clipped) i++;
             dc.DrawRectangle(ClippingBrush, null, new Rect(start, mid - half, columns[i].X + columns[i].Width - start, half * 2));
         }
+    }
+
+    private bool IsTrimming => _drag is DragKind.TrimStart or DragKind.TrimEnd;
+
+    /// <summary>拖曳邊緣時，在這個片段的音訊軌塗暗靜音範圍；平常不畫，以免和波形搶視線。</summary>
+    private void DrawSilenceShade(DrawingContext dc, TimelineClip clip, Rect rect)
+    {
+        if (!IsTrimming || clip != _dragClip || _dragSilences == null || !SnapToSilence) return;
+        foreach (var silence in _dragSilences)
+        {
+            var range = TimelineSnap.ToTimeline(clip, silence);
+            var left = Math.Max(rect.Left, TimeToX(range.From));
+            var right = Math.Min(rect.Right, TimeToX(range.To));
+            if (right > left) dc.DrawRectangle(SilenceShadeBrush, null, new Rect(left, rect.Top, right - left, rect.Height));
+        }
+    }
+
+    /// <summary>邊緣貼齊靜音處時，在片段的軌道上畫一條黃線（貼齊播放頭時則是播放頭變黃）。</summary>
+    private void DrawSilenceSnapMark(DrawingContext dc)
+    {
+        if (_snapKind != SnapKind.Silence || _dragClip == null) return;
+        var top = _dragClip.Track == TrackKind.Video ? VideoRowY : MusicRowY;
+        var bottom = _dragClip.Track == TrackKind.Video ? OriginalAudioRowY + AudioRowHeight : MusicRowY + AudioRowHeight;
+        var x = TimeToX(_snapTarget);
+        dc.DrawLine(SnappedPlayheadPen, new Point(x, top), new Point(x, bottom));
     }
 
     private void DrawText(DrawingContext dc, string text, double x, double y, Brush brush, double maxWidth, Brush? background = null)
@@ -340,6 +376,7 @@ public sealed class TimelineView : FrameworkElement
             _drag = kind;
             _dragClip = clip;
             _dragGrabOffset = XToTime(p.X) - clip.Start;
+            if (kind is DragKind.TrimStart or DragKind.TrimEnd) PrepareSilenceSnap(clip, kind == DragKind.TrimStart ? TrimEdge.Start : TrimEdge.End);
         }
         CaptureMouse();
         e.Handled = true;
@@ -365,12 +402,12 @@ public sealed class TimelineView : FrameworkElement
                 _timeline.Move(_dragClip!, time - _dragGrabOffset);
                 break;
             case DragKind.TrimStart:
-                _timeline.TrimStart(_dragClip!, SnapToPlayhead(time));
-                _snapped = _snapped && IsAtPlayhead(_dragClip!, _dragClip!.Start);
+                _timeline.TrimStart(_dragClip!, Snap(time));
+                KeepSnapOnlyIfReached(_dragClip!, _dragClip!.Start);
                 break;
             case DragKind.TrimEnd:
-                _timeline.TrimEnd(_dragClip!, SnapToPlayhead(time));
-                _snapped = _snapped && IsAtPlayhead(_dragClip!, _dragClip!.End);
+                _timeline.TrimEnd(_dragClip!, Snap(time));
+                KeepSnapOnlyIfReached(_dragClip!, _dragClip!.End);
                 break;
         }
         InvalidateVisual();
@@ -397,29 +434,47 @@ public sealed class TimelineView : FrameworkElement
         var wasEditing = _drag is DragKind.Move or DragKind.TrimStart or DragKind.TrimEnd;
         _drag = DragKind.None;
         _dragClip = null;
-        _snapped = false;
+        _snapKind = SnapKind.None;
+        _dragSilences = null;
+        _dragSilenceTargets = [];
         if (wasEditing) ClipsChanged?.Invoke();
         ViewChanged?.Invoke();
         InvalidateVisual();
     }
 
     /// <summary>
-    /// 剪輯點靠近播放頭時貼齊。吸附範圍以像素計，換算成目前縮放比例下的秒數。
-    /// 邊緣受來源長度或相鄰片段限制而停不到播放頭時，不算貼齊。
+    /// 開始拖曳邊緣時，找出這個片段聲音的靜音處與吸附點。波形還沒產生好或沒有音訊時只吸附播放頭；
+    /// 拖曳中途波形才好的話，下次拖曳才用得到。
     /// </summary>
-    private double SnapToPlayhead(double time)
+    private void PrepareSilenceSnap(TimelineClip clip, TrimEdge edge)
+    {
+        if (!clip.Media.HasAudio || WaveformOf?.Invoke(clip.Media) is not { } waveform) return;
+        _dragSilences = SilenceDetector.Find(waveform);
+        _dragSilenceTargets = TimelineSnap.SilenceTargets(clip, _dragSilences, edge);
+    }
+
+    /// <summary>
+    /// 剪輯點靠近播放頭或靜音處時貼齊，取比較近的一個（一樣近時以播放頭優先）。
+    /// 吸附範圍以像素計，換算成目前縮放比例下的秒數。按住 Alt 全部關閉；取消「吸附靜音」時只吸附播放頭。
+    /// </summary>
+    private double Snap(double time)
     {
         if (Keyboard.Modifiers.HasFlag(ModifierKeys.Alt))
         {
-            _snapped = false;
+            _snapKind = SnapKind.None;
             return time;
         }
-        var (snappedTime, snapped) = TimelineSnap.ToPlayhead(time, _playhead, SnapPixels / _pixelsPerSecond);
-        _snapped = snapped;
-        return snappedTime;
+        var result = TimelineSnap.Snap(time, _playhead, SnapToSilence ? _dragSilenceTargets : [], SnapPixels / _pixelsPerSecond);
+        _snapKind = result.Kind;
+        _snapTarget = result.Target;
+        return result.Time;
     }
 
-    private bool IsAtPlayhead(TimelineClip clip, double time) => TimelineSnap.IsAtPlayhead(time, _playhead, clip.Media.FrameRate.Value);
+    /// <summary>邊緣受來源長度或相鄰片段限制而停不到吸附點時，不算貼齊。</summary>
+    private void KeepSnapOnlyIfReached(TimelineClip clip, double edge)
+    {
+        if (_snapKind != SnapKind.None && !TimelineSnap.IsAt(edge, _snapTarget, clip.Media.FrameRate.Value)) _snapKind = SnapKind.None;
+    }
 
     protected override void OnMouseWheel(MouseWheelEventArgs e)
     {

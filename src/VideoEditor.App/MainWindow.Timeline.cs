@@ -141,6 +141,8 @@ public partial class MainWindow
     private void OnZoomOut(object sender, RoutedEventArgs e) => Timeline.SetZoom(Timeline.PixelsPerSecond / ZoomStep);
     private void OnZoomFit(object sender, RoutedEventArgs e) => Timeline.ZoomToFit();
 
+    private void OnSilenceSnapClick(object sender, RoutedEventArgs e) => Timeline.SnapToSilence = SilenceSnapCheck.IsChecked == true;
+
     private void OnTimelineScroll(object sender, ScrollEventArgs e) => Timeline.SetScrollOffset(e.NewValue);
 
     private void UpdateTimelineScrollBar()
