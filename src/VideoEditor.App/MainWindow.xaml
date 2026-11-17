@@ -151,11 +151,13 @@
 
                 <TextBlock Style="{StaticResource SectionTitle}" Text="片段清單（影片軌）" />
                 <ListBox x:Name="ClipList" AutomationProperties.AutomationId="ClipList" Height="170" SelectionChanged="OnClipListSelected" DisplayMemberPath="Label" />
-                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                <WrapPanel Margin="0,6,0,0">
                     <Button Content="上移" AutomationProperties.AutomationId="MoveUpButton" Click="OnMoveUp" />
                     <Button Content="下移" AutomationProperties.AutomationId="MoveDownButton" Click="OnMoveDown" />
                     <Button Content="刪除" AutomationProperties.AutomationId="DeleteButton" Click="OnDeleteClip" ToolTip="Delete 鍵" />
-                </StackPanel>
+                    <Button Content="在播放頭分割" AutomationProperties.AutomationId="SplitButton" Click="OnSplitClick"
+                            ToolTip="S 鍵：把選取的片段從時間軸播放頭的位置切成兩段" />
+                </WrapPanel>
 
                 <TextBlock Style="{StaticResource SectionTitle}" Text="片段音量" />
                 <DockPanel>
@@ -204,7 +206,10 @@
                 <CheckBox x:Name="SilenceSnapCheck" AutomationProperties.AutomationId="SilenceSnapCheck" Content="吸附靜音" IsChecked="True"
                           Foreground="#E0E0E0" VerticalAlignment="Center" Margin="8,0,0,0" Click="OnSilenceSnapClick"
                           ToolTip="拖曳邊緣修剪時，吸附到片段聲音的停頓處（左緣停在聲音開始前、右緣停在聲音結束後）" />
-                <TextBlock Text="Ctrl + 滾輪縮放；拖曳片段移動，拖曳邊緣調整長度；按住 Alt 暫停吸附" Foreground="#777777" FontSize="12" VerticalAlignment="Center" Margin="8,0,0,0" />
+                <CheckBox x:Name="ClipSnapCheck" AutomationProperties.AutomationId="ClipSnapCheck" Content="吸附片段" IsChecked="True"
+                          Foreground="#E0E0E0" VerticalAlignment="Center" Margin="8,0,0,0" Click="OnClipSnapClick"
+                          ToolTip="移動片段時貼齊其他片段的邊緣、播放頭與時間軸開頭；修剪時也貼齊其他片段的邊緣" />
+                <TextBlock Text="Ctrl + 滾輪縮放；S 在播放頭分割；Page Up／Down 跳剪輯點；按住 Alt 暫停吸附" TextTrimming="CharacterEllipsis" Foreground="#777777" FontSize="12" VerticalAlignment="Center" Margin="8,0,0,0" />
             </DockPanel>
             <ScrollBar x:Name="TimelineScroll" DockPanel.Dock="Bottom" Orientation="Horizontal" Scroll="OnTimelineScroll" />
             <controls:TimelineView x:Name="Timeline" AutomationProperties.AutomationId="Timeline" />

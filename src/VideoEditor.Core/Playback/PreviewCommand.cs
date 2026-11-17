@@ -14,6 +14,12 @@ public enum PreviewCommand
     MarkIn,
     MarkOut,
     DeleteClip,
+    /// <summary>S：在播放頭分割選取的片段。</summary>
+    SplitClip,
+    /// <summary>Page Up：跳到上一個剪輯點。</summary>
+    PreviousEditPoint,
+    /// <summary>Page Down：跳到下一個剪輯點。</summary>
+    NextEditPoint,
 }
 
 public static class PreviewKeys
@@ -33,6 +39,10 @@ public static class PreviewKeys
         "I" => PreviewCommand.MarkIn,
         "O" => PreviewCommand.MarkOut,
         "Delete" => PreviewCommand.DeleteClip,
+        "S" => PreviewCommand.SplitClip,
+        // Key.PageUp 與 Key.Prior、Key.PageDown 與 Key.Next 是同一個值，轉成文字可能是其中任一個。
+        "PageUp" or "Prior" => PreviewCommand.PreviousEditPoint,
+        "PageDown" or "Next" => PreviewCommand.NextEditPoint,
         _ => null,
     };
 }

@@ -128,6 +128,45 @@ public sealed class Timeline
         return null;
     }
 
+    /// <summary>
+    /// 在時間軸時間 time 把片段切成兩段：原片段變成左段，新增右段並回傳。
+    /// 和按 I／O 的規則相同，time 上正在顯示的那一格成為右段的第一格，左段到它的前一格為止；
+    /// 純音訊沒有影格，照 time 切。兩段之間沒有空隙，音量、倒放、旋轉鏡像、畫面位置都沿用。
+    /// 倒放時時間軸上的左段是來源的後半、右段是前半，播放起來與分割前相同。
+    /// 任一段短於 <see cref="MinClipDuration"/> 時丟出 ArgumentException。
+    /// </summary>
+    public TimelineClip Split(TimelineClip clip, double time)
+    {
+        var list = ListOf(clip.Track);
+        if (!list.Contains(clip)) throw new ArgumentException("片段不在時間軸上。");
+        var fps = clip.Media.FrameRate.Value;
+        double cut;
+        if (fps <= 0) cut = clip.SourceIn + (time - clip.Start);
+        else
+        {
+            var frame = Ffmpeg.FrameExtractor.FrameIndex(clip.ToSourceTime(time), fps);
+            // 倒放時顯示的這一格是右段（來源前半）的最後一格，切點在它之後。
+            cut = (clip.Reversed ? frame + 1 : frame) / fps;
+        }
+        var leftLength = clip.Reversed ? clip.SourceOut - cut : cut - clip.SourceIn;
+        var rightLength = clip.Duration - leftLength;
+        if (leftLength < MinClipDuration - Epsilon || rightLength < MinClipDuration - Epsilon)
+            throw new ArgumentException($"分割後的片段會短於 {MinClipDuration} 秒。");
+
+        var right = clip.Reversed
+            ? new TimelineClip(clip.Media, clip.Track, clip.SourceIn, cut, clip.Start + leftLength)
+            : new TimelineClip(clip.Media, clip.Track, cut, clip.SourceOut, clip.Start + leftLength);
+        right.Volume = clip.Volume;
+        right.Reversed = clip.Reversed;
+        right.Transform = clip.Transform;
+        right.Framing = clip.Framing;
+        if (clip.Reversed) clip.SourceIn = cut;
+        else clip.SourceOut = cut;
+        list.Add(right);
+        Sort(list);
+        return right;
+    }
+
     /// <summary>將片段移到最接近目標、且不與其他片段重疊的位置，回傳實際位置。</summary>
     public double Move(TimelineClip clip, double targetStart)
     {
