@@ -19,6 +19,9 @@ public enum PreviewFollowUp
 /// <summary>把標記的素材放上時間軸的結果。成功時有 Clip，失敗時有 Error。</summary>
 public sealed record AddResult(TimelineClip? Clip, string? Error);
 
+/// <summary>在播放頭分割的結果。成功時 Clip 是右段，失敗時有 Error（給狀態列的提示）。</summary>
+public sealed record SplitResult(TimelineClip? Clip, string? Error);
+
 /// <summary>時間軸上的編輯動作與它們的規則，不碰任何畫面元件。</summary>
 public sealed class TimelineEditor(TimelineModel timeline)
 {
@@ -47,6 +50,26 @@ public sealed class TimelineEditor(TimelineModel timeline)
         timeline.SetTransform(clip, change(clip.Transform));
         if (!timelinePreview) return PreviewFollowUp.ShowClipInTimeline;
         return playhead < clip.Start || playhead >= clip.End ? PreviewFollowUp.SeekToClip : PreviewFollowUp.None;
+    }
+
+    /// <summary>
+    /// 在播放頭分割選取的片段。只在時間軸預覽時作用（素材模式下看不到時間軸的播放頭），
+    /// 播放頭要在片段範圍內（剛好在邊緣不算）。成功時回傳右段。
+    /// </summary>
+    public SplitResult Split(TimelineClip? selected, double playhead, bool timelinePreview)
+    {
+        if (!timelinePreview) return new SplitResult(null, "請先切到時間軸預覽，再在播放頭分割。");
+        if (selected == null) return new SplitResult(null, "請先選取要分割的片段。");
+        if (playhead <= selected.Start + 1e-6 || playhead >= selected.End - 1e-6)
+            return new SplitResult(null, "播放頭不在選取的片段內。");
+        try
+        {
+            return new SplitResult(timeline.Split(selected, playhead), null);
+        }
+        catch (ArgumentException error)
+        {
+            return new SplitResult(null, error.Message);
+        }
     }
 
     /// <summary>音量滑桿的百分比（0–200）轉成線性增益，取整數百分比。</summary>

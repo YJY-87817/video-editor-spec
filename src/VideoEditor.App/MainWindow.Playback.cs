@@ -75,6 +75,9 @@ public partial class MainWindow
             case PreviewCommand.MarkIn: MarkIn(); break;
             case PreviewCommand.MarkOut: MarkOut(); break;
             case PreviewCommand.DeleteClip: DeleteSelectedClip(); break;
+            case PreviewCommand.SplitClip: SplitSelectedClip(); break;
+            case PreviewCommand.PreviousEditPoint: JumpToEditPoint(forward: false); break;
+            case PreviewCommand.NextEditPoint: JumpToEditPoint(forward: true); break;
         }
     }
 

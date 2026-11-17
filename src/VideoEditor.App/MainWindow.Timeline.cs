@@ -143,6 +143,51 @@ public partial class MainWindow
 
     private void OnSilenceSnapClick(object sender, RoutedEventArgs e) => Timeline.SnapToSilence = SilenceSnapCheck.IsChecked == true;
 
+    private void OnClipSnapClick(object sender, RoutedEventArgs e) => Timeline.SnapToClips = ClipSnapCheck.IsChecked == true;
+
+    // ---- 分割與跳到剪輯點 ----
+
+    private void OnSplitClick(object sender, RoutedEventArgs e) => SplitSelectedClip();
+
+    /// <summary>在播放頭分割選取的片段，成功後選取右段。不能分割時在狀態列說明原因。</summary>
+    private void SplitSelectedClip()
+    {
+        var result = _editor.Split(Timeline.SelectedClip, Timeline.Playhead, IsTimelinePreview);
+        if (result.Clip == null)
+        {
+            StatusText.Text = result.Error ?? "";
+            return;
+        }
+        _engine?.Pause();
+        Timeline.Select(result.Clip);
+        OnClipsChanged();
+    }
+
+    /// <summary>
+    /// Page Up／Page Down：時間軸預覽時跳到影片軌片段的邊緣（含時間軸開頭）；
+    /// 素材模式時在素材開頭、入點、出點、結尾之間跳。已經是第一個或最後一個時不動。
+    /// </summary>
+    private void JumpToEditPoint(bool forward)
+    {
+        if (_engine == null) return;
+        IReadOnlyList<double> points;
+        double position;
+        if (IsTimelinePreview)
+        {
+            points = EditPoints.Timeline(_timeline);
+            position = Timeline.Playhead;
+        }
+        else
+        {
+            if (_selectedMedia == null) return;
+            points = EditPoints.Source(_selectedMedia.Info, _points);
+            position = _engine.Position;
+        }
+        if ((forward ? EditPoints.Next(points, position) : EditPoints.Previous(points, position)) is not { } target) return;
+        if (IsTimelinePreview) Timeline.Playhead = target;
+        _engine.Seek(target);
+    }
+
     private void OnTimelineScroll(object sender, ScrollEventArgs e) => Timeline.SetScrollOffset(e.NewValue);
 
     private void UpdateTimelineScrollBar()

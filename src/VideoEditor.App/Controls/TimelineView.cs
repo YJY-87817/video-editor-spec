@@ -60,6 +60,8 @@ public sealed class TimelineView : FrameworkElement
     // 拖曳邊緣時這個片段聲音的靜音區間（來源時間）與吸附點（時間軸時間、已排序）；開始拖曳時算一次。
     private IReadOnlyList<TimeRange>? _dragSilences;
     private IReadOnlyList<double> _dragSilenceTargets = [];
+    // 拖曳時其他片段（兩軌）的開頭與結尾，排序過；開始拖曳時算一次。
+    private IReadOnlyList<double> _dragClipEdges = [];
 
     public TimelineView()
     {
@@ -84,6 +86,11 @@ public sealed class TimelineView : FrameworkElement
 
     /// <summary>修剪時是否吸附到片段聲音的靜音處（時間軸工具列的「吸附靜音」）。</summary>
     public bool SnapToSilence { get; set; } = true;
+
+    /// <summary>
+    /// 時間軸工具列的「吸附片段」。關閉時移動片段完全不吸附，修剪時不吸附其他片段的邊緣（播放頭與靜音處照舊）。
+    /// </summary>
+    public bool SnapToClips { get; set; } = true;
 
     public double PixelsPerSecond => _pixelsPerSecond;
     public double ScrollOffset => _scrollOffset;
@@ -180,7 +187,7 @@ public sealed class TimelineView : FrameworkElement
         foreach (var clip in _timeline.MusicClips)
             DrawClip(dc, clip, MusicRowY, AudioRowHeight, MusicClipBrush, $"{clip.Media.FileName}  {VolumeLabel(clip)}", audio: true);
 
-        DrawSilenceSnapMark(dc);
+        DrawSnapMark(dc);
         var playheadX = TimeToX(_playhead);
         dc.DrawLine(_snapKind == SnapKind.Playhead ? SnappedPlayheadPen : PlayheadPen, new Point(playheadX, 0), new Point(playheadX, ActualHeight));
         dc.Pop();
@@ -306,13 +313,20 @@ public sealed class TimelineView : FrameworkElement
         }
     }
 
-    /// <summary>邊緣貼齊靜音處時，在片段的軌道上畫一條黃線（貼齊播放頭時則是播放頭變黃）。</summary>
-    private void DrawSilenceSnapMark(DrawingContext dc)
+    /// <summary>
+    /// 貼齊時在貼齊的位置畫黃線（貼齊播放頭時則是播放頭變黃）：
+    /// 靜音處只畫在該片段的軌道上；片段邊緣與時間軸開頭貫穿所有軌道，看得出對齊的是哪一軌的片段。
+    /// </summary>
+    private void DrawSnapMark(DrawingContext dc)
     {
-        if (_snapKind != SnapKind.Silence || _dragClip == null) return;
-        var top = _dragClip.Track == TrackKind.Video ? VideoRowY : MusicRowY;
-        var bottom = _dragClip.Track == TrackKind.Video ? OriginalAudioRowY + AudioRowHeight : MusicRowY + AudioRowHeight;
+        if (_dragClip == null || _snapKind is SnapKind.None or SnapKind.Playhead) return;
         var x = TimeToX(_snapTarget);
+        double top = RulerHeight, bottom = MusicRowY + AudioRowHeight;
+        if (_snapKind == SnapKind.Silence)
+        {
+            top = _dragClip.Track == TrackKind.Video ? VideoRowY : MusicRowY;
+            bottom = _dragClip.Track == TrackKind.Video ? OriginalAudioRowY + AudioRowHeight : MusicRowY + AudioRowHeight;
+        }
         dc.DrawLine(SnappedPlayheadPen, new Point(x, top), new Point(x, bottom));
     }
 
@@ -377,6 +391,7 @@ public sealed class TimelineView : FrameworkElement
             _dragClip = clip;
             _dragGrabOffset = XToTime(p.X) - clip.Start;
             if (kind is DragKind.TrimStart or DragKind.TrimEnd) PrepareSilenceSnap(clip, kind == DragKind.TrimStart ? TrimEdge.Start : TrimEdge.End);
+            _dragClipEdges = TimelineSnap.ClipEdgeTargets(_timeline, clip);
         }
         CaptureMouse();
         e.Handled = true;
@@ -399,7 +414,10 @@ public sealed class TimelineView : FrameworkElement
                 PlayheadDragged?.Invoke(time);
                 break;
             case DragKind.Move:
-                _timeline.Move(_dragClip!, time - _dragGrabOffset);
+                var target = SnapMove(_dragClip!, time - _dragGrabOffset);
+                var actual = _timeline.Move(_dragClip!, target);
+                // 吸到另一軌的邊緣、但同軌那裡已有片段時，片段會停到最近的空位，這時不算貼齊。
+                if (Math.Abs(actual - target) > 1e-6) _snapKind = SnapKind.None;
                 break;
             case DragKind.TrimStart:
                 _timeline.TrimStart(_dragClip!, Snap(time));
@@ -437,6 +455,7 @@ public sealed class TimelineView : FrameworkElement
         _snapKind = SnapKind.None;
         _dragSilences = null;
         _dragSilenceTargets = [];
+        _dragClipEdges = [];
         if (wasEditing) ClipsChanged?.Invoke();
         ViewChanged?.Invoke();
         InvalidateVisual();
@@ -464,7 +483,25 @@ public sealed class TimelineView : FrameworkElement
             _snapKind = SnapKind.None;
             return time;
         }
-        var result = TimelineSnap.Snap(time, _playhead, SnapToSilence ? _dragSilenceTargets : [], SnapPixels / _pixelsPerSecond);
+        var result = TimelineSnap.Snap(time, _playhead, SnapToSilence ? _dragSilenceTargets : [], SnapPixels / _pixelsPerSecond,
+            SnapToClips ? _dragClipEdges : null);
+        _snapKind = result.Kind;
+        _snapTarget = result.Target;
+        return result.Time;
+    }
+
+    /// <summary>
+    /// 移動時片段的開頭或結尾貼齊播放頭、其他片段的邊緣或時間軸開頭，回傳片段新的開頭。
+    /// 按住 Alt 或取消「吸附片段」時不吸附。
+    /// </summary>
+    private double SnapMove(TimelineClip clip, double start)
+    {
+        if (!SnapToClips || Keyboard.Modifiers.HasFlag(ModifierKeys.Alt))
+        {
+            _snapKind = SnapKind.None;
+            return start;
+        }
+        var result = TimelineSnap.SnapMove(start, clip.Duration, _playhead, _dragClipEdges, SnapPixels / _pixelsPerSecond);
         _snapKind = result.Kind;
         _snapTarget = result.Target;
         return result.Time;

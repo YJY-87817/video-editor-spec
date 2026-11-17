@@ -3,12 +3,16 @@ namespace VideoEditor.Core.Timeline;
 /// <summary>拉的是片段的哪一邊。</summary>
 public enum TrimEdge { Start, End }
 
-/// <summary>這次吸附到什麼。</summary>
-public enum SnapKind { None, Playhead, Silence }
+/// <summary>這次吸附到什麼。數值小的優先：同樣近時取前面的。</summary>
+public enum SnapKind { None, Playhead, ClipEdge, TimelineStart, Silence }
 
 public readonly record struct SnapResult(double Time, SnapKind Kind, double Target);
 
-/// <summary>拉動片段邊緣時的吸附規則：播放頭，以及片段自己聲音裡的靜音處。</summary>
+/// <summary>
+/// 拖曳片段時的吸附規則。修剪：播放頭、其他片段的邊緣、片段自己聲音裡的靜音處；
+/// 移動：片段的開頭或結尾貼齊播放頭、其他片段的邊緣、時間軸開頭。
+/// 同樣近時依 <see cref="SnapKind"/> 的順序：播放頭 → 片段邊緣 → 時間軸開頭 → 靜音處。
+/// </summary>
 public static class TimelineSnap
 {
     /// <summary>吸附到靜音處時，往靜音裡多留這麼多，避免切掉字頭的子音或字尾的尾音。</summary>
@@ -67,19 +71,56 @@ public static class TimelineSnap
     }
 
     /// <summary>
-    /// 播放頭與靜音吸附點裡，離 time 最近、而且在 tolerance 以內的那一個；兩者一樣近時以播放頭優先（使用者刻意放的位置）。
-    /// playhead 為 null 表示不吸附播放頭；silenceTargets 必須已排序。
+    /// 修剪：播放頭、片段邊緣與靜音吸附點裡，離 time 最近、而且在 tolerance 以內的那一個；同樣近時依 <see cref="SnapKind"/> 的順序。
+    /// playhead 為 null 表示不吸附播放頭；silenceTargets 與 clipEdges 必須已排序，clipEdges 為 null 表示不吸附片段邊緣。
     /// </summary>
-    public static SnapResult Snap(double time, double? playhead, IReadOnlyList<double> silenceTargets, double tolerance)
+    public static SnapResult Snap(double time, double? playhead, IReadOnlyList<double> silenceTargets, double tolerance,
+        IReadOnlyList<double>? clipEdges = null)
     {
-        if (tolerance <= 0) return new SnapResult(time, SnapKind.None, time);
-        var playheadDistance = playhead is { } p ? Math.Abs(time - p) : double.PositiveInfinity;
-        var silence = Nearest(silenceTargets, time);
-        var silenceDistance = silence is { } s ? Math.Abs(time - s) : double.PositiveInfinity;
-        if (playheadDistance <= tolerance && playheadDistance <= silenceDistance)
-            return new SnapResult(playhead!.Value, SnapKind.Playhead, playhead.Value);
-        if (silenceDistance <= tolerance) return new SnapResult(silence!.Value, SnapKind.Silence, silence.Value);
-        return new SnapResult(time, SnapKind.None, time);
+        var candidates = new List<(double Target, SnapKind Kind)>();
+        if (playhead is { } p) candidates.Add((p, SnapKind.Playhead));
+        if (clipEdges != null && Nearest(clipEdges, time) is { } edge) candidates.Add((edge, SnapKind.ClipEdge));
+        if (Nearest(silenceTargets, time) is { } silence) candidates.Add((silence, SnapKind.Silence));
+        var best = Best(candidates.Select(c => (c.Target, c.Kind, Distance: Math.Abs(time - c.Target), Offset: 0.0)), tolerance);
+        return best is { } b ? new SnapResult(b.Target, b.Kind, b.Target) : new SnapResult(time, SnapKind.None, time);
+    }
+
+    /// <summary>其他所有片段（兩軌都算，不含 clip 自己）的開頭與結尾，排序去重。</summary>
+    public static List<double> ClipEdgeTargets(Timeline timeline, TimelineClip clip) =>
+        timeline.AllClips.Where(c => c != clip).SelectMany(c => new[] { c.Start, c.End }).Distinct().Order().ToList();
+
+    /// <summary>
+    /// 移動：片段的開頭或結尾貼齊播放頭、其他片段的邊緣（已排序）或時間軸開頭，取位移最小、而且在 tolerance 以內的那一個。
+    /// 回傳的 Time 是片段新的開頭，Target 是貼齊的位置（結尾貼齊時與 Time 差一個片段長度）。
+    /// </summary>
+    public static SnapResult SnapMove(double start, double duration, double? playhead, IReadOnlyList<double> clipEdges, double tolerance)
+    {
+        // Offset：貼齊的是開頭（0）還是結尾（片段長度）。
+        var candidates = new List<(double Target, SnapKind Kind, double Distance, double Offset)>();
+        foreach (var offset in new[] { 0, duration })
+        {
+            var edge = start + offset;
+            if (playhead is { } p) candidates.Add((p, SnapKind.Playhead, Math.Abs(edge - p), offset));
+            if (Nearest(clipEdges, edge) is { } other) candidates.Add((other, SnapKind.ClipEdge, Math.Abs(edge - other), offset));
+            candidates.Add((0, SnapKind.TimelineStart, Math.Abs(edge), offset));
+        }
+        return Best(candidates, tolerance) is { } b
+            ? new SnapResult(b.Target - b.Offset, b.Kind, b.Target)
+            : new SnapResult(start, SnapKind.None, start);
+    }
+
+    private static (double Target, SnapKind Kind, double Distance, double Offset)? Best(
+        IEnumerable<(double Target, SnapKind Kind, double Distance, double Offset)> candidates, double tolerance)
+    {
+        if (tolerance <= 0) return null;
+        (double Target, SnapKind Kind, double Distance, double Offset)? best = null;
+        foreach (var c in candidates)
+        {
+            if (c.Distance > tolerance) continue;
+            if (best is not { } b || c.Distance < b.Distance - 1e-9 || (Math.Abs(c.Distance - b.Distance) <= 1e-9 && c.Kind < b.Kind))
+                best = c;
+        }
+        return best;
     }
 
     private static double? Nearest(IReadOnlyList<double> sorted, double time)
