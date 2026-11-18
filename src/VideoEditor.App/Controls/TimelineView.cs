@@ -414,10 +414,16 @@ public sealed class TimelineView : FrameworkElement
                 PlayheadDragged?.Invoke(time);
                 break;
             case DragKind.Move:
-                var target = SnapMove(_dragClip!, time - _dragGrabOffset);
+                var raw = time - _dragGrabOffset;
+                var target = SnapMove(_dragClip!, raw);
                 var actual = _timeline.Move(_dragClip!, target);
-                // 吸到另一軌的邊緣、但同軌那裡已有片段時，片段會停到最近的空位，這時不算貼齊。
-                if (Math.Abs(actual - target) > 1e-6) _snapKind = SnapKind.None;
+                // 貼齊的位置放不下（開頭會小於 0，或同軌那裡已有片段）時，片段會被推到別處；
+                // 這時不算貼齊，改照滑鼠原本的位置移動，避免片段突然跳走。
+                if (Math.Abs(actual - target) > 1e-6)
+                {
+                    _snapKind = SnapKind.None;
+                    _timeline.Move(_dragClip!, raw);
+                }
                 break;
             case DragKind.TrimStart:
                 _timeline.TrimStart(_dragClip!, Snap(time));

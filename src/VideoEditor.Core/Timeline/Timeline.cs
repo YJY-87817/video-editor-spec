@@ -27,6 +27,15 @@ public sealed class TimelineClip(MediaInfo media, TrackKind track, double source
     /// <summary>填滿裁切時取用畫面的哪一部分。只用於影片軌。</summary>
     public ClipFraming Framing { get; internal set; } = ClipFraming.Default;
 
+    /// <summary>把音量、倒放、旋轉鏡像與畫面位置複製到另一個片段（分割時用）。新增這類屬性時要加在這裡。</summary>
+    internal void CopySettingsTo(TimelineClip other)
+    {
+        other.Volume = Volume;
+        other.Reversed = Reversed;
+        other.Transform = Transform;
+        other.Framing = Framing;
+    }
+
     /// <summary>套用旋轉後的畫面尺寸。</summary>
     public Size2 DisplaySize => Transform.Apply(new Size2(Media.DisplayWidth, Media.DisplayHeight));
 
@@ -156,10 +165,7 @@ public sealed class Timeline
         var right = clip.Reversed
             ? new TimelineClip(clip.Media, clip.Track, clip.SourceIn, cut, clip.Start + leftLength)
             : new TimelineClip(clip.Media, clip.Track, cut, clip.SourceOut, clip.Start + leftLength);
-        right.Volume = clip.Volume;
-        right.Reversed = clip.Reversed;
-        right.Transform = clip.Transform;
-        right.Framing = clip.Framing;
+        clip.CopySettingsTo(right);
         if (clip.Reversed) clip.SourceIn = cut;
         else clip.SourceOut = cut;
         list.Add(right);

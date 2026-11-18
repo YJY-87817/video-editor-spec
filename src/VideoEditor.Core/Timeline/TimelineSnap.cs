@@ -77,12 +77,9 @@ public static class TimelineSnap
     public static SnapResult Snap(double time, double? playhead, IReadOnlyList<double> silenceTargets, double tolerance,
         IReadOnlyList<double>? clipEdges = null)
     {
-        var candidates = new List<(double Target, SnapKind Kind)>();
-        if (playhead is { } p) candidates.Add((p, SnapKind.Playhead));
-        if (clipEdges != null && Nearest(clipEdges, time) is { } edge) candidates.Add((edge, SnapKind.ClipEdge));
-        if (Nearest(silenceTargets, time) is { } silence) candidates.Add((silence, SnapKind.Silence));
-        var best = Best(candidates.Select(c => (c.Target, c.Kind, Distance: Math.Abs(time - c.Target), Offset: 0.0)), tolerance);
-        return best is { } b ? new SnapResult(b.Target, b.Kind, b.Target) : new SnapResult(time, SnapKind.None, time);
+        var candidates = new List<Candidate>(3);
+        AddCandidates(candidates, time, 0, playhead, clipEdges, silenceTargets, timelineStart: false);
+        return Best(candidates, tolerance) is { } b ? new SnapResult(b.Target, b.Kind, b.Target) : new SnapResult(time, SnapKind.None, time);
     }
 
     /// <summary>其他所有片段（兩軌都算，不含 clip 自己）的開頭與結尾，排序去重。</summary>
@@ -96,24 +93,31 @@ public static class TimelineSnap
     public static SnapResult SnapMove(double start, double duration, double? playhead, IReadOnlyList<double> clipEdges, double tolerance)
     {
         // Offset：貼齊的是開頭（0）還是結尾（片段長度）。
-        var candidates = new List<(double Target, SnapKind Kind, double Distance, double Offset)>();
-        foreach (var offset in new[] { 0, duration })
-        {
-            var edge = start + offset;
-            if (playhead is { } p) candidates.Add((p, SnapKind.Playhead, Math.Abs(edge - p), offset));
-            if (Nearest(clipEdges, edge) is { } other) candidates.Add((other, SnapKind.ClipEdge, Math.Abs(edge - other), offset));
-            candidates.Add((0, SnapKind.TimelineStart, Math.Abs(edge), offset));
-        }
+        var candidates = new List<Candidate>(6);
+        AddCandidates(candidates, start, 0, playhead, clipEdges, null, timelineStart: true);
+        AddCandidates(candidates, start + duration, duration, playhead, clipEdges, null, timelineStart: true);
         return Best(candidates, tolerance) is { } b
             ? new SnapResult(b.Target - b.Offset, b.Kind, b.Target)
             : new SnapResult(start, SnapKind.None, start);
     }
 
-    private static (double Target, SnapKind Kind, double Distance, double Offset)? Best(
-        IEnumerable<(double Target, SnapKind Kind, double Distance, double Offset)> candidates, double tolerance)
+    /// <summary>一個吸附候選：Distance 是 edge 到 Target 的距離，Offset 是 edge 離片段開頭多遠。</summary>
+    private readonly record struct Candidate(double Target, SnapKind Kind, double Distance, double Offset);
+
+    /// <summary>把 edge 能貼齊的播放頭、最近的片段邊緣、最近的靜音處與時間軸開頭加進候選。</summary>
+    private static void AddCandidates(List<Candidate> list, double edge, double offset, double? playhead,
+        IReadOnlyList<double>? clipEdges, IReadOnlyList<double>? silenceTargets, bool timelineStart)
+    {
+        if (playhead is { } p) list.Add(new Candidate(p, SnapKind.Playhead, Math.Abs(edge - p), offset));
+        if (clipEdges != null && Nearest(clipEdges, edge) is { } other) list.Add(new Candidate(other, SnapKind.ClipEdge, Math.Abs(edge - other), offset));
+        if (timelineStart) list.Add(new Candidate(0, SnapKind.TimelineStart, Math.Abs(edge), offset));
+        if (silenceTargets != null && Nearest(silenceTargets, edge) is { } silence) list.Add(new Candidate(silence, SnapKind.Silence, Math.Abs(edge - silence), offset));
+    }
+
+    private static Candidate? Best(List<Candidate> candidates, double tolerance)
     {
         if (tolerance <= 0) return null;
-        (double Target, SnapKind Kind, double Distance, double Offset)? best = null;
+        Candidate? best = null;
         foreach (var c in candidates)
         {
             if (c.Distance > tolerance) continue;

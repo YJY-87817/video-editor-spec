@@ -55,7 +55,15 @@ public partial class MainWindow
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
+        // Ctrl／Alt／Shift／Win 組合鍵（例如 Ctrl+S）不是預覽快捷鍵。
+        if (Keyboard.Modifiers != ModifierKeys.None) return;
+        // 正在輸入文字時，按鍵歸文字框。
+        if (e.OriginalSource is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.PasswordBox) return;
         if (PreviewKeys.FromKeyName(e.Key.ToString()) is not { } command) return;
+        // 清單與捲軸自己用換頁鍵捲動，不搶。
+        if (command is PreviewCommand.PreviousEditPoint or PreviewCommand.NextEditPoint
+            && e.OriginalSource is System.Windows.Controls.Primitives.Selector or System.Windows.Controls.ListBoxItem
+                or System.Windows.Controls.Primitives.ScrollBar) return;
         Execute(command);
         e.Handled = true;
     }
