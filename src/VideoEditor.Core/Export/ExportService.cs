@@ -146,8 +146,9 @@ public sealed class ExportService(FfmpegTools tools)
     /// 先寫入暫存檔，成功才改名；取消或 FFmpeg 失敗時清掉暫存檔，不留下殘缺影片。
     /// 已經做好、只是改名失敗（例如匯出途中用播放器打開了舊的輸出檔）時保留暫存檔，丟出 <see cref="ExportRenameException"/>。
     /// </summary>
-    public async Task ExportAsync(ExportPlan plan, string outputPath, IProgress<double>? progress, CancellationToken token = default)
+    public async Task ExportAsync(ExportPlan plan, IProgress<double>? progress, CancellationToken token = default)
     {
+        var outputPath = plan.OutputPath;
         var temporary = TemporaryPath(outputPath);
         var work = WorkDirectory(temporary);
         var args = ReverseGraph.Resolve(plan.Arguments, work).Append(temporary);

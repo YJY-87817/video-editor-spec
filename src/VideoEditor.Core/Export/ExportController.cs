@@ -123,7 +123,7 @@ public sealed class ExportController(FfmpegTools tools, IExportView view, int do
             }
             else
             {
-                await new ExportService(tools).ExportAsync(plan, output, progress, cancel.Token);
+                await new ExportService(tools).ExportAsync(plan, progress, cancel.Token);
                 finished = true;
                 succeeded = true;
                 Log.Info($"匯出完成，用時 {FormatSpan(clock.Elapsed)}");

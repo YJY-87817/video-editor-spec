@@ -318,7 +318,7 @@ public class ExportIntegrationTests(TestMedia media)
         using var cts = new CancellationTokenSource();
         var progress = new SyncProgress(_ => cts.Cancel());
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            new ExportService(media.Tools).ExportAsync(plan, output, progress, cts.Token));
+            new ExportService(media.Tools).ExportAsync(plan, progress, cts.Token));
         Assert.False(File.Exists(output));
         Assert.Empty(Directory.GetFiles(media.Directory, "cancel.*.part.mp4"));
     }
@@ -331,7 +331,7 @@ public class ExportIntegrationTests(TestMedia media)
         t.Append(source with { Path = media.Output("missing.mp4") }, 0, 1);
         var output = media.Output("failed.mp4");
         var plan = ExportPlanner.Build(t, Default, output);
-        var error = await Assert.ThrowsAsync<FfmpegException>(() => new ExportService(media.Tools).ExportAsync(plan, output, null));
+        var error = await Assert.ThrowsAsync<FfmpegException>(() => new ExportService(media.Tools).ExportAsync(plan, null));
         Assert.Contains("missing.mp4", error.Stderr);
     }
 
@@ -354,7 +354,7 @@ public class ExportIntegrationTests(TestMedia media)
         var t = new TimelineModel();
         t.Append(await media.Probe(media.Landscape), 0, 0.5);
 
-        await new ExportService(media.Tools).ExportAsync(ExportPlanner.Build(t, Default, output), output, null);
+        await new ExportService(media.Tools).ExportAsync(ExportPlanner.Build(t, Default, output), null);
 
         Assert.Equal("使用者自己的檔案", await File.ReadAllTextAsync(bystander));
         Assert.True(File.Exists(output));
@@ -382,7 +382,7 @@ public class ExportIntegrationTests(TestMedia media)
         // 模擬匯出途中用播放器打開了舊的輸出檔：改名那一步會失敗。
         using (new FileStream(output, FileMode.Create, FileAccess.ReadWrite, FileShare.None))
             error = await Assert.ThrowsAsync<ExportRenameException>(() =>
-                new ExportService(media.Tools).ExportAsync(ExportPlanner.Build(t, Default, output), output, null));
+                new ExportService(media.Tools).ExportAsync(ExportPlanner.Build(t, Default, output), null));
 
         try
         {

@@ -288,7 +288,7 @@ public class ReverseIntegrationTests(TestMedia media)
         var output = media.Output($"reversed-{framesPerChunk}.mp4");
         var plan = ExportPlanner.Build(t, new OutputSettings(AspectRatio.Original, FitMode.Fill, Crf: 0), output,
             ReverseGraph.FrameBytes(source, source.DisplayWidth, source.DisplayHeight) * framesPerChunk);
-        await new ExportService(media.Tools).ExportAsync(plan, output, null);
+        await new ExportService(media.Tools).ExportAsync(plan, null);
         var result = await media.Probe(output);
 
         Assert.Equal(45, await media.CountFrames(output));
@@ -314,7 +314,7 @@ public class ReverseIntegrationTests(TestMedia media)
             var directory = Directory.CreateDirectory(Path.Combine(media.Directory, name)).FullName;
             var output = Path.Combine(directory, "out.mp4");
             var plan = ExportPlanner.Build(t, settings, output, buffer);
-            return await TestMedia.PeakMemory(name, () => new ExportService(media.Tools).ExportAsync(plan, output, null));
+            return await TestMedia.PeakMemory(name, () => new ExportService(media.Tools).ExportAsync(plan, null));
         }
 
         var forward = await Peak("memory-forward", false);
@@ -338,7 +338,7 @@ public class ReverseIntegrationTests(TestMedia media)
 
         // 進度涵蓋倒放與編碼兩個階段，全程遞增。
         var reports = new List<double>();
-        await new ExportService(media.Tools).ExportAsync(plan, output, new SyncProgressValue(reports.Add));
+        await new ExportService(media.Tools).ExportAsync(plan, new SyncProgressValue(reports.Add));
         Assert.Equal(reports.Order(), reports);
         Assert.Equal(1, reports[^1]);
         Assert.Contains(reports, value => value is > 0.05 and < 0.5);
@@ -346,7 +346,7 @@ public class ReverseIntegrationTests(TestMedia media)
 
         // 取消：停在倒放階段也不留下任何檔案。
         using var cancel = new CancellationTokenSource();
-        var cancelled = new ExportService(media.Tools).ExportAsync(plan, Path.Combine(directory, "cancelled.mp4"),
+        var cancelled = new ExportService(media.Tools).ExportAsync(plan with { OutputPath = Path.Combine(directory, "cancelled.mp4") },
             new SyncProgressValue(_ => cancel.Cancel()), cancel.Token);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cancelled);
         Assert.Equal([output], Directory.GetFileSystemEntries(directory));
@@ -362,7 +362,7 @@ public class ReverseIntegrationTests(TestMedia media)
         var output = media.Output("ntsc-reversed.mp4");
         var plan = ExportPlanner.Build(t, new OutputSettings(AspectRatio.Original, FitMode.Fill), output,
             ReverseGraph.FrameBytes(source, source.DisplayWidth, source.DisplayHeight) * 7);
-        await new ExportService(media.Tools).ExportAsync(plan, output, null);
+        await new ExportService(media.Tools).ExportAsync(plan, null);
 
         var result = await media.Probe(output);
         Assert.Equal(new Rational(30000, 1001), result.FrameRate);
@@ -420,7 +420,7 @@ public class ReverseIntegrationTests(TestMedia media)
         var output = media.Output($"vfr-reversed-{framesPerChunk}.mp4");
         var plan = ExportPlanner.Build(t, new OutputSettings(AspectRatio.Original, FitMode.Fill), output,
             ReverseGraph.FrameBytes(source, source.DisplayWidth, source.DisplayHeight) * framesPerChunk);
-        await new ExportService(media.Tools).ExportAsync(plan, output, null);
+        await new ExportService(media.Tools).ExportAsync(plan, null);
 
         var bytes = await ProcessRunner.RunForBytesAsync(media.Tools.Ffprobe,
             ["-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts_time", "-of", "csv=p=0", output]);
@@ -454,7 +454,7 @@ public class ReverseIntegrationTests(TestMedia media)
         var output = media.Output("tail-audio-reversed.mp4");
         var plan = ExportPlanner.Build(t, new OutputSettings(AspectRatio.Original, FitMode.Fill), output,
             ReverseGraph.FrameBytes(source, source.DisplayWidth, source.DisplayHeight) * 20);
-        await new ExportService(media.Tools).ExportAsync(plan, output, null);
+        await new ExportService(media.Tools).ExportAsync(plan, null);
 
         var result = await media.Probe(output);
         Assert.InRange(await media.CountFrames(output), 60, 63);
@@ -472,7 +472,7 @@ public class ReverseIntegrationTests(TestMedia media)
         t.SetReversed(t.Append(source, 0, 1), true);
         var plan = ExportPlanner.Build(t, new OutputSettings(AspectRatio.Original, FitMode.Fill), output,
             ReverseGraph.FrameBytes(source, source.DisplayWidth, source.DisplayHeight) * 10);
-        await new ExportService(media.Tools).ExportAsync(plan, output, null);
+        await new ExportService(media.Tools).ExportAsync(plan, null);
 
         Assert.Equal(30, await media.CountFrames(output));
         Assert.Equal([output], Directory.GetFileSystemEntries(directory));
@@ -489,7 +489,7 @@ public class ReverseIntegrationTests(TestMedia media)
         var output = media.Output("beep-reversed.mp4");
         var plan = ExportPlanner.Build(t, new OutputSettings(AspectRatio.Original, FitMode.Fill), output,
             ReverseGraph.FrameBytes(source, source.DisplayWidth, source.DisplayHeight) * 7);
-        await new ExportService(media.Tools).ExportAsync(plan, output, null);
+        await new ExportService(media.Tools).ExportAsync(plan, null);
 
         Assert.True(await media.MeanVolume(output, 1.05, 0.4) > -40);
         Assert.True(await media.MeanVolume(output, 0.1, 0.8) < -60);
@@ -505,7 +505,7 @@ public class ReverseIntegrationTests(TestMedia media)
         t.SetReversed(t.Append(source, 0, 1), true);
         var output = media.Output("forward-reverse.mp4");
         var plan = ExportPlanner.Build(t, new OutputSettings(AspectRatio.Original, FitMode.Fill, Crf: 0), output);
-        await new ExportService(media.Tools).ExportAsync(plan, output, null);
+        await new ExportService(media.Tools).ExportAsync(plan, null);
 
         Assert.Equal(60, await media.CountFrames(output));
         await AssertFrameMatches(output, 29, 29);

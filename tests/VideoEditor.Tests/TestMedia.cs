@@ -56,7 +56,7 @@ public sealed class TestMedia : IDisposable
     {
         var output = Output(name);
         var plan = ExportPlanner.Build(timeline, settings, output);
-        await new ExportService(Tools).ExportAsync(plan, output, null);
+        await new ExportService(Tools).ExportAsync(plan, null);
         return await Probe(output);
     }
 

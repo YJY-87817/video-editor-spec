@@ -88,7 +88,9 @@ public partial class MainWindow
             image.Freeze();
             return image;
         }
-        catch (Exception e) when (e is NotSupportedException or FileFormatException or IOException or InvalidOperationException or ArgumentException)
+        // WIC 解碼失敗可能是 COMException；尺寸異常的圖可能是 OverflowException。
+        catch (Exception e) when (e is NotSupportedException or FileFormatException or IOException or InvalidOperationException
+            or ArgumentException or System.Runtime.InteropServices.COMException or OverflowException)
         {
             return null;
         }
