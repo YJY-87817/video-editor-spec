@@ -31,7 +31,7 @@ public sealed class FileLog(string directory, long maxBytes = 1_000_000, int kee
                 var path = Path.Combine(Directory, $"app-{DateTime.Now:yyyyMMdd}.log");
                 if (File.Exists(path) && new FileInfo(path).Length > maxBytes) Roll(path);
                 File.AppendAllText(path, text.ToString(), Encoding.UTF8);
-                Prune();
+                Prune(path);
             }
             // 記錄失敗不能反過來讓程式出錯（這裡通常正在處理另一個錯誤），所以所有例外都忽略。
             catch (Exception)
@@ -48,12 +48,16 @@ public sealed class FileLog(string directory, long maxBytes = 1_000_000, int kee
         File.Move(path, archive, overwrite: true);
     }
 
-    /// <summary>只保留最近修改的 <c>keep</c> 個紀錄檔。</summary>
-    private void Prune()
+    /// <summary>
+    /// 只保留最近修改的 <c>keep</c> 個紀錄檔。剛寫入的 <paramref name="current"/> 一定保留：
+    /// 時間戳相同（檔案系統精度不足）時，不能讓排序的巧合刪掉剛寫的紀錄。
+    /// </summary>
+    private void Prune(string current)
     {
         var old = new DirectoryInfo(Directory).GetFiles("app-*.log")
-            .OrderByDescending(file => file.LastWriteTimeUtc).ThenByDescending(file => file.Name)
-            .Skip(keep);
+            .Where(file => !string.Equals(file.FullName, current, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(file => file.LastWriteTimeUtc).ThenByDescending(file => file.Name, StringComparer.Ordinal)
+            .Skip(Math.Max(keep - 1, 0));
         foreach (var file in old)
         {
             try { file.Delete(); }

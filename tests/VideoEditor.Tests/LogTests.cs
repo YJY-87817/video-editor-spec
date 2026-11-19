@@ -60,6 +60,25 @@ public sealed class LogTests : IDisposable
     }
 
     [Fact]
+    public void TheFileJustWrittenIsNeverPruned()
+    {
+        // 舊檔的修改時間比現在新（時鐘被調回、檔案系統時間精度不足），仍不能刪掉剛寫的當日檔。
+        Directory.CreateDirectory(_directory);
+        var future = DateTime.UtcNow.AddHours(1);
+        for (var i = 0; i < 5; i++)
+        {
+            var old = Path.Combine(_directory, $"app-2000010{i}.log");
+            File.WriteAllText(old, "old");
+            File.SetLastWriteTimeUtc(old, future);
+        }
+
+        new FileLog(_directory, keep: 3).Write("INFO", "剛寫的紀錄");
+
+        Assert.Contains(Files(), file => File.ReadAllText(file).Contains("剛寫的紀錄"));
+        Assert.Equal(3, Files().Length);
+    }
+
+    [Fact]
     public void NeverThrowsWhenTheFolderCannotBeUsed()
     {
         // 資料夾的位置已經是一個檔案：建立資料夾與寫入都會失敗。
