@@ -30,9 +30,9 @@
 | 項目 | 結果 |
 |---|---|
 | Critical／High | **0 項** |
-| Medium | 5 項：P-6、Q-1、T-2、A-1、W-2（Q-1、T-2 已部分處理；主要是匯出片段上限、`PreviewEngine`／`MainWindow` 規模、App 層測試、播放頭重繪成本） |
+| Medium | 4 項：Q-1、T-2、A-1、W-2（Q-1、T-2 已部分處理；主要是 `PreviewEngine`／`MainWindow` 規模、App 層測試、播放頭重繪成本） |
 | 整體評價 | 程式品質偏高：例外處理有紀律、資源釋放周全、方法長度控制良好、Core 與 UI 分離確實、測試量大且多為真實 FFmpeg 的整合測試 |
-| 最值得優先處理 | ① 在 Windows 上實機驗證並量測播放頭重繪成本（W-2） ② 決定匯出片段上限要不要處理（P-6） ③ 繼續把 `PreviewEngine`／`MainWindow` 的規則抽進 Core 並補測試（Q-1、T-2、A-1） |
+| 最值得優先處理 | ① 在 Windows 上實機驗證並量測播放頭重繪成本（W-2） ② 繼續把 `PreviewEngine`／`MainWindow` 的規則抽進 Core 並補測試（Q-1、T-2、A-1） |
 | 不建議做的事 | 為了形式全面導入 MVVM 框架；對規模約 6,200 行的單視窗工具，收益有限 |
 
 ---
@@ -160,8 +160,8 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 
 **主要缺口**
 
-1. 匯出的片段數量受命令列 30,000 字元上限限制（P-6）。
-2. 播放頭重繪成本與預覽影格的記憶體都還沒有在 Windows 上實測（W-2、P-3）。
+1. 播放頭重繪成本與預覽影格的記憶體都還沒有在 Windows 上實測（W-2、P-3）。
+2. 匯出的片段數量仍受每個片段輸入參數的長度限制（約 260 到 450 個，P-6）。
 
 ### 5.2 安全性
 
@@ -209,16 +209,16 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 
 | 優先 | ID | 問題 | 嚴重度 | 分類 | 成本 |
 |---|---|---|---|---|---|
-| 1 | P-6 | 匯出受命令列 30,000 字元限制（約 80 個片段） | Medium | 設計限制 | M |
-| 2 | Q-1／T-2 | `PreviewEngine` 職責過多，App 層仍無測試 | Medium | 已確認（部分已處理） | L |
-| 3 | A-1 | `MainWindow` 持有過多狀態、手動同步 | Medium | 已確認 | L |
-| 4 | W-2 | 播放時每個 tick 重繪整個時間軸 | Medium | 潛在，待實測 | M |
-| 5 | S-2 | 白名單只擋網路協定；LibVLC 未處理 | Low~Medium | 部分已處理，待確認 | S~M |
-| 6 | S-8 | 相依套件漏洞（待查 CVE）、無鎖定檔、Actions 未以 SHA 固定 | Low~Medium | 部分已處理，待確認 | S |
-| 7 | P-3 | 影格 LOH 配置、快取上限 | Low~Medium | 潛在，待實測 | M |
-| 8 | S-1 | FFmpeg 搜尋順序 | Low~Medium | 已確認 | S |
-| 9 | Q-9 | 配樂漂移校正可能重複排入佇列 | Low~Medium | 潛在，待確認 | S |
-| 10 | P-4 | 其餘 Core 類別沒有 `ConfigureAwait(false)` | Low | 已確認（部分已處理） | S |
+| 1 | Q-1／T-2 | `PreviewEngine` 職責過多，App 層仍無測試 | Medium | 已確認（部分已處理） | L |
+| 2 | A-1 | `MainWindow` 持有過多狀態、手動同步 | Medium | 已確認 | L |
+| 3 | W-2 | 播放時每個 tick 重繪整個時間軸 | Medium | 潛在，待實測 | M |
+| 4 | S-2 | 白名單只擋網路協定；LibVLC 未處理 | Low~Medium | 部分已處理，待確認 | S~M |
+| 5 | S-8 | 相依套件漏洞（待查 CVE）、無鎖定檔、Actions 未以 SHA 固定 | Low~Medium | 部分已處理，待確認 | S |
+| 6 | P-3 | 影格 LOH 配置、快取上限 | Low~Medium | 潛在，待實測 | M |
+| 7 | S-1 | FFmpeg 搜尋順序 | Low~Medium | 已確認 | S |
+| 8 | Q-9 | 配樂漂移校正可能重複排入佇列 | Low~Medium | 潛在，待確認 | S |
+| 9 | P-4 | 其餘 Core 類別沒有 `ConfigureAwait(false)` | Low | 已確認（部分已處理） | S |
+| 10 | P-6 | 每個片段的輸入參數仍受命令列長度限制（約 260 到 450 個） | Low~Medium | 已確認（部分已處理） | L | 其餘 Core 類別沒有 `ConfigureAwait(false)` | Low | 已確認（部分已處理） | S |
 | 11 | 其餘 | A-3、A-5、A-6、Q-7、Q-8、Q-10、Q-11、Q-12、W-3~W-9、P-7、P-9、S-5、T-3~T-7 | Low | — | S |
 
 **已關閉或下調**：A-4 事件洩漏（不成立）；A-3 下調為 Low；`PreviewEngine.cs:326`／`:384` 的 `.Result`（不會阻塞，不成立）。
@@ -333,10 +333,11 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 - **仍待處理**：其他 Core 類別沒有加。其中 `ImportController`、`ExportController` 在 await 之後要操作畫面，必須留在 UI 執行緒，所以不建議用 CA2007 全域強制。目前沒有死結（沒有同步等待）。
 
 #### P-6　匯出的片段數量有上限
-- **Medium／已確認，設計限制**
-- **位置**：`Export/ExportPlanner.cs`（`MaxCommandLength = 30000`）
-- **問題**：整個濾鏡圖與每個片段的輸入參數都放在命令列，超過約 30,000 字元就丟出 `InvalidOperationException("片段數量過多…")`（會被 `ExportController` 捕捉並顯示成訊息，不會當機）。實測：素材路徑 8 字元可到 89 個片段、55 字元可到 78 個；已記載在 README「已知限制」。
-- **評估**：每個片段的濾鏡圖約 266 字元、輸入參數約 100 字元。把濾鏡圖搬到腳本檔只能把上限提高到約 300 個，不是解除；真正解除要改成「同一素材只開一次輸入」，會改變解碼與定位行為。腳本檔需要 FFmpeg 7 以上的 `-/filter_complex`（舊版是 `-filter_complex_script`，新版是否保留未驗證），所以要先確認支援的 FFmpeg 版本。
+- **Low~Medium／已確認（部分已處理）**
+- **位置**：`Export/ExportPlanner.cs`（`MaxCommandLength = 30000`）、`Export/FilterGraphFile.cs`、`Export/ExportService.cs`
+- **已處理**：命令列超過 20,000 字元時，濾鏡圖改放進暫存檔再交給 FFmpeg。讀檔的選項不比對版本號，而是匯出前試跑一個極小的濾鏡圖：支援 `-/filter_complex`（FFmpeg 7 以上）就用它，否則用 `-filter_complex_script`。上限從約 80 個片段提高到：路徑 8 字元約 450 個、55 字元約 260 個。
+- **仍待處理**：每個片段各有一組 `-ss -t -i 路徑` 輸入參數仍在命令列上，超過約 30,000 字元時匯出前會丟出 `InvalidOperationException("片段數量過多…")`（`ExportController` 會捕捉並顯示成訊息，不會當機）。要真正解除，得改成「同一素材只開一次輸入」，會改變解碼與定位行為，不建議。
+- **待確認**：新語法路徑只在 CI 的 FFmpeg 9.0.2 驗證過；舊語法路徑在 FFmpeg 6.1.1 驗證過。
 
 #### P-7　影格快取沒有失效機制，失敗的影格永遠不會重試
 - **Low／已確認**：`_missingFrames`（`PreviewEngine.cs:562-564`、`:686`、`:696`）只增不減；短暫失敗會讓該格被永久標記；來源檔案被外部覆蓋後會顯示舊影格。
@@ -413,11 +414,10 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 1. `dotnet build` 與 `dotnet test` 已由 CI（`windows-latest`、FFmpeg 9.0.2）執行並通過；可再記錄警告數。
 2. 執行 `dotnet list package --vulnerable --include-transitive`（S-8）。
 3. 用 Visual Studio 診斷工具量測播放時的 CPU 與 GC（W-2、P-3）。
-4. 手動測試：Ctrl+S 不分割片段、匯入中途取消、損毀檔案不中斷整批匯入、播放／倒帶／拖曳時間軸、強制結束程式後 FFmpeg 是否結束、多片段匯出的上限（P-6）。
+4. 手動測試：Ctrl+S 不分割片段、匯入中途取消、損毀檔案不中斷整批匯入、播放／倒帶／拖曳時間軸、強制結束程式後 FFmpeg 是否結束、多片段（200 個以上）匯出時濾鏡圖檔案的新語法（P-6）。
 5. 執行覆蓋率報告（T-3）。
 
 ### 階段 4（剩餘）：結構改善
-- P-6：先確認要支援的 FFmpeg 版本，再決定是否把濾鏡圖放進腳本檔（效益約 3.7 倍，見 P-6）。
 - Q-1、T-2：繼續把與 UI／VLC 無關的規則抽進 Core 並補測試。
 
 ### 階段 5：視需要

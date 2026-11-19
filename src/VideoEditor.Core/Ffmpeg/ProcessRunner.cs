@@ -69,7 +69,7 @@ public static class ProcessRunner
         catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception) { }
     }
 
-    private static async Task FinishAsync(Process process, string exe, Task<string> error, CancellationToken token)
+    private static async Task FinishAsync(Process process, string exe, Task<string> error, CancellationToken token, bool logFailure = true)
     {
         var stderr = await error.ConfigureAwait(false);
         await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
@@ -77,7 +77,8 @@ public static class ProcessRunner
         if (process.ExitCode != 0)
         {
             // 命令列與錯誤輸出的尾段是事後查問題最需要的資料。命令列可能含檔案路徑，所以只寫進本機紀錄。
-            Log.Error($"{Path.GetFileName(exe)} 結束代碼 {process.ExitCode}\n命令列：{Quote(exe, process.StartInfo.ArgumentList)}\n錯誤輸出（最後 {MaxErrorLines} 行）：\n{stderr}");
+            if (logFailure)
+                Log.Error($"{Path.GetFileName(exe)} 結束代碼 {process.ExitCode}\n命令列：{Quote(exe, process.StartInfo.ArgumentList)}\n錯誤輸出（最後 {MaxErrorLines} 行）：\n{stderr}");
             throw new FfmpegException($"{Path.GetFileName(exe)} 結束代碼 {process.ExitCode}", stderr);
         }
     }
@@ -111,7 +112,7 @@ public static class ProcessRunner
     /// readOutput 負責讀標準輸出，而且必須讀到結束，程序才不會因管線塞滿而卡住。
     /// </summary>
     private static Task<T> RunAsync<T>(string exe, IEnumerable<string> args, CancellationToken token, TimeSpan? timeout,
-        Func<Process, Task<T>> readOutput) =>
+        Func<Process, Task<T>> readOutput, bool logFailure = true) =>
         WithTimeoutAsync(exe, timeout, token, async token =>
         {
             using var process = Start(exe, args);
@@ -120,7 +121,7 @@ public static class ProcessRunner
             {
                 var error = ReadErrorTailAsync(process);
                 var result = await readOutput(process).ConfigureAwait(false);
-                await FinishAsync(process, exe, error, token).ConfigureAwait(false);
+                await FinishAsync(process, exe, error, token, logFailure).ConfigureAwait(false);
                 return result;
             }
             catch
@@ -130,14 +131,18 @@ public static class ProcessRunner
             }
         });
 
-    /// <summary>執行並回傳標準輸出的全部位元組；兩個管線同時讀取以免死結。</summary>
-    public static Task<byte[]> RunForBytesAsync(string exe, IEnumerable<string> args, CancellationToken token = default, TimeSpan? timeout = null) =>
+    /// <summary>
+    /// 執行並回傳標準輸出的全部位元組；兩個管線同時讀取以免死結。
+    /// logFailure 為 false 時，非零結束代碼不寫入紀錄（用在「試試看，失敗也是預期結果」的探測）。
+    /// </summary>
+    public static Task<byte[]> RunForBytesAsync(string exe, IEnumerable<string> args, CancellationToken token = default, TimeSpan? timeout = null,
+        bool logFailure = true) =>
         RunAsync(exe, args, token, timeout, async process =>
         {
             using var output = new MemoryStream();
             await process.StandardOutput.BaseStream.CopyToAsync(output, CancellationToken.None).ConfigureAwait(false);
             return output.ToArray();
-        });
+        }, logFailure);
 
     /// <summary>
     /// 執行並把標準輸出切成固定大小的區塊（例如一格 rawvideo 影格），最多 maxChunks 塊，結尾不足一塊的部分捨棄。
