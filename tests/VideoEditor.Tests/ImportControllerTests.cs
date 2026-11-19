@@ -26,6 +26,36 @@ public class ImportControllerTests(TestMedia media)
     }
 
     [Fact]
+    public async Task CancelStopsTheRestWithoutReportingAFailure()
+    {
+        var view = new FakeView();
+        var controller = Create(view);
+        view.OnAdded = controller.Cancel; // 第一個檔案加入後取消
+
+        await controller.ImportAsync([media.Landscape, media.Music, media.Portrait]);
+
+        var added = Assert.Single(view.Added);
+        Assert.Equal(media.Landscape, added.Info.Path);
+        Assert.Empty(view.Failures); // 取消不是失敗
+        Assert.Equal("Hide", view.Events[^1]); // 進度要收起來
+    }
+
+    [Fact]
+    public async Task FilesSkippedByCancelCanBeImportedAgain()
+    {
+        var view = new FakeView();
+        var controller = Create(view);
+        view.OnAdded = controller.Cancel;
+        await controller.ImportAsync([media.Landscape, media.Music]);
+        view.OnAdded = null;
+
+        await controller.ImportAsync([media.Landscape, media.Music]);
+
+        Assert.Equal([media.Landscape, media.Music], view.Added.Select(a => a.Info.Path));
+        Assert.Empty(view.Failures);
+    }
+
+    [Fact]
     public async Task AlreadyImportedFilesAreSkipped()
     {
         var view = new FakeView { Known = { media.Landscape } };
@@ -172,6 +202,7 @@ public class ImportControllerTests(TestMedia media)
         public List<string> Events { get; } = [];
         public int Hidden { get; private set; }
         public bool ThrowOnAdd { get; set; }
+        public Action? OnAdded { get; set; }
 
         // 與視窗相同：素材清單裡已有的才算已匯入。
         public bool IsAlreadyImported(string path) => Known.Contains(path) || Added.Any(a => a.Info.Path == path);
@@ -192,6 +223,7 @@ public class ImportControllerTests(TestMedia media)
         {
             if (ThrowOnAdd) throw new InvalidOperationException("模擬預料之外的錯誤");
             Added.Add((info, thumbnail));
+            OnAdded?.Invoke();
         }
         public void ShowFailure(string name, string message) => Failures.Add((name, message));
     }

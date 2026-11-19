@@ -5,8 +5,11 @@ using TimelineModel = VideoEditor.Core.Timeline.Timeline;
 
 namespace VideoEditor.Core.Export;
 
+/// <param name="Arguments">FFmpeg 參數，<b>不含</b>輸出路徑（輸出路徑在 <paramref name="OutputPath"/>，匯出時會換成暫存檔）。</param>
+/// <param name="OutputPath">使用者選的最終輸出路徑。</param>
 public sealed record ExportPlan(
     IReadOnlyList<string> Arguments,
+    string OutputPath,
     double Duration,
     Size2 Size,
     string VideoCodec,
@@ -28,7 +31,6 @@ public static class ExportPlanner
     private const long MinAudioBitRate = 192_000;
     private const long MaxAudioBitRate = 512_000;
     private const int MaxCommandLength = 30000;
-    private const double DefaultFrameRate = 30;
 
     /// <param name="reverseBufferBytes">倒放時每一小段的記憶體上限，測試時可調小以驗證分段。</param>
     public static ExportPlan Build(TimelineModel timeline, OutputSettings settings, string outputPath,
@@ -62,7 +64,7 @@ public static class ExportPlanner
         // 空白以輸出的影格為單位。黑畫面只能是整數格，空白長度若照時間軸的秒數給，
         // 每段都會被進位成整數格，後面的片段一段比一段晚，配樂（照絕對時間放）也跟著與畫面錯開。
         // 所以記下已經輸出了幾格，每段空白補到「下一個片段的位置最接近的那一格」，誤差不累積，最多半格。
-        var gridRate = reference.FrameRate.Value > 0 ? reference.FrameRate.Value : DefaultFrameRate;
+        var gridRate = reference.EffectiveFrameRate;
         long GridFrame(double seconds) => (long)Math.Round(seconds * gridRate);
         long framesDone = 0;
 
@@ -96,7 +98,7 @@ public static class ExportPlanner
                 var job = ReverseGraph.Plan($"r{label}", clip.Media, clip.SourceIn, clip.SourceOut, withAudio, "", frameBytes, reverseBufferBytes);
                 reverseJobs.Add(job);
                 // 中間檔已經倒放好，這裡只是照順序讀進來。
-                args.AddRange(["-f", "concat", "-i", job.ListPath]);
+                args.AddRange(["-f", "concat", ..Ffmpeg.FfmpegInput.LocalFilesOnly, "-i", job.ListPath]);
                 videoSource = $"[{input}:v]setpts=PTS-STARTPTS,{ReverseGraph.InputFilter(clip.Media)}";
                 audioSource = $"[{input}:a]asetpts=PTS-STARTPTS,";
                 input++;
@@ -104,7 +106,7 @@ public static class ExportPlanner
             else
             {
                 // -ss/-t 放在 -i 之前：快速定位，重新編碼時切點仍然準確。
-                args.AddRange(["-ss", Num(clip.SourceIn), "-t", Num(clip.Duration), "-i", clip.Media.Path]);
+                args.AddRange(["-ss", Num(clip.SourceIn), "-t", Num(clip.Duration), ..Ffmpeg.FfmpegInput.LocalFilesOnly, "-i", clip.Media.Path]);
                 videoSource = $"[{input}:v]setpts=PTS-STARTPTS,";
                 audioSource = $"[{input}:a]asetpts=PTS-STARTPTS,";
                 input++;
@@ -138,7 +140,7 @@ public static class ExportPlanner
             var index = 0;
             foreach (var clip in timeline.MusicClips)
             {
-                args.AddRange(["-ss", Num(clip.SourceIn), "-t", Num(clip.Duration), "-i", clip.Media.Path]);
+                args.AddRange(["-ss", Num(clip.SourceIn), "-t", Num(clip.Duration), ..Ffmpeg.FfmpegInput.LocalFilesOnly, "-i", clip.Media.Path]);
                 var delay = (long)Math.Round(clip.Start * 1000);
                 graph.Add($"[{input}:a]asetpts=PTS-STARTPTS,{AudioFormat},volume={Num(clip.Volume)},adelay={delay}:all=1[m{index}]");
                 mix.Append($"[m{index}]");
@@ -156,11 +158,11 @@ public static class ExportPlanner
         args.AddRange(["-fps_mode", "passthrough"]);
         if (hasAudio)
             args.AddRange(["-c:a", "aac", "-b:a", AudioBitRate(timeline).ToString(CultureInfo.InvariantCulture), "-ar", AudioSampleRate.ToString(CultureInfo.InvariantCulture)]);
-        args.AddRange(["-t", Num(duration), "-movflags", "+faststart", outputPath]);
+        args.AddRange(["-t", Num(duration), "-movflags", "+faststart"]);
 
-        if (args.Sum(a => a.Length + 3) > MaxCommandLength)
+        if (args.Sum(a => a.Length + 3) + outputPath.Length + 3 > MaxCommandLength)
             throw new InvalidOperationException("片段數量過多，超過 Windows 命令列長度上限。");
-        return new ExportPlan(args, duration, size, codec, pixelFormat, CollectWarnings(timeline, reference, referenceSize, settings.Mode), reverseJobs);
+        return new ExportPlan(args, outputPath, duration, size, codec, pixelFormat, CollectWarnings(timeline, reference, referenceSize, settings.Mode), reverseJobs);
     }
 
     /// <summary>決策：8-bit 用 H.264；10-bit 以上或 HDR 用 H.265，並維持來源色彩格式。</summary>

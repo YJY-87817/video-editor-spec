@@ -15,7 +15,6 @@ public sealed class ExportService(FfmpegTools tools)
     /// </summary>
     private const double H264BitsPerPixel = 0.2;
     private const double H265BitsPerPixel = 0.15;
-    private const double DefaultFrameRate = 30;
 
     /// <summary>
     /// 匯出前檢查：素材都還在、路徑可寫入、不覆蓋來源、輸出檔能覆蓋。回傳錯誤訊息，通過時為 null。
@@ -114,7 +113,7 @@ public sealed class ExportService(FfmpegTools tools)
         if (timeline.VideoClips.Count == 0) return 0;
         var first = timeline.VideoClips[0];
         var size = Models.OutputSize.Compute(first.DisplaySize.Width, first.DisplaySize.Height, settings.Ratio);
-        var fps = first.Media.FrameRate.Value > 0 ? first.Media.FrameRate.Value : DefaultFrameRate;
+        var fps = first.Media.EffectiveFrameRate;
         var bitsPerPixel = ExportPlanner.ChooseVideoFormat(first.Media).Codec == "libx265" ? H265BitsPerPixel : H264BitsPerPixel;
         var video = (double)size.Width * size.Height * fps * bitsPerPixel / 8;
         var audio = timeline.AllClips.Any(c => c.Media.HasAudio) ? ExportPlanner.AudioBitRate(timeline) / 8.0 : 0;
@@ -146,11 +145,12 @@ public sealed class ExportService(FfmpegTools tools)
     /// 先寫入暫存檔，成功才改名；取消或 FFmpeg 失敗時清掉暫存檔，不留下殘缺影片。
     /// 已經做好、只是改名失敗（例如匯出途中用播放器打開了舊的輸出檔）時保留暫存檔，丟出 <see cref="ExportRenameException"/>。
     /// </summary>
-    public async Task ExportAsync(ExportPlan plan, string outputPath, IProgress<double>? progress, CancellationToken token = default)
+    public async Task ExportAsync(ExportPlan plan, IProgress<double>? progress, CancellationToken token = default)
     {
+        var outputPath = plan.OutputPath;
         var temporary = TemporaryPath(outputPath);
         var work = WorkDirectory(temporary);
-        var args = ReverseGraph.Resolve(plan.Arguments.Take(plan.Arguments.Count - 1), work).Append(temporary);
+        var args = ReverseGraph.Resolve(plan.Arguments, work).Append(temporary);
         var finished = false;
         // 進度依處理的秒數計：先是各個倒放片段，最後才是編碼。
         var total = plan.TotalWork;
@@ -162,13 +162,13 @@ public sealed class ExportService(FfmpegTools tools)
             foreach (var job in plan.ReverseJobs)
             {
                 var before = prepared;
-                await ReverseGraph.RunAsync(tools, job, work, seconds => progress?.Report(Math.Clamp((before + seconds) / total, 0, 1)), token);
+                await ReverseGraph.RunAsync(tools, job, work, seconds => progress?.Report(Math.Clamp((before + seconds) / total, 0, 1)), token).ConfigureAwait(false);
                 prepared = before + job.Duration;
             }
             await ProcessRunner.RunWithLinesAsync(tools.Ffmpeg, args, line =>
             {
                 if (ParseProgress(line, plan.Duration) is { } value) progress?.Report((prepared + value * plan.Duration) / total);
-            }, token);
+            }, token).ConfigureAwait(false);
             finished = true;
             try
             {
@@ -183,7 +183,8 @@ public sealed class ExportService(FfmpegTools tools)
         finally
         {
             if (!finished) DeleteQuietly(temporary);
-            if (plan.ReverseJobs.Count > 0) TemporaryFiles.DeleteDirectory(work);
+            // 檔案被佔用時刪除會重試最多約 2 秒；放到背景執行，呼叫端是 UI 執行緒時才不會卡住畫面。
+            if (plan.ReverseJobs.Count > 0) await Task.Run(() => TemporaryFiles.DeleteDirectory(work)).ConfigureAwait(false);
         }
     }
 

@@ -23,7 +23,6 @@ public static class ReverseGraph
 {
     /// <summary>每一小段解碼後的影格最多占用的記憶體。</summary>
     public const long DefaultBufferBytes = 512L * 1024 * 1024;
-    private const double DefaultFrameRate = 30;
 
     /// <summary>暫存資料夾在參數裡的代號，執行時由 <see cref="Resolve"/> 換成實際路徑。</summary>
     public const string WorkToken = "{work}";
@@ -42,10 +41,10 @@ public static class ReverseGraph
     /// </summary>
     public static IReadOnlyList<Chunk> Split(double sourceIn, double sourceOut, double fps, long frameBytes, long bufferBytes = DefaultBufferBytes)
     {
-        if (fps <= 0) fps = DefaultFrameRate;
+        if (fps <= 0) fps = MediaInfo.DefaultFrameRate;
         var framesPerChunk = Math.Max(1, bufferBytes / Math.Max(1, frameBytes));
-        var first = FirstFrameAtOrAfter(sourceIn, fps);
-        var end = Math.Max(first + 1, FirstFrameAtOrAfter(sourceOut, fps));
+        var first = FrameMath.FirstFrameAtOrAfter(sourceIn, fps);
+        var end = Math.Max(first + 1, FrameMath.FirstFrameAtOrAfter(sourceOut, fps));
         double Boundary(long frame) => Math.Max(0, (frame - 0.5) / fps);
 
         var chunks = new List<Chunk>();
@@ -56,9 +55,6 @@ public static class ReverseGraph
         }
         return chunks;
     }
-
-    /// <summary>時間戳不早於 time 的第一格。</summary>
-    public static long FirstFrameAtOrAfter(double time, double fps) => (long)Math.Ceiling(time * fps - 1e-6);
 
     /// <summary>解碼後一格的大小（位元組），依來源的色度取樣與位元深度估算。</summary>
     public static long FrameBytes(MediaInfo media, int width, int height)
@@ -79,7 +75,7 @@ public static class ReverseGraph
     public static ReverseJob Plan(string name, MediaInfo media, double sourceIn, double sourceOut, bool withAudio,
         string videoFilter, long frameBytes, long bufferBytes = DefaultBufferBytes)
     {
-        var fps = media.FrameRate.Value > 0 ? media.FrameRate.Value : DefaultFrameRate;
+        var fps = media.EffectiveFrameRate;
         var prefilter = videoFilter.Length == 0 ? "" : videoFilter + ",";
         // FFV1 沒有全範圍專用的 yuvj 格式；直接交給編碼器會被轉成 limited range。
         // 明確指定輸入輸出都是全範圍，只換格式名稱、不動像素值。
@@ -101,7 +97,7 @@ public static class ReverseGraph
             var frames = Math.Max(1, (long)Math.Round(length * fps));
             var conformed = $"{WorkToken}/{name}-cfr.nut";
             var args = new List<string>(common);
-            args.AddRange(["-ss", Num(sourceIn), "-t", Num(length), "-i", media.Path]);
+            args.AddRange(["-ss", Num(sourceIn), "-t", Num(length), ..Ffmpeg.FfmpegInput.LocalFilesOnly, "-i", media.Path]);
             // start_time=0：影格從入點起算，第一格之前的空檔以第一格補上。
             // tpad 加 trim：結尾不足的以最後一格補上、多的切掉，剛好是片段長度該有的格數，之後的分段才不會落空。
             args.AddRange(["-filter_complex",
@@ -131,12 +127,12 @@ public static class ReverseGraph
             var chunk = chunks[i];
             var file = $"{name}-{i:D5}.nut";
             var args = new List<string>(common);
-            args.AddRange(["-ss", Num(chunk.Start), "-t", Num(chunk.Length), "-i", input]);
+            args.AddRange(["-ss", Num(chunk.Start), "-t", Num(chunk.Length), ..Ffmpeg.FfmpegInput.LocalFilesOnly, "-i", input]);
             var graph = $"[0:v]setpts=PTS-STARTPTS,{inputTag}{prefilter}reverse{keepRange}[v]";
             if (withAudio)
             {
                 // 聲音取這幾格實際顯示的時間範圍；影像的定位點提前半格只是為了不漏掉第一格。
-                args.AddRange(["-ss", Num(chunk.AudioStart), "-t", Num(chunk.AudioLength), "-vn", "-i", input]);
+                args.AddRange(["-ss", Num(chunk.AudioStart), "-t", Num(chunk.AudioLength), "-vn", ..Ffmpeg.FfmpegInput.LocalFilesOnly, "-i", input]);
                 // 先補齊到這一小段的長度再倒放，聲音才不會與畫面錯開。
                 graph += $";[1:a]asetpts=PTS-STARTPTS,apad,atrim=0:{Num(chunk.AudioLength)},areverse[a]";
             }
@@ -166,8 +162,8 @@ public static class ReverseGraph
     /// <summary>中間檔大約占用的磁碟空間（位元組）。FFV1 的壓縮率依畫面內容而定，這裡抓解碼後大小的六成。</summary>
     public static long IntermediateBytes(MediaInfo media, double sourceIn, double sourceOut)
     {
-        var fps = media.FrameRate.Value > 0 ? media.FrameRate.Value : DefaultFrameRate;
-        var frames = Math.Max(1, FirstFrameAtOrAfter(sourceOut, fps) - FirstFrameAtOrAfter(sourceIn, fps));
+        var fps = media.EffectiveFrameRate;
+        var frames = Math.Max(1, FrameMath.FirstFrameAtOrAfter(sourceOut, fps) - FrameMath.FirstFrameAtOrAfter(sourceIn, fps));
         var video = frames * FrameBytes(media, media.DisplayWidth, media.DisplayHeight) * IntermediateCompression;
         var audio = media.HasAudio ? (sourceOut - sourceIn) * Math.Max(1, media.AudioSampleRate) * Math.Max(1, media.AudioChannels) * 4 : 0;
         // 可變影格率的來源多一份固定影格率的中間檔。
@@ -194,7 +190,7 @@ public static class ReverseGraph
             await Ffmpeg.ProcessRunner.RunWithLinesAsync(tools.Ffmpeg, Resolve(step.Arguments, workDirectory), line =>
             {
                 if (ExportService.ParseProgress(line, step.Duration) is { } value) progress?.Invoke(before + value * step.Duration);
-            }, token);
+            }, token).ConfigureAwait(false);
             done = before + step.Duration;
             progress?.Invoke(done);
         }

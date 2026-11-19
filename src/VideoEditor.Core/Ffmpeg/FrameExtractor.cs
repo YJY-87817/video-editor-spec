@@ -5,18 +5,20 @@ namespace VideoEditor.Core.Ffmpeg;
 
 public sealed record RawFrame(byte[] Bgra, int Width, int Height);
 
-public sealed class FrameExtractor(FfmpegTools tools)
+public sealed class FrameExtractor(FfmpegTools tools, FfmpegTimeouts? timeouts = null)
 {
+    private FfmpegTimeouts Limits => timeouts ?? FfmpegTimeouts.Default;
+
     /// <summary>解出指定時間的影格（BGRA）；超出影片結尾時回傳 null。</summary>
     public async Task<RawFrame?> ExtractAsync(string path, double time, Size2 size, CancellationToken token = default)
     {
         string[] args =
         [
-            "-v", "error", "-ss", Seconds(Math.Max(0, time)), "-i", path,
+            "-v", "error", "-ss", Seconds(Math.Max(0, time)), ..FfmpegInput.LocalFilesOnly, "-i", path,
             "-frames:v", "1", "-an", "-vf", $"scale={size.Width}:{size.Height},setsar=1",
             "-f", "rawvideo", "-pix_fmt", "bgra", "pipe:1",
         ];
-        var chunks = await ProcessRunner.RunForChunksAsync(tools.Ffmpeg, args, FrameBytes(size), 1, token);
+        var chunks = await ProcessRunner.RunForChunksAsync(tools.Ffmpeg, args, FrameBytes(size), 1, token, Limits.Frame);
         return chunks.Count == 1 ? new RawFrame(chunks[0], size.Width, size.Height) : null;
     }
 
@@ -30,12 +32,12 @@ public sealed class FrameExtractor(FfmpegTools tools)
         step = Math.Max(1, step);
         string[] args =
         [
-            "-v", "error", "-ss", Seconds(FrameSeekTime(firstFrame, fps)), "-i", path,
+            "-v", "error", "-ss", Seconds(FrameMath.FrameSeekTime(firstFrame, fps)), ..FfmpegInput.LocalFilesOnly, "-i", path,
             "-an", "-vf", $"select=not(mod(n\\,{step})),scale={size.Width}:{size.Height},setsar=1",
             "-fps_mode", "passthrough", "-frames:v", count.ToString(CultureInfo.InvariantCulture),
             "-f", "rawvideo", "-pix_fmt", "bgra", "pipe:1",
         ];
-        var chunks = await ProcessRunner.RunForChunksAsync(tools.Ffmpeg, args, FrameBytes(size), count, token);
+        var chunks = await ProcessRunner.RunForChunksAsync(tools.Ffmpeg, args, FrameBytes(size), count, token, Limits.FrameRange);
         return chunks.Select(bytes => new RawFrame(bytes, size.Width, size.Height)).ToList();
     }
 
@@ -44,10 +46,10 @@ public sealed class FrameExtractor(FfmpegTools tools)
     {
         string[] args =
         [
-            "-v", "error", "-ss", Seconds(time), "-i", path, "-frames:v", "1", "-an",
+            "-v", "error", "-ss", Seconds(time), ..FfmpegInput.LocalFilesOnly, "-i", path, "-frames:v", "1", "-an",
             "-vf", $"scale={width}:-2", "-c:v", "mjpeg", "-q:v", "5", "-f", "image2pipe", "pipe:1",
         ];
-        return ProcessRunner.RunForBytesAsync(tools.Ffmpeg, args, token);
+        return ProcessRunner.RunForBytesAsync(tools.Ffmpeg, args, token, Limits.Thumbnail);
     }
 
     /// <summary>預覽解析度：長邊不超過 maxLongSide，取偶數。</summary>
@@ -56,12 +58,6 @@ public sealed class FrameExtractor(FfmpegTools tools)
         var scale = Math.Min(1.0, (double)maxLongSide / Math.Max(width, height));
         return new Size2(Even(width * scale), Even(height * scale));
     }
-
-    /// <summary>第 n 格的定位時間。略早於該格時間戳，避免捨入後落到下一格。</summary>
-    public static double FrameSeekTime(long frame, double fps) => Math.Max(0, (frame - 0.25) / fps);
-
-    /// <summary>時間所在的影格編號。</summary>
-    public static long FrameIndex(double time, double fps) => (long)Math.Floor(time * fps + 0.5);
 
     /// <summary>一格 BGRA 影格的位元組數。</summary>
     public static int FrameBytes(Size2 size) => size.Width * size.Height * 4;

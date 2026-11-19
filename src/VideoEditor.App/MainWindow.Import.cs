@@ -12,6 +12,7 @@ using Microsoft.Win32;
 using VideoEditor.App.Preview;
 using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
+using VideoEditor.Core.Logging;
 using VideoEditor.Core.Models;
 using VideoEditor.Core.Playback;
 using VideoEditor.Core.Timeline;
@@ -38,6 +39,7 @@ public partial class MainWindow
         }
         catch (Exception e)
         {
+            Log.Error("匯入時發生預料之外的錯誤", e);
             StatusText.Text = $"匯入時發生錯誤：{e.Message}";
         }
     }
@@ -63,7 +65,7 @@ public partial class MainWindow
 
     void IImportView.AddMedia(MediaInfo info, byte[]? thumbnail)
     {
-        var item = new MediaItem(info) { Thumbnail = thumbnail == null ? null : CreateThumbnail(thumbnail) };
+        var item = new MediaItem(info) { Thumbnail = thumbnail == null ? null : TryCreateThumbnail(thumbnail) };
         _media.Add(item);
         // 不等加入時間軸就先算波形，加入時多半已經好了。
         _waveforms?.Request(info);
@@ -73,15 +75,25 @@ public partial class MainWindow
     void IImportView.ShowFailure(string name, string message) =>
         MessageBox.Show(this, $"無法匯入 {name}：\n{message}", "匯入失敗", MessageBoxButton.OK, MessageBoxImage.Warning);
 
-    private static BitmapSource CreateThumbnail(byte[] bytes)
+    /// <summary>縮圖只是裝飾：解碼失敗時不要讓整批匯入中斷，回傳 null 顯示空白。</summary>
+    private static BitmapSource? TryCreateThumbnail(byte[] bytes)
     {
-        var image = new BitmapImage();
-        image.BeginInit();
-        image.CacheOption = BitmapCacheOption.OnLoad;
-        image.StreamSource = new MemoryStream(bytes);
-        image.EndInit();
-        image.Freeze();
-        return image;
+        try
+        {
+            var image = new BitmapImage();
+            image.BeginInit();
+            image.CacheOption = BitmapCacheOption.OnLoad;
+            image.StreamSource = new MemoryStream(bytes);
+            image.EndInit();
+            image.Freeze();
+            return image;
+        }
+        // WIC 解碼失敗可能是 COMException；尺寸異常的圖可能是 OverflowException。
+        catch (Exception e) when (e is NotSupportedException or FileFormatException or IOException or InvalidOperationException
+            or ArgumentException or System.Runtime.InteropServices.COMException or OverflowException)
+        {
+            return null;
+        }
     }
 
     private void OnMediaSelected(object sender, SelectionChangedEventArgs e)

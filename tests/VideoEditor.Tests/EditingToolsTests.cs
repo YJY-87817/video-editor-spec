@@ -47,13 +47,13 @@ public class SplitTests
         // 取每一格的中間：時間軸上第 k 格（從片段開頭算）在匯出時就是這個位置的畫面。
         // 不取格與格之間的時間，那裡的預覽本來就是四捨五入到相鄰的某一格。
         var times = Enumerable.Range(0, 90).Select(k => start + (k + 0.5) / 30).ToList();
-        var before = times.Select(time => FrameExtractor.FrameIndex(clip.ToSourceTime(time), 30)).ToList();
+        var before = times.Select(time => FrameMath.FrameIndex(clip.ToSourceTime(time), 30)).ToList();
         var end = clip.End;
 
         var right = t.Split(clip, start + 1.234);
         Assert.Equal(clip.End, right.Start, 9);
         Assert.Equal(end, right.End, 9);
-        var after = times.Select(time => FrameExtractor.FrameIndex((time < right.Start ? clip : right).ToSourceTime(time), 30)).ToList();
+        var after = times.Select(time => FrameMath.FrameIndex((time < right.Start ? clip : right).ToSourceTime(time), 30)).ToList();
         Assert.Equal(before, after);
     }
 
@@ -63,13 +63,13 @@ public class SplitTests
         var t = new TimelineModel();
         var clip = t.Append(Media(), 1, 4);
         t.SetReversed(clip, true);
-        var shown = FrameExtractor.FrameIndex(clip.ToSourceTime(1.0), 30);
+        var shown = FrameMath.FrameIndex(clip.ToSourceTime(1.0), 30);
         var right = t.Split(clip, 1.0);
         Assert.Equal(3.0, clip.SourceIn, 9);
         Assert.Equal(4.0, clip.SourceOut, 9);
         Assert.Equal(1.0, right.SourceIn, 9);
         Assert.Equal(3.0, right.SourceOut, 9);
-        Assert.Equal(shown, FrameExtractor.FrameIndex(right.ToSourceTime(right.Start), 30));
+        Assert.Equal(shown, FrameMath.FrameIndex(right.ToSourceTime(right.Start), 30));
     }
 
     [Fact]
@@ -293,5 +293,71 @@ public class SplitExportTests(TestMedia media)
 
         Assert.Equal(await FrameHashes(wholeResult.Path), await FrameHashes(splitResult.Path));
         Assert.Equal(wholeResult.Duration, splitResult.Duration, 2);
+    }
+}
+
+public class TimelineDragTests
+{
+    [Theory]
+    [InlineData(100, ClipHit.TrimStart)] // 左緣上
+    [InlineData(107, ClipHit.TrimStart)] // 剛好在邊緣範圍內
+    [InlineData(108, ClipHit.Move)]
+    [InlineData(200, ClipHit.Move)]
+    [InlineData(292, ClipHit.Move)]
+    [InlineData(293, ClipHit.TrimEnd)]
+    [InlineData(300, ClipHit.TrimEnd)]
+    public void WideClipHasEdgesAndAMiddle(double x, ClipHit expected) =>
+        Assert.Equal(expected, TimelineDrag.Classify(x, 100, 300, 7));
+
+    [Theory]
+    [InlineData(100, ClipHit.TrimStart)]
+    [InlineData(103, ClipHit.TrimStart)] // 寬 9：邊緣各 3
+    [InlineData(104, ClipHit.Move)] // 中間仍可拖曳移動
+    [InlineData(105, ClipHit.Move)]
+    [InlineData(106, ClipHit.TrimEnd)]
+    public void NarrowClipKeepsItsMiddleForMoving(double x, ClipHit expected) =>
+        Assert.Equal(expected, TimelineDrag.Classify(x, 100, 109, 7));
+
+    private static MediaInfo Media() => new()
+    {
+        Path = "a.mp4", Duration = 100, HasVideo = true, DisplayWidth = 1920, DisplayHeight = 1080, FrameRate = new Rational(30, 1),
+    };
+
+    [Fact]
+    public void SnappedPositionIsUsedWhenItFits()
+    {
+        var t = new TimelineModel();
+        var clip = t.Append(Media(), 0, 2);
+
+        var snapped = TimelineDrag.MoveWithSnap(t, clip, raw: 5.3, snapped: 5.0);
+
+        Assert.True(snapped);
+        Assert.Equal(5.0, clip.Start, 6);
+    }
+
+    [Fact]
+    public void FallsBackToTheMousePositionWhenTheSnapTargetIsTaken()
+    {
+        var t = new TimelineModel();
+        var first = t.Append(Media(), 0, 2);   // 0～2
+        var second = t.Append(Media(), 0, 2);  // 2～4
+        // 貼齊的位置（1.0）與第一個片段重疊，會被推到別處；滑鼠原位（6.0）放得下。
+        var snapped = TimelineDrag.MoveWithSnap(t, second, raw: 6.0, snapped: 1.0);
+
+        Assert.False(snapped);
+        Assert.Equal(6.0, second.Start, 6);
+        Assert.Equal(0, first.Start, 6);
+    }
+
+    [Fact]
+    public void NegativeSnapTargetFallsBackToTheMousePosition()
+    {
+        var t = new TimelineModel();
+        var clip = t.Append(Media(), 0, 2);
+
+        var snapped = TimelineDrag.MoveWithSnap(t, clip, raw: 3.0, snapped: -1.0);
+
+        Assert.False(snapped);
+        Assert.Equal(3.0, clip.Start, 6);
     }
 }

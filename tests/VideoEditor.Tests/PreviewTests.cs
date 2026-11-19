@@ -153,6 +153,17 @@ public class PreviewKeysTests
     [InlineData("j")] // WPF 的按鍵名稱一律大寫
     [InlineData("")]
     public void OtherKeysAreIgnored(string key) => Assert.Null(PreviewKeys.FromKeyName(key));
+
+    [Fact]
+    public void ShortcutsAreHandledOnlyWithoutModifiers() => Assert.True(PreviewKeys.ShouldHandle(KeyModifiers.None));
+
+    [Theory]
+    [InlineData(KeyModifiers.Control)] // Ctrl+S 不能分割片段
+    [InlineData(KeyModifiers.Alt)]
+    [InlineData(KeyModifiers.Shift)]
+    [InlineData(KeyModifiers.Windows)]
+    [InlineData(KeyModifiers.Control | KeyModifiers.Shift)]
+    public void ModifierCombinationsAreNotShortcuts(KeyModifiers modifiers) => Assert.False(PreviewKeys.ShouldHandle(modifiers));
 }
 
 public class FrameBatchTests

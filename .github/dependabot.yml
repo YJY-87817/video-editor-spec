@@ -1,0 +1,13 @@
+version: 2
+updates:
+  - package-ecosystem: nuget
+    # 專案檔在 src 與 tests 底下，根目錄只有 .slnx，所以要明確列出專案所在的資料夾。
+    directories:
+      - /src/*
+      - /tests/*
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

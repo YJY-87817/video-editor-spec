@@ -53,10 +53,22 @@ public partial class MainWindow
     private void OnStepBack(object sender, RoutedEventArgs e) => Execute(PreviewCommand.StepBack);
     private void OnStepForward(object sender, RoutedEventArgs e) => Execute(PreviewCommand.StepForward);
 
+    /// <summary>逐一對應，不靠兩個列舉的數值恰好相同。</summary>
+    private static KeyModifiers CurrentModifiers()
+    {
+        var keys = Keyboard.Modifiers;
+        var result = KeyModifiers.None;
+        if (keys.HasFlag(ModifierKeys.Alt)) result |= KeyModifiers.Alt;
+        if (keys.HasFlag(ModifierKeys.Control)) result |= KeyModifiers.Control;
+        if (keys.HasFlag(ModifierKeys.Shift)) result |= KeyModifiers.Shift;
+        if (keys.HasFlag(ModifierKeys.Windows)) result |= KeyModifiers.Windows;
+        return result;
+    }
+
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
         // Ctrl／Alt／Shift／Win 組合鍵（例如 Ctrl+S）不是預覽快捷鍵。
-        if (Keyboard.Modifiers != ModifierKeys.None) return;
+        if (!PreviewKeys.ShouldHandle(CurrentModifiers())) return;
         // 正在輸入文字時，按鍵歸文字框。
         if (e.OriginalSource is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.PasswordBox) return;
         if (PreviewKeys.FromKeyName(e.Key.ToString()) is not { } command) return;

@@ -6,12 +6,18 @@ using TimelineModel = VideoEditor.Core.Timeline.Timeline;
 
 namespace VideoEditor.Core.Ffmpeg;
 
-public sealed class MediaProbe(FfmpegTools tools)
+public sealed class MediaProbe(FfmpegTools tools, FfmpegTimeouts? timeouts = null)
 {
+    // 檔案自己宣稱的數值沒有上限，損毀或惡意的檔案可能寫出極端值，讓時間軸、倒放分段、預覽緩衝配置出天文數字。
+    // 上限遠高於實際素材（16K 影像、1000 fps 高速攝影、48 小時錄影），只擋明顯不合理的值。
+    public const int MaxDimension = 16384;
+    public const double MaxFrameRate = 1000;
+    public static readonly TimeSpan MaxDuration = TimeSpan.FromHours(48);
+
     public async Task<MediaInfo> ProbeAsync(string path, CancellationToken token = default)
     {
-        string[] args = ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", path];
-        var json = await ProcessRunner.RunForBytesAsync(tools.Ffprobe, args, token);
+        string[] args = ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", ..FfmpegInput.LocalFilesOnly, "-i", path];
+        var json = await ProcessRunner.RunForBytesAsync(tools.Ffprobe, args, token, (timeouts ?? FfmpegTimeouts.Default).Probe);
         return Parse(Encoding.UTF8.GetString(json), path);
     }
 
@@ -39,6 +45,10 @@ public sealed class MediaProbe(FfmpegTools tools)
                 : string.Create(CultureInfo.InvariantCulture,
                     $"檔案太短（{duration:0.###} 秒），可能是靜態圖片；片段至少要 {TimelineModel.MinClipDuration} 秒。"));
 
+        if (duration > MaxDuration.TotalSeconds)
+            throw new InvalidDataException(string.Create(CultureInfo.InvariantCulture,
+                $"檔案長度（{duration / 3600:0.#} 小時）超過上限 {MaxDuration.TotalHours:0} 小時，檔案可能已損毀。"));
+
         var info = new MediaInfo
         {
             Path = path,
@@ -47,20 +57,31 @@ public sealed class MediaProbe(FfmpegTools tools)
             HasAudio = hasAudio,
             AudioCodec = hasAudio ? Str(audio, "codec_name") ?? "" : "",
             AudioBitRate = hasAudio ? Lng(audio, "bit_rate") : 0,
-            AudioSampleRate = hasAudio ? (int)Lng(audio, "sample_rate") : 0,
-            AudioChannels = hasAudio ? (int)Lng(audio, "channels") : 0,
+            AudioSampleRate = hasAudio ? Int(audio, "sample_rate") : 0,
+            AudioChannels = hasAudio ? Int(audio, "channels") : 0,
         };
         if (!hasVideo) return info;
 
         var rotation = ReadRotation(video);
         var sar = Rational.Parse(Str(video, "sample_aspect_ratio")?.Replace(':', '/'));
         if (sar.Num <= 0 || sar.Den <= 0) sar = new Rational(1, 1);
-        var width = (int)Math.Round(Lng(video, "width") * sar.Value);
-        var height = (int)Lng(video, "height");
-        if (Math.Abs(rotation) % 180 == 90) (width, height) = (height, width);
+        // 先用 double 檢查再轉成 int：超出範圍的值轉型時會繞回小數字或負數，繞過上限。
+        var rawWidth = Lng(video, "width") * sar.Value;
+        double rawHeight = Lng(video, "height");
+        if (Math.Abs(rotation) % 180 == 90) (rawWidth, rawHeight) = (rawHeight, rawWidth);
+        if (double.IsNaN(rawWidth) || rawWidth < 0 || rawHeight < 0)
+            throw new InvalidDataException("影像尺寸不正確，檔案可能已損毀。");
+        if (rawWidth > MaxDimension || rawHeight > MaxDimension)
+            throw new InvalidDataException(string.Create(CultureInfo.InvariantCulture,
+                $"影像尺寸（{rawWidth:0}×{rawHeight:0}）超過上限 {MaxDimension}×{MaxDimension}，檔案可能已損毀。"));
+        var width = (int)Math.Round(rawWidth);
+        var height = (int)rawHeight;
 
         var realRate = Rational.Parse(Str(video, "r_frame_rate"));
         var averageRate = Rational.Parse(Str(video, "avg_frame_rate"));
+        if (Math.Max(realRate.Value, averageRate.Value) > MaxFrameRate)
+            throw new InvalidDataException(string.Create(CultureInfo.InvariantCulture,
+                $"影格率（{Math.Max(realRate.Value, averageRate.Value):0.#} fps）超過上限 {MaxFrameRate:0} fps，檔案可能已損毀。"));
         // r_frame_rate 與平均影格率差距超過 1% 視為可變影格率。
         var isVariable = realRate.Value > 0 && averageRate.Value > 0
             && Math.Abs(realRate.Value - averageRate.Value) / realRate.Value > 0.01;
@@ -134,6 +155,9 @@ public sealed class MediaProbe(FfmpegTools tools)
 
     private static double Dbl(JsonElement element, string name) =>
         double.TryParse(Str(element, name), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : 0;
+
+    /// <summary>整數欄位，限制在 int 範圍內（不會繞回）。</summary>
+    private static int Int(JsonElement element, string name) => (int)Math.Clamp(Lng(element, name), 0, int.MaxValue);
 
     private static long Lng(JsonElement element, string name) =>
         long.TryParse(Str(element, name), NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) ? v : 0;

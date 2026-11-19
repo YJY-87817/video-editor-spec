@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using VideoEditor.Core.Ffmpeg;
+using VideoEditor.Core.Logging;
 using VideoEditor.Core.Models;
 using TimelineModel = VideoEditor.Core.Timeline.Timeline;
 
@@ -99,6 +100,7 @@ public sealed class ExportController(FfmpegTools tools, IExportView view, int do
         var finished = false;
         var succeeded = false;
         view.ShowStarted(title);
+        Log.Info($"開始匯出：{output}（{plan.Size.Width}×{plan.Size.Height}，{plan.VideoCodec}，{plan.Duration:0.#} 秒，倒放片段 {plan.ReverseJobs.Count} 個）");
         var progress = new Progress<double>(value =>
         {
             // Progress 是非同步送回 UI 執行緒的，匯出結束後才到的回報要忽略。
@@ -121,29 +123,35 @@ public sealed class ExportController(FfmpegTools tools, IExportView view, int do
             }
             else
             {
-                await new ExportService(tools).ExportAsync(plan, output, progress, cancel.Token);
+                await new ExportService(tools).ExportAsync(plan, progress, cancel.Token);
                 finished = true;
                 succeeded = true;
+                Log.Info($"匯出完成，用時 {FormatSpan(clock.Elapsed)}");
                 view.ShowSucceeded(output, FormatSpan(clock.Elapsed));
             }
         }
         catch (OperationCanceledException)
         {
+            Log.Info("匯出已取消");
             view.ShowStatus("已取消匯出。");
         }
         catch (ExportRenameException error)
         {
+            Log.Error("影片已做好但無法改成輸出檔名", error);
             view.ShowStatus($"影片已做好，但未能存成輸出檔名，保留在：{error.TemporaryPath}");
             view.ShowError(error.Message);
         }
         catch (System.ComponentModel.Win32Exception error)
         {
             // ffmpeg.exe 無法啟動（例如被防毒軟體擋下或被刪掉）。
+            Log.Error("無法啟動 ffmpeg", error);
             view.ShowStatus("匯出失敗。");
             view.ShowError($"無法啟動 ffmpeg，可能被防毒軟體擋下或檔案已被移除：{error.Message}");
         }
         catch (Exception error) when (error is FfmpegException or IOException or UnauthorizedAccessException)
         {
+            // FfmpegException 的命令列與錯誤輸出已由 ProcessRunner 記錄，這裡不再重複堆疊。
+            Log.Error("匯出失敗", error is FfmpegException ? null : error);
             view.ShowStatus("匯出失敗。");
             view.ShowError((error as FfmpegException)?.Stderr ?? error.Message);
         }

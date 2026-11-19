@@ -13,6 +13,7 @@ using Microsoft.Win32;
 using VideoEditor.App.Preview;
 using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
+using VideoEditor.Core.Logging;
 using VideoEditor.Core.Models;
 using VideoEditor.Core.Playback;
 using VideoEditor.Core.Timeline;
@@ -56,6 +57,7 @@ public partial class MainWindow : Window, IExportView, IImportView
         Timeline.ClipsChanged += OnClipsChanged;
         Timeline.ViewChanged += UpdateTimelineScrollBar;
         ProgressPanel.CancelExportRequested += () => _export?.Cancel();
+        ProgressPanel.CancelImportRequested += () => _import?.Cancel();
 
         try
         {
@@ -68,8 +70,12 @@ public partial class MainWindow : Window, IExportView, IImportView
             return;
         }
 
-        // 清掉上次當掉或被強制結束時留下的倒放預覽檔。
-        ReversePreviewCache.CleanupStale();
+        // 清掉上次當掉或被強制結束時留下的倒放預覽檔。可能有數 GB，放到背景，視窗才不會等它。
+        _ = Task.Run(() =>
+        {
+            try { ReversePreviewCache.CleanupStale(); }
+            catch (Exception e) { Log.Warn("清理上次遺留的預覽暫存失敗", e); }
+        });
         var extractor = new FrameExtractor(_tools);
         _import = new ImportController(new MediaProbe(_tools), extractor, this);
         _export = new ExportController(_tools, this);
@@ -78,7 +84,11 @@ public partial class MainWindow : Window, IExportView, IImportView
         _engine.PlayingChanged += UpdatePlaybackButtons;
         _engine.Status += message => StatusText.Text = message;
         _engine.SurfaceChanged += OnSurfaceChanged;
-        _engine.Error += message => StatusText.Text = message;
+        _engine.Error += message =>
+        {
+            Log.Warn(message);
+            StatusText.Text = message;
+        };
         // 聲音波形：匯入後在背景產生，好了就重畫時間軸。這兩個事件在背景執行緒觸發。
         _waveforms = new WaveformCache(new WaveformExtractor(_tools));
         _waveforms.Ready += _ => Dispatcher.BeginInvoke(Timeline.InvalidateVisual);
@@ -96,8 +106,16 @@ public partial class MainWindow : Window, IExportView, IImportView
 
         Loaded += async (_, _) =>
         {
-            // 可由命令列直接開啟素材。
-            await _import!.ImportAsync(Environment.GetCommandLineArgs().Skip(1).Where(File.Exists));
+            // 可由命令列直接開啟素材。轉成絕對路徑，以 - 開頭的相對路徑才不會被當成選項。
+            try
+            {
+                await _import!.ImportAsync(Environment.GetCommandLineArgs().Skip(1).Where(File.Exists).Select(System.IO.Path.GetFullPath));
+            }
+            catch (Exception ex)
+            {
+                Log.Error("開啟命令列素材時發生錯誤", ex);
+                StatusText.Text = $"匯入時發生錯誤：{ex.Message}";
+            }
         };
     }
 

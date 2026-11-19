@@ -1,4 +1,3 @@
-using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
 
 namespace VideoEditor.Core.Timeline;
@@ -48,6 +47,6 @@ public sealed class InOutPoints
     /// <summary>對齊到畫面上顯示的那一格，匯出的切點才會與看到的相同。不超過素材結尾的最後一個整數格。</summary>
     public static double Snap(double position, MediaInfo media) =>
         media.FrameRate.Value > 0
-            ? Math.Min(MediaEnd(media), FrameExtractor.FrameIndex(position, media.FrameRate.Value) / media.FrameRate.Value)
+            ? Math.Min(MediaEnd(media), FrameMath.FrameIndex(position, media.FrameRate.Value) / media.FrameRate.Value)
             : position;
 }
