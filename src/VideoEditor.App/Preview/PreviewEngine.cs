@@ -473,8 +473,10 @@ public sealed class PreviewEngine : IDisposable
     {
         _commands = _commands.ContinueWith(_ =>
         {
+            // 這裡是背景佇列的最外層：任何例外都要攔下回報。逃出去的例外會讓這個 Task 進入 Faulted，
+            // 沒人觀察，之後 Dispose 的 Wait 還會丟出 AggregateException，使後面的資源都不會釋放。
             try { command(); }
-            catch (Exception e) when (e is VLCException or InvalidOperationException)
+            catch (Exception e)
             {
                 _dispatcher.BeginInvoke(() => Error?.Invoke($"播放失敗：{e.Message}"));
             }
@@ -759,11 +761,18 @@ public sealed class PreviewEngine : IDisposable
         Stop();
         _timer.Stop();
         _rewindTimer.Stop();
-        _commands.Wait(TimeSpan.FromSeconds(2));
-        _videoPlayer.Dispose();
-        _musicPlayer.Dispose();
-        _vlc.Dispose();
-        _sink.Dispose();
+        // 等背景佇列做完再釋放播放器。逾時代表某個 LibVLC 呼叫卡住：此時釋放播放器會與它同時進行，
+        // 所以略過原生資源（程式即將結束，由作業系統回收），只清掉暫存檔。
+        var idle = false;
+        try { idle = _commands.Wait(TimeSpan.FromSeconds(2)); }
+        catch (AggregateException) { idle = true; } // 已結束（失敗的指令已在 Enqueue 內回報），沒有東西還在執行。
+        if (idle)
+        {
+            _videoPlayer.Dispose();
+            _musicPlayer.Dispose();
+            _vlc.Dispose();
+            _sink.Dispose();
+        }
         _proxies.Dispose();
     }
 }
