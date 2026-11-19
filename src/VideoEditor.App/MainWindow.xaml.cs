@@ -62,6 +62,7 @@ public partial class MainWindow : Window, IExportView, IImportView
         try
         {
             _tools = FfmpegLocator.Locate();
+            _ = ShowFfmpegAsync(_tools);
         }
         catch (FfmpegNotFoundException e)
         {
@@ -117,6 +118,18 @@ public partial class MainWindow : Window, IExportView, IImportView
                 StatusText.Text = $"匯入時發生錯誤：{ex.Message}";
             }
         };
+    }
+
+    /// <summary>
+    /// 讀出實際使用的 FFmpeg 路徑與版本，寫進紀錄；狀態列目前沒有其他訊息時也顯示一次。
+    /// 使用者自備 FFmpeg 時，才看得出程式到底用的是哪一份。
+    /// </summary>
+    private async Task ShowFfmpegAsync(FfmpegTools tools)
+    {
+        var version = await FfmpegVersion.ReadAsync(tools);
+        var text = version == null ? $"使用的 FFmpeg：{tools.Ffmpeg}" : $"使用的 FFmpeg：{tools.Ffmpeg}（{version}）";
+        Log.Info(text);
+        if (string.IsNullOrEmpty(StatusText.Text)) StatusText.Text = text;
     }
 
     private bool IsTimelinePreview => TimelineMode.IsChecked == true;
