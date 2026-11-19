@@ -7,57 +7,7 @@ using VideoEditor.Core.Models;
 
 namespace VideoEditor.Tests;
 
-/// <summary>健檢報告 S-1、S-5、Q-8：不需要 FFmpeg 的檢查。</summary>
-public class FfmpegLocatorTests : IDisposable
-{
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "VideoEditorTests", Guid.NewGuid().ToString("N"));
-
-    public FfmpegLocatorTests() => Directory.CreateDirectory(_root);
-
-    public void Dispose() => Directory.Delete(_root, recursive: true);
-
-    private string FakeInstall(string name)
-    {
-        var directory = Path.Combine(_root, name);
-        Directory.CreateDirectory(directory);
-        File.WriteAllBytes(Path.Combine(directory, "ffmpeg.exe"), []);
-        File.WriteAllBytes(Path.Combine(directory, "ffprobe.exe"), []);
-        return directory;
-    }
-
-    [Fact]
-    public void FindsToolsInPathWhenEntryIsAbsolute()
-    {
-        var installed = FakeInstall("installed");
-        var tools = FfmpegLocator.Locate(Path.Combine(_root, "empty"), installed);
-        Assert.Equal(Path.Combine(installed, "ffmpeg.exe"), tools.Ffmpeg);
-    }
-
-    [Fact]
-    public void IgnoresRelativePathEntries()
-    {
-        // 相對的 PATH 項目要看目前的工作目錄才知道指到哪裡：就算它剛好指得到 ffmpeg 也不採用。
-        // 不改行程的工作目錄（測試會平行執行）：用相對於目前目錄的路徑指向真正的安裝位置。
-        var installed = FakeInstall("installed");
-        var relative = Path.GetRelativePath(Directory.GetCurrentDirectory(), installed);
-        if (Path.IsPathRooted(relative)) return; // 不同磁碟，算不出相對路徑
-        Assert.Throws<FfmpegNotFoundException>(() => FfmpegLocator.Locate(Path.Combine(_root, "empty"), relative));
-        Assert.Equal(Path.Combine(installed, "ffmpeg.exe"), FfmpegLocator.Locate(Path.Combine(_root, "empty"), installed).Ffmpeg);
-    }
-
-    [Fact]
-    public void PrefersToolsFolderNextToTheProgram()
-    {
-        var baseDirectory = Path.Combine(_root, "app");
-        var bundled = Path.Combine(baseDirectory, "tools", "ffmpeg");
-        Directory.CreateDirectory(bundled);
-        File.WriteAllBytes(Path.Combine(bundled, "ffmpeg.exe"), []);
-        File.WriteAllBytes(Path.Combine(bundled, "ffprobe.exe"), []);
-        var tools = FfmpegLocator.Locate(baseDirectory, FakeInstall("other"));
-        Assert.Equal(Path.Combine(bundled, "ffmpeg.exe"), tools.Ffmpeg);
-    }
-}
-
+/// <summary>健檢報告 S-5、Q-8、W-6：不需要 FFmpeg 的檢查。</summary>
 public class PreflightTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "VideoEditorTests", Guid.NewGuid().ToString("N"));

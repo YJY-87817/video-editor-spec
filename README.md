@@ -4,7 +4,7 @@
 
 ## 執行
 
-需要 .NET 10 SDK，以及 `ffmpeg.exe` 與 `ffprobe.exe`（放在程式目錄的 `tools\ffmpeg`，或加入 PATH）。FFmpeg 必須含 libx264 與 libx265。
+需要 .NET 10 SDK，以及 `ffmpeg.exe` 與 `ffprobe.exe`（放在程式目錄的 `tools\ffmpeg`，或加入 PATH；PATH 裡的相對路徑項目會被略過，要用完整路徑）。程式啟動時會把實際使用的 FFmpeg 路徑與版本寫進紀錄，狀態列沒有其他訊息時也會顯示一次。FFmpeg 必須含 libx264 與 libx265。
 
 ```bash
 dotnet run --project src/VideoEditor.App
@@ -21,8 +21,6 @@ dotnet test
 ```bash
 dotnet test --filter "Category!=Integration"
 ```
-
-程式啟動時會把實際使用的 `ffmpeg.exe` 路徑寫進紀錄。PATH 裡的相對路徑項目（例如 `.`）會被略過，因為它的意思取決於目前的工作目錄。
 
 GitHub Actions（`.github/workflows/ci.yml`）會在 Windows 上建置並執行測試，推送到 `main` 與每個 pull request 都會觸發。
 
