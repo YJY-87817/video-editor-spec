@@ -65,13 +65,32 @@ public partial class MainWindow
         return result;
     }
 
+    /// <summary>WPF 的按鍵對應到預覽快捷鍵；不是快捷鍵的按鍵回傳 null。</summary>
+    private static PreviewKey? ToPreviewKey(Key key) => key switch
+    {
+        Key.Space => PreviewKey.Space,
+        Key.J => PreviewKey.J,
+        Key.K => PreviewKey.K,
+        Key.L => PreviewKey.L,
+        Key.Left => PreviewKey.Left,
+        Key.Right => PreviewKey.Right,
+        Key.I => PreviewKey.I,
+        Key.O => PreviewKey.O,
+        Key.Delete => PreviewKey.Delete,
+        Key.S => PreviewKey.S,
+        Key.PageUp => PreviewKey.PageUp,
+        Key.PageDown => PreviewKey.PageDown,
+        _ => null,
+    };
+
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
         // Ctrl／Alt／Shift／Win 組合鍵（例如 Ctrl+S）不是預覽快捷鍵。
         if (!PreviewKeys.ShouldHandle(CurrentModifiers())) return;
         // 正在輸入文字時，按鍵歸文字框。
         if (e.OriginalSource is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.PasswordBox) return;
-        if (PreviewKeys.FromKeyName(e.Key.ToString()) is not { } command) return;
+        if (ToPreviewKey(e.Key) is not { } key) return;
+        var command = PreviewKeys.FromKey(key);
         // 清單與捲軸自己用換頁鍵捲動，不搶。
         if (command is PreviewCommand.PreviousEditPoint or PreviewCommand.NextEditPoint
             && e.OriginalSource is System.Windows.Controls.Primitives.Selector or System.Windows.Controls.ListBoxItem

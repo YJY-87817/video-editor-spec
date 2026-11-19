@@ -19,7 +19,18 @@ public sealed class TimelineClip(MediaInfo media, TrackKind track, double source
     public double SourceOut { get; internal set; } = sourceOut;
     public double Start { get; internal set; } = start;
     /// <summary>線性增益，1 = 原音量。</summary>
-    public double Volume { get; set; } = 1.0;
+    public double Volume
+    {
+        get => _volume;
+        set
+        {
+            if (double.IsNaN(value) || value < 0 || value > VolumeCurve.MaxGain)
+                throw new ArgumentOutOfRangeException(nameof(value), value, $"音量必須在 0 到 {VolumeCurve.MaxGain} 之間。");
+            _volume = value;
+        }
+    }
+
+    private double _volume = 1.0;
     /// <summary>倒放：片段從 SourceOut 往 SourceIn 播放，原音也一起倒放。只用於影片軌。</summary>
     public bool Reversed { get; internal set; }
     /// <summary>旋轉與鏡像。只用於影片軌。</summary>
@@ -81,7 +92,17 @@ public sealed class Timeline
     public IReadOnlyList<TimelineClip> MusicClips => _music;
     public IEnumerable<TimelineClip> AllClips => _video.Concat(_music);
 
-    public double Duration => AllClips.Select(c => c.End).DefaultIfEmpty(0).Max();
+    public double Duration
+    {
+        get
+        {
+            // 每次拖曳滑鼠與每個播放 tick 都會讀到：直接走訪兩條軌，不配置迭代器。
+            var end = 0.0;
+            foreach (var clip in _video) end = Math.Max(end, clip.End);
+            foreach (var clip in _music) end = Math.Max(end, clip.End);
+            return end;
+        }
+    }
 
     private List<TimelineClip> ListOf(TrackKind track) => track == TrackKind.Video ? _video : _music;
 

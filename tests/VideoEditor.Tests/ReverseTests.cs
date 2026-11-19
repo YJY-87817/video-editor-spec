@@ -668,7 +668,8 @@ public class ReversePreviewCleanupTests(TestMedia media)
 
     private static async Task WaitUntil(Func<bool> condition)
     {
-        for (var i = 0; i < 100 && !condition(); i++) await Task.Delay(50);
+        // 最多等 20 秒：CI 的機器慢時，刪檔與取消需要比本機更久。
+        for (var i = 0; i < 400 && !condition(); i++) await Task.Delay(50);
         Assert.True(condition());
     }
 

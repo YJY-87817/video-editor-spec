@@ -3,6 +3,12 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:VideoEditor.App"
              Visibility="Collapsed">
+    <UserControl.Resources>
+        <!-- 文字色自己指定，不依賴宿主視窗的隱含 TextBlock 樣式；放到其他視窗時才不會在深色底上變成預設黑字 -->
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#E0E0E0" />
+        </Style>
+    </UserControl.Resources>
     <!-- 進度面板：有工作進行時才出現，疊在預覽下方，不推動其他版面 -->
     <Border Padding="16,12" CornerRadius="6" Background="#E6202830" BorderBrush="{x:Static local:Palette.SourceBlue}" BorderThickness="1"
             AutomationProperties.AutomationId="ProgressPanel">

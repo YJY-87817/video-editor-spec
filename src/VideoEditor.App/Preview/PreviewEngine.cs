@@ -83,8 +83,8 @@ public sealed class PreviewEngine : IDisposable
     private readonly Stopwatch _rewindClock = new();
     private double _rewindBase;
     private bool _rewindFetching;
-    // 來源結尾附近解不出的影格；倒帶與逐格預先解碼都不再重試。
-    private readonly HashSet<(string Path, long Frame)> _missingFrames = [];
+    // 來源結尾附近解不出的影格；倒帶與逐格預先解碼暫時不再重試，過一段時間後才會再試（短暫的失敗不該永久標記）。
+    private readonly MissingFrames<(string Path, long Frame)> _missingFrames = new();
 
     public PreviewEngine(FrameExtractor extractor, ReversePreviewCache proxies, Dispatcher dispatcher)
     {

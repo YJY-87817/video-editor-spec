@@ -263,15 +263,22 @@ public class WaveformCacheTests
     {
         var running = 0;
         var maxRunning = 0;
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var cache = new WaveformCache(async (_, _) =>
         {
             var now = Interlocked.Increment(ref running);
             lock (this) maxRunning = Math.Max(maxRunning, now);
-            await Task.Delay(30);
+            await gate.Task; // 卡住第一個，讓其他請求有機會（錯誤地）同時開始
             Interlocked.Decrement(ref running);
             return new WaveformData([0.1f]);
         });
-        await Task.WhenAll(Enumerable.Range(0, 4).Select(i => cache.Request(Media($"{i}.mp4"))));
+        var all = Task.WhenAll(Enumerable.Range(0, 4).Select(i => cache.Request(Media($"{i}.mp4"))));
+        // 等第一個開始，再多給其他請求一點時間；若限制失效，它們會在這段時間內一起開始。
+        // 等得不夠久只會讓測試漏抓問題，不會讓它誤報失敗。
+        while (Volatile.Read(ref running) < 1) await Task.Delay(5);
+        await Task.Delay(100);
+        gate.SetResult();
+        await all.WaitAsync(TimeSpan.FromSeconds(30));
         Assert.Equal(1, maxRunning);
     }
 

@@ -17,6 +17,24 @@ internal sealed class VlcVideoSink : IDisposable
     private int _stride;
     private bool _renderPending;
     private long _framesDisplayed;
+    private bool _disposed;
+
+    // 傳給 LibVLC 的回呼委派自己留一份參照：原生程式碼只拿到函式指標，委派被回收後再被呼叫會當機。
+    // 不依賴 LibVLCSharp 內部有沒有持有它們。
+    private readonly MediaPlayer.LibVLCVideoFormatCb _onFormat;
+    private readonly MediaPlayer.LibVLCVideoCleanupCb _onCleanup;
+    private readonly MediaPlayer.LibVLCVideoLockCb _onLock;
+    private readonly MediaPlayer.LibVLCVideoUnlockCb _onUnlock;
+    private readonly MediaPlayer.LibVLCVideoDisplayCb _onDisplay;
+
+    public VlcVideoSink()
+    {
+        _onFormat = OnFormat;
+        _onCleanup = OnCleanup;
+        _onLock = OnLock;
+        _onUnlock = OnUnlock;
+        _onDisplay = OnDisplay;
+    }
 
     /// <summary>有新影格可取用時觸發（在 LibVLC 執行緒上）；已有待處理的影格時不重複觸發。</summary>
     public Action? FrameAvailable { get; set; }
@@ -25,8 +43,8 @@ internal sealed class VlcVideoSink : IDisposable
 
     public void Attach(MediaPlayer player)
     {
-        player.SetVideoFormatCallbacks(OnFormat, OnCleanup);
-        player.SetVideoCallbacks(OnLock, OnUnlock, OnDisplay);
+        player.SetVideoFormatCallbacks(_onFormat, _onCleanup);
+        player.SetVideoCallbacks(_onLock, _onUnlock, _onDisplay);
     }
 
     public void SetTarget(Size2 size)
@@ -43,6 +61,7 @@ internal sealed class VlcVideoSink : IDisposable
     /// <summary>
     /// 取出最新影格。每次收到 FrameAvailable 都必須呼叫（即使不顯示），否則不會再收到通知。
     /// 呼叫方須在下一次取用前用完緩衝區。
+    /// <paramref name="consume"/> 在持有內部鎖時執行：要盡快做完，而且不可以回頭呼叫這個物件的其他方法。
     /// </summary>
     public void CopyLatest(Action<byte[], int> consume)
     {
@@ -58,6 +77,8 @@ internal sealed class VlcVideoSink : IDisposable
         Marshal.Copy("RV32"u8.ToArray(), 0, chroma, 4);
         lock (_gate)
         {
+            // 已釋放後 LibVLC 還在協商格式（播放器尚未完全停止）：回報失敗，不要再配置一塊沒人會釋放的記憶體。
+            if (_disposed) return 0;
             // 不用 LibVLC 建議的尺寸：它含解碼對齊的補白（例如 1088 高），會讓畫面比例跑掉。
             width = (uint)_target.Width;
             height = (uint)_target.Height;
@@ -76,7 +97,7 @@ internal sealed class VlcVideoSink : IDisposable
 
     private IntPtr OnLock(IntPtr opaque, IntPtr planes)
     {
-        Marshal.WriteIntPtr(planes, _buffer);
+        lock (_gate) Marshal.WriteIntPtr(planes, _buffer);
         return IntPtr.Zero;
     }
 
@@ -87,6 +108,7 @@ internal sealed class VlcVideoSink : IDisposable
         bool notify;
         lock (_gate)
         {
+            if (_buffer == IntPtr.Zero) return; // 已釋放：緩衝區不在了，不能再複製
             Marshal.Copy(_buffer, _latest, 0, _latest.Length);
             notify = !_renderPending;
             _renderPending = true;
@@ -99,6 +121,7 @@ internal sealed class VlcVideoSink : IDisposable
     {
         lock (_gate)
         {
+            _disposed = true;
             if (_buffer != IntPtr.Zero) Marshal.FreeHGlobal(_buffer);
             _buffer = IntPtr.Zero;
         }

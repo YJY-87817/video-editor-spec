@@ -5,11 +5,14 @@ namespace VideoEditor.Core.Ffmpeg;
 /// <summary>
 /// 在背景產生素材的波形，以檔案路徑為鍵，同一素材只算一次（同一支影片切多段也共用）。
 /// 一次只跑一個 FFmpeg，避免拖慢預覽播放。結果只放在記憶體，關閉程式時丟掉；Dispose 會停掉進行中的工作。
+/// 失敗的素材不會自動重試（匯入時只排入一次）：音訊讀不出來通常是檔案本身的問題，馬上再讀多半還是失敗；錯誤已經由 <see cref="Failed"/> 回報給使用者，重新匯入同一支檔案時才會再試。
 /// </summary>
 public sealed class WaveformCache(Func<MediaInfo, CancellationToken, Task<WaveformData>> extract) : IDisposable
 {
     private readonly Dictionary<string, Task<WaveformData?>> _tasks = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, WaveformData> _ready = new(StringComparer.OrdinalIgnoreCase);
+    // _gate 與 _disposed 刻意不在 Dispose 釋放：兩者都沒有用到等候控制代碼或計時器，沒有需要釋放的原生資源；
+    // 而進行中的工作在取消後仍會執行 finally 裡的 _gate.Release()，提早釋放反而會丟出 ObjectDisposedException。
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly CancellationTokenSource _disposed = new();
 
