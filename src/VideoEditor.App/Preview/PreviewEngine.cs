@@ -19,7 +19,14 @@ namespace VideoEditor.App.Preview;
 /// 預覽引擎。播放時由 LibVLC 解碼（影片與配樂各一個播放器），
 /// 暫停與拖曳時由 FFmpeg 解出精確影格，因為 LibVLC 無法倒退逐格。
 /// 倒放片段改播 FFmpeg 預先產生的倒放預覽檔；倒帶（往回播放）則由 FFmpeg 成批解出影格顯示，沒有聲音。
-/// 除了 LibVLC 回呼之外，所有成員都只在 UI 執行緒使用。
+/// 執行緒：除了下面兩處，所有成員都只在 UI 執行緒使用。
+/// (1) LibVLC 的影格回呼（<see cref="VlcVideoSink"/>）在 LibVLC 自己的執行緒上。
+/// (2) 對 LibVLC 播放器的操作（播放、停止、跳轉、倍速）排進 <c>Enqueue</c> 的背景指令佇列，在執行緒池上依序執行
+///     （同一時間只有一個指令在跑）。這些指令會碰 <c>_videoPlayer</c>、<c>_musicPlayer</c>、<c>_vlc</c>，
+///     <c>PlayMedia</c> 還會讀 <c>PlaybackRate</c>；UI 執行緒同時也會讀 <c>_videoPlayer.Time</c>、設定播放器音量。
+///     LibVLC 的播放器呼叫本身可以跨執行緒，<c>PlaybackRate</c> 是 int（讀寫不會撕裂），讀到稍舊的值無妨，
+///     因為每次改倍速都會再排一個 SetRate 指令。需要在兩邊共用的狀態只有 <see cref="VideoEditor.Core.Playback.PendingSeek"/>，
+///     它是專為這個用途寫成執行緒安全的。新增會被背景指令讀寫的欄位時要照這個標準檢查。
 /// </summary>
 public sealed class PreviewEngine : IDisposable
 {

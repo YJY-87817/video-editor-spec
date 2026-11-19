@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using System.Text.Json;
 using VideoEditor.Core.Logging;
 using VideoEditor.Core.Models;
@@ -27,6 +26,9 @@ public interface IImportView
 /// <summary>逐一讀取素材資訊與縮圖，並把進度與結果交給 <see cref="IImportView"/>。</summary>
 public sealed class ImportController(MediaProbe probe, FrameExtractor extractor, IImportView view, int thumbnailWidth = 144)
 {
+    // 執行緒：這個類別不做任何同步。ImportAsync、Cancel 都必須從 UI 執行緒呼叫，
+    // await 之後的程式碼會回到呼叫時的 SynchronizationContext（所以不用 ConfigureAwait(false)，之後還要操作畫面），
+    // 因此下面的計數與集合永遠只在 UI 執行緒讀寫。沒有 SynchronizationContext 的環境（測試）則必須自己確保不並行呼叫。
     private int _total;
     private int _done;
     // 已排入但還沒處理完的檔案：還不在素材清單裡，但也不能再排一次。

@@ -1,9 +1,7 @@
 ﻿using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Globalization;
 using System.IO;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -15,7 +13,6 @@ using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Logging;
 using VideoEditor.Core.Models;
-using VideoEditor.Core.Playback;
 using VideoEditor.Core.Editing;
 
 namespace VideoEditor.App;
