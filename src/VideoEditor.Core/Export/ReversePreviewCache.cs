@@ -97,9 +97,9 @@ public sealed class ReversePreviewCache(FfmpegTools tools, string? directory = n
         var finished = false;
         try
         {
+            // 先標記這個資料夾正在使用（另一個同時執行的程式，或本程式啟動時的背景清理，都不會刪掉它），再建工作資料夾。
+            EnsureLock();
             Directory.CreateDirectory(work);
-            // 標記這個資料夾正在使用，另一個同時執行的程式清理時才不會刪掉它。
-            _lock ??= new FileStream(Path.Combine(_directory, LockFileName), FileMode.Create, FileAccess.ReadWrite, FileShare.None);
             var duration = sourceOut - sourceIn;
             // 先縮小再倒放，記憶體用量與中間檔大小都依預覽尺寸計算。
             var job = ReverseGraph.Plan("r", media, sourceIn, sourceOut, media.HasAudio,
@@ -147,6 +147,25 @@ public sealed class ReversePreviewCache(FfmpegTools tools, string? directory = n
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
         }
         return removed;
+    }
+
+    /// <summary>
+    /// 建立資料夾並獨佔開啟使用中標記。啟動時的背景清理可能正好在資料夾剛建好、標記還沒開啟的空檔把它刪掉，
+    /// 這時開啟標記會失敗（找不到資料夾），重來一次即可：拿到標記之後清理就刪不掉了。
+    /// </summary>
+    private void EnsureLock()
+    {
+        if (_lock != null) return;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                Directory.CreateDirectory(_directory);
+                _lock = new FileStream(Path.Combine(_directory, LockFileName), FileMode.Create, FileAccess.ReadWrite, FileShare.None);
+                return;
+            }
+            catch (DirectoryNotFoundException) when (attempt < 3) { }
+        }
     }
 
     private static long Ticks(double seconds) => (long)Math.Round(seconds * 1_000_000);
