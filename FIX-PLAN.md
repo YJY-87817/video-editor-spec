@@ -87,7 +87,7 @@
 
 ### 3. 在時間軸拖曳邊緣修剪後，剪輯點沒有對齊影格
 
-- **位置**：`src/VideoEditor.Core/Timeline/Timeline.cs` 的 `TrimStart`／`TrimEnd`
+- **位置**：`src/VideoEditor.Core/Editing/Timeline.cs` 的 `TrimStart`／`TrimEnd`
 - **現象**：長度 1.015 秒（30 fps 下為 30.45 格）的片段匯出成 31 格（1.033 秒）。接合處多出 18 ms 靜音，後面的片段全部延後 18 ms。
 - **原因**：用 I／O 標記的入出點有對齊影格（`InOutPoints.Snap`），但拖曳邊緣修剪後的入出點是任意時間。畫面長度只能是整數格，聲音則剪成片段長度，兩者不一致時 `concat` 以靜音補齊。
 - **影響**：每個這樣的接點最多差一格，會累積。片段多時，配樂（A2）會與畫面錯開，原音在接點有短暫靜音。

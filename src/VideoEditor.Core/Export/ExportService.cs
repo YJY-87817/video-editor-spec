@@ -83,7 +83,7 @@ public sealed class ExportService(FfmpegTools tools, int graphFileThreshold = Ex
     }
 
     /// <summary>
-    /// 兩個路徑是否指向同一個檔案：比對完整路徑，並先解開符號連結（輸出檔是連到來源的捷徑時也要擋下）。
+    /// 兩個路徑是否指向同一個檔案：比對完整路徑，並先解開符號連結——檔案本身是連結，或它在連結（junction）資料夾底下，都算。
     /// 硬連結與 8.3 短檔名無法用路徑字串判斷，不在這裡處理。
     /// </summary>
     private static bool IsSameFile(string source, string output)
@@ -93,12 +93,19 @@ public sealed class ExportService(FfmpegTools tools, int graphFileThreshold = Ex
             var full = Path.GetFullPath(path);
             try
             {
-                return new FileInfo(full).ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? full;
+                var file = new FileInfo(full);
+                if (file.ResolveLinkTarget(returnFinalTarget: true) is { } target) return target.FullName;
+                for (var directory = file.Directory; directory != null; directory = directory.Parent)
+                {
+                    if (directory.ResolveLinkTarget(returnFinalTarget: true) is { } linked)
+                        return Path.Combine(linked.FullName, Path.GetRelativePath(directory.FullName, full));
+                }
             }
             catch (Exception e) when (ExpectedErrors.IsFile(e))
             {
-                return full;
+                // 解不開就用原本的完整路徑比對。
             }
+            return full;
         }
 
         return string.Equals(Resolve(source), Resolve(output), StringComparison.OrdinalIgnoreCase);

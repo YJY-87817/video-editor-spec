@@ -181,7 +181,7 @@ public sealed class ExportController(FfmpegTools tools, IExportView view, int do
             var commands = plan.ReverseJobs.SelectMany(job => job.Steps).Select(step => step.Arguments).Append(plan.Arguments);
             return FfmpegEncoders.MissingMessage(FfmpegEncoders.Required(commands), await _listEncoders());
         }
-        catch (Exception e) when (ExpectedErrors.IsFileOrProcess(e))
+        catch (Exception e) when (ExpectedErrors.IsProcess(e) || e is IOException)
         {
             return null;
         }

@@ -36,18 +36,13 @@ public class FfmpegLocatorTests : IDisposable
     [Fact]
     public void IgnoresRelativePathEntries()
     {
-        // 相對的 PATH 項目要看目前的工作目錄才知道指到哪裡：就算工作目錄剛好放了 ffmpeg 也不採用。
-        FakeInstall("cwd");
-        var previous = Directory.GetCurrentDirectory();
-        Directory.SetCurrentDirectory(Path.Combine(_root, "cwd"));
-        try
-        {
-            Assert.Throws<FfmpegNotFoundException>(() => FfmpegLocator.Locate(Path.Combine(_root, "empty"), "."));
-        }
-        finally
-        {
-            Directory.SetCurrentDirectory(previous);
-        }
+        // 相對的 PATH 項目要看目前的工作目錄才知道指到哪裡：就算它剛好指得到 ffmpeg 也不採用。
+        // 不改行程的工作目錄（測試會平行執行）：用相對於目前目錄的路徑指向真正的安裝位置。
+        var installed = FakeInstall("installed");
+        var relative = Path.GetRelativePath(Directory.GetCurrentDirectory(), installed);
+        if (Path.IsPathRooted(relative)) return; // 不同磁碟，算不出相對路徑
+        Assert.Throws<FfmpegNotFoundException>(() => FfmpegLocator.Locate(Path.Combine(_root, "empty"), relative));
+        Assert.Equal(Path.Combine(installed, "ffmpeg.exe"), FfmpegLocator.Locate(Path.Combine(_root, "empty"), installed).Ffmpeg);
     }
 
     [Fact]
@@ -100,6 +95,19 @@ public class PreflightTests : IDisposable
     {
         var source = Path.Combine(_root, "in.mp4");
         Assert.Contains("不能與來源素材相同", ExportService.Preflight(TimelineOf(source), Path.Combine(_root, ".", "in.mp4")));
+    }
+
+    [Fact]
+    public void FileInsideLinkedDirectoryIsRejected()
+    {
+        var folder = Path.Combine(_root, "videos");
+        Directory.CreateDirectory(folder);
+        var source = Path.Combine(folder, "in.mp4");
+        var timeline = TimelineOf(source);
+        var link = Path.Combine(_root, "link");
+        try { Directory.CreateSymbolicLink(link, folder); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return; } // 沒有建立連結的權限時略過。
+        Assert.Contains("不能與來源素材相同", ExportService.Preflight(timeline, Path.Combine(link, "in.mp4")));
     }
 
     [Fact]

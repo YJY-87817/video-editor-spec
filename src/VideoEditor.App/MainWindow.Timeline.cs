@@ -36,9 +36,11 @@ public partial class MainWindow
     private void RefreshClipList()
     {
         var rows = _timeline.VideoClips.Select((clip, index) => new ClipRow(clip, index + 1)).ToList();
-        using var _ = _clipListGuard.Enter();
-        ClipList.ItemsSource = rows;
-        ClipList.SelectedItem = rows.FirstOrDefault(r => r.Clip == TimelineView.SelectedClip);
+        using (_clipListGuard.Enter())
+        {
+            ClipList.ItemsSource = rows;
+            ClipList.SelectedItem = rows.FirstOrDefault(r => r.Clip == TimelineView.SelectedClip);
+        }
     }
 
     private void OnClipListSelected(object sender, SelectionChangedEventArgs e)

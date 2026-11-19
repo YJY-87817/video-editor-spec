@@ -3,7 +3,7 @@
 - **專案**：個人影片編輯器（`video-editor-spec` 倉庫，3 個專案）
 - **報告日期**：2026-11-18
 - **性質**：原始分析是唯讀的靜態分析：沒有修改、新增、刪除或移動任何專案檔案，也沒有建置或執行測試（分析環境是 Linux，無法建置 WPF）。之後依本報告做的修改見「處理進度」。
-- **處理進度**：2026-11-19 起，已處理的項目已從本報告移除（階段 1 到階段 4 的主要項目，見 PR #39、#43、#45 與之後的修正），已移除的 ID：A-2、A-5、Q-2、Q-3、Q-4、Q-5、Q-6、Q-7、Q-8、Q-9、W-1、W-3、W-6、P-1、P-2、P-5、S-1、S-3、S-4、S-5、S-6、S-7、T-1、T-4。只處理一部分的項目（Q-1、T-2、S-2、S-8、P-4、P-6）只保留尚待處理的部分。完整歷史見 git。
+- **處理進度**：2026-11-19 起，已處理的項目已從本報告移除（階段 1 到階段 4 的主要項目，見 PR #39、#43、#45 與之後的修正），已移除的 ID：A-2、A-5、Q-2、Q-3、Q-4、Q-5、Q-6、Q-7、Q-9、W-1、W-6、P-1、P-2、P-5、S-3、S-4、S-6、S-7、T-1、T-4。只處理一部分的項目（Q-1、T-2、S-1、S-2、S-5、S-8、P-4、P-6、Q-8、W-3）只保留尚待處理的部分。完整歷史見 git。
 - **嚴重程度**：Critical（嚴重錯誤或安全風險）／High（可能造成錯誤、資料遺失或重大維護問題）／Medium（架構或品質問題）／Low（改善建議）
 - **分類**：已確認問題／潛在風險／待確認事項
 
@@ -82,7 +82,7 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
                │ 參照
 ┌─ VideoEditor.Core（net10.0，無 UI、無第三方套件）─────────────┐
 │  Models/    MediaInfo、OutputSettings、ClipFraming、FrameMath、…│
-│  Timeline/  Timeline、TimelineEditor、TimelineSnap、InOutPoints│
+│  Editing/   Timeline、TimelineEditor、TimelineSnap、InOutPoints│
 │  Ffmpeg/    ProcessRunner、MediaProbe、FrameExtractor、各種 Cache│
 │  Export/    ExportController、ExportPlanner、ExportService、   │
 │             ReverseGraph、ReversePreviewCache                 │
@@ -217,7 +217,7 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 | 6 | P-3 | 影格 LOH 配置、快取上限 | Low~Medium | 潛在，待實測 | M |
 | 7 | P-4 | 其餘 Core 類別沒有 `ConfigureAwait(false)` | Low | 已確認（部分已處理） | S |
 | 8 | P-6 | 每個片段的輸入參數仍受命令列長度限制（約 260 到 450 個） | Low~Medium | 已確認（部分已處理） | L |
-| 9 | 其餘 | A-3、A-6、Q-10、Q-11、Q-12、W-4、W-5、W-7~W-9、P-7、P-9、T-3、T-5~T-7 | Low | — | S |
+| 9 | 其餘 | A-3、A-6、Q-8、Q-10、Q-11、Q-12、W-3~W-5、W-7~W-9、P-7、P-9、S-1、S-5、T-3、T-5~T-7 | Low | — | S |
 
 **已關閉或下調**：A-4 事件洩漏（不成立）；A-3 下調為 Low；`PreviewEngine.cs:326`／`:384` 的 `.Result`（不會阻塞，不成立）。
 
@@ -258,6 +258,11 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 - **仍待處理**：LibVLC 指令佇列、逐格擷取的實際執行（`ExtractPendingFramesAsync` 本身仍在 `PreviewEngine`）、快取與播放狀態仍在同一個類別，直接依賴 `LibVLC`、`DispatcherTimer`、`WriteableBitmap`，無法單元測試。
 - **建議**：涉及執行緒與 LibVLC 的部分建議等 Windows 實測後再動。
 
+#### Q-8　預期例外清單（部分已處理）
+- **Low／已確認（部分已處理）**
+- **已處理**：行程與檔案系統的清單集中到 `ExpectedErrors`，Core 與 `PreviewEngine` 共用。
+- **仍待處理**：`FileLog`（`Logging` 在最底層，不能依賴 `Ffmpeg`）、`MainWindow.Import`（含 `NotSupportedException` 等圖片解碼例外）與 `ExportService.FreeSpace`（含 `ArgumentException`）的清單不同，維持原樣。
+
 #### Q-10　執行緒假設與實際不完全一致
 - **Low／待確認**：`PreviewEngine` 類別註解說除 LibVLC 回呼外只在 UI 執行緒使用，但背景佇列會存取 `_videoPlayer`、`_musicPlayer`、`_sink` 與 `PlaybackRate`（`:469`）；`ImportController` 的 `_total`／`_done`／`_queued` 非執行緒安全，依賴一律由 UI 執行緒呼叫，但沒有文件說明。
 
@@ -275,6 +280,11 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 - **問題**：時間軸預覽播放時 `PositionChanged` 約每 16 ms 觸發，`OnRender` 對每個片段重畫波形與標籤；`OnEnginePosition` 另外每個 tick 設定 `ScrubSlider`、格式化 `TimeText`、更新標記與畫面位置框。
 - **影響**：片段多、時間軸放大時播放可能掉格；需要實測確認。
 - **建議**（待量測後決定）：把播放頭畫在獨立疊加元素；快取波形幾何與標籤；播放頭沒移動一個像素時不重繪。
+
+#### W-3　其餘的硬編碼顏色與文字
+- **Low／已確認（部分已處理）**
+- **已處理**：XAML 與 C# 共用的顏色（黃色強調、來源藍）集中到 `Palette`。
+- **仍待處理**：`TimelineView` 與 `MainWindow.Preview.cs` 內單一控制項用的顏色仍寫在原處；所有 UI 文字硬編碼為繁體中文，沒有 `.resx`。
 
 #### W-4　`ProgressOverlay` 隱性依賴宿主視窗的隱含樣式
 - **Low／已確認**：`ProgressOverlay.xaml:121、133、146` 的文字沒有 `Foreground`，顏色來自 `MainWindow.xaml:21-23` 的隱含 `TextBlock` 樣式；換到其他視窗會在深色背景上變成預設黑字。
@@ -330,11 +340,21 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 
 ### 8.5 安全性（S）
 
+#### S-1　FFmpeg 可執行檔的搜尋順序（部分已處理）
+- **Low／已確認（部分已處理）**
+- **已處理**：PATH 裡不是完整路徑的項目（`.`、`C:tools`）已略過，啟動時把實際使用的路徑寫進紀錄。
+- **仍待處理**：沒有簽章或雜湊驗證、沒有版本檢查，UI 也沒有顯示實際使用的 FFmpeg 路徑與版本。攻擊者必須已能寫入程式目錄或 PATH 目錄，增加的風險有限。
+
 #### S-2　不受信任的媒體檔直接交給 FFmpeg 與 LibVLC 解析
 - **Low~Medium／部分已處理**
 - **已處理**：所有 FFmpeg／ffprobe 的輸入都加了 `-protocol_whitelist file`，偽裝成 .mp4 的播放清單不能再把 FFmpeg 導向網路。
 - **仍待處理**：(1) 白名單只擋網路協定，播放清單類檔案仍可能被導向讀取其他本機檔案（是否可行取決於 FFmpeg 版本與組建）；(2) LibVLC 是原生程式碼，預設載入網路存取模組，沒有處理；(3) 使用者自備的 FFmpeg 沒有版本管理。
 - **建議**：查證 LibVLC 3.0.x 能否以啟動選項停用網路模組；文件說明風險並建議使用最新版 FFmpeg。
+
+#### S-5　`Preflight` 剩下的小缺口
+- **Low／已確認（部分已處理）**
+- **已處理**：路徑格式不合法會回報成訊息；寫入探測檔刪不掉不再讓匯出失敗；來源比對會解開符號連結與連結資料夾。
+- **仍待處理**：硬連結與 8.3 短檔名無法用路徑字串比對；`CreateDirectory` 在 `Preflight` 內建立（使用者已在儲存對話方塊選好位置才會走到，視為順著他的選擇）。
 
 #### S-8　相依套件與供應鏈
 - **Low~Medium／部分已處理**
