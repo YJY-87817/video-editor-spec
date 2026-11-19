@@ -22,7 +22,7 @@
 
 ### 1. 靜音偵測（Core）
 
-新增 `VideoEditor.Core/Timeline/SilenceDetector.cs`：
+新增 `VideoEditor.Core/Editing/SilenceDetector.cs`：
 
 - 輸入 `WaveformData`，輸出來源時間上的靜音區間清單（依時間排序）。
 - **判斷規則**：連續一段峰值都低於門檻、而且長度達到最短長度，就算靜音。
@@ -93,8 +93,8 @@
 | # | 檔案 | 內容 |
 |---|---|---|
 | 1 | `Core/Models/WaveformData.cs` | 加上逐格讀取峰值的索引子 |
-| 2 | `Core/Timeline/SilenceDetector.cs` | `TimeRange`、`Detect`、以波形為鍵快取的 `Find` |
-| 3 | `Core/Timeline/TimelineSnap.cs` | `TrimEdge`、`SnapKind`、`ToTimeline`、`SilenceTargets`、`Snap`、`IsAt` |
+| 2 | `Core/Editing/SilenceDetector.cs` | `TimeRange`、`Detect`、以波形為鍵快取的 `Find` |
+| 3 | `Core/Editing/TimelineSnap.cs` | `TrimEdge`、`SnapKind`、`ToTimeline`、`SilenceTargets`、`Snap`、`IsAt` |
 | 4 | `App/Controls/TimelineView.cs` | 開始拖曳時算吸附點、`Snap` 取代 `SnapToPlayhead`、靜音塗暗、黃線、`SnapToSilence` |
 | 5 | `App/MainWindow.xaml`、`MainWindow.Timeline.cs` | 「吸附靜音」勾選框 |
 | 6 | 測試、README、規格 4.1 | |

@@ -2,8 +2,7 @@ using System.Text;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
 using VideoEditor.Core.Playback;
-using VideoEditor.Core.Timeline;
-using TimelineModel = VideoEditor.Core.Timeline.Timeline;
+using VideoEditor.Core.Editing;
 
 namespace VideoEditor.Tests;
 
@@ -20,7 +19,7 @@ public class SplitTests
     [Fact]
     public void DisplayedFrameStartsTheRightPart()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(Media(), 0.5, 4.5);
         var right = t.Split(clip, 1.51);
         // 1.51 秒顯示來源 2.01 秒，最接近第 60 格（2.0 秒）。
@@ -40,7 +39,7 @@ public class SplitTests
     [InlineData(true, 0.37)]
     public void PlaybackIsUnchangedBySplitting(bool reversed, double start)
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(Media(), 1, 4);
         t.Move(clip, start);
         if (reversed) t.SetReversed(clip, true);
@@ -60,7 +59,7 @@ public class SplitTests
     [Fact]
     public void ReversedSplitKeepsTheFrameAtThePlayhead()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(Media(), 1, 4);
         t.SetReversed(clip, true);
         var shown = FrameMath.FrameIndex(clip.ToSourceTime(1.0), 30);
@@ -75,7 +74,7 @@ public class SplitTests
     [Fact]
     public void SettingsAreCopied()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(Media(), 0, 4);
         clip.Volume = 1.5;
         t.SetReversed(clip, true);
@@ -93,7 +92,7 @@ public class SplitTests
     [Fact]
     public void MusicIsSplitAtTheExactTime()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(Music(), 0.5, 5);
         var right = t.Split(clip, 1.2345);
         Assert.Equal(1.7345, clip.SourceOut, 9);
@@ -106,7 +105,7 @@ public class SplitTests
     [InlineData(3.95)]
     public void TooShortPartIsRejected(double time)
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(Media(), 0, 4);
         Assert.Throws<ArgumentException>(() => t.Split(clip, time));
         Assert.Equal(4, clip.Duration, 9);
@@ -116,7 +115,7 @@ public class SplitTests
     [Fact]
     public void EditorExplainsWhyItCannotSplit()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var editor = new TimelineEditor(t);
         var clip = t.Append(Media(), 0, 4);
         Assert.Contains("時間軸預覽", editor.Split(clip, 2, timelinePreview: false).Error);
@@ -141,7 +140,7 @@ public class EditPointsTests
     [Fact]
     public void TimelinePointsAreVideoClipEdges()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(Media(), 0, 2);
         var second = t.Append(Media(), 0, 3);
         t.Move(second, 2.5);
@@ -221,7 +220,7 @@ public class ClipSnapTests
     [Fact]
     public void EdgeTargetsCoverBothTracksExceptTheClipItself()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var first = t.Append(Media(), 0, 2);
         var second = t.Append(Media(), 0, 3);
         t.Move(second, 2.5);
@@ -235,7 +234,7 @@ public class ClipSnapTests
     public void SnappedMoveBlockedByOverlapIsNotAtTarget()
     {
         // 配樂結尾在 1.0 秒，移動的影片片段開頭吸過去，但同軌 0–1.5 已有片段，只能停到 1.5。
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(Media(), 0, 1.5);
         var moving = t.Append(Media(), 0, 1);
         t.Move(moving, 4);
@@ -260,6 +259,7 @@ public class ClipSnapTests
 }
 
 [Collection("media")]
+[Trait("Category", "Integration")]
 public class SplitExportTests(TestMedia media)
 {
     private async Task<string[]> FrameHashes(string path)
@@ -279,12 +279,12 @@ public class SplitExportTests(TestMedia media)
         var info = await media.Probe(media.Landscape);
         var settings = new OutputSettings(AspectRatio.Original, FitMode.Fill, Crf: 0);
 
-        var whole = new TimelineModel();
+        var whole = new Timeline();
         var clip = whole.Append(info, 0.5, 3.5);
         if (reversed) whole.SetReversed(clip, true);
         var wholeResult = await media.Export(whole, settings, $"split-whole-{reversed}.mp4");
 
-        var split = new TimelineModel();
+        var split = new Timeline();
         var part = split.Append(info, 0.5, 3.5);
         if (reversed) split.SetReversed(part, true);
         split.Split(part, 1.234);
@@ -326,7 +326,7 @@ public class TimelineDragTests
     [Fact]
     public void SnappedPositionIsUsedWhenItFits()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(Media(), 0, 2);
 
         var snapped = TimelineDrag.MoveWithSnap(t, clip, raw: 5.3, snapped: 5.0);
@@ -338,7 +338,7 @@ public class TimelineDragTests
     [Fact]
     public void FallsBackToTheMousePositionWhenTheSnapTargetIsTaken()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var first = t.Append(Media(), 0, 2);   // 0～2
         var second = t.Append(Media(), 0, 2);  // 2～4
         // 貼齊的位置（1.0）與第一個片段重疊，會被推到別處；滑鼠原位（6.0）放得下。
@@ -352,7 +352,7 @@ public class TimelineDragTests
     [Fact]
     public void NegativeSnapTargetFallsBackToTheMousePosition()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(Media(), 0, 2);
 
         var snapped = TimelineDrag.MoveWithSnap(t, clip, raw: 3.0, snapped: -1.0);

@@ -105,7 +105,7 @@ ffmpeg -v error -i <檔案> -map 0:a:0 -vn -sn -dn -ac 2(只在超過 2 聲道�
 | 2 | `Core/Ffmpeg/ProcessRunner.cs` | `RunWithStreamAsync`：把標準輸出交給呼叫端邊讀邊處理 |
 | 3 | `Core/Ffmpeg/WaveformExtractor.cs` | FFmpeg 輸出 s16le，逐 2 ms 取各聲道絕對值最大值 |
 | 4 | `Core/Ffmpeg/WaveformCache.cs` | 以路徑為鍵、一次一個、`Ready` 事件、失敗事件、`Dispose` 取消 |
-| 5 | `Core/Timeline/WaveformColumns.cs` | 片段可見範圍 → 每像素欄的來源區間與高度（含倒放），供繪製與測試 |
+| 5 | `Core/Editing/WaveformColumns.cs` | 片段可見範圍 → 每像素欄的來源區間與高度（含倒放），供繪製與測試 |
 | 6 | `App`：`MainWindow.Import.cs`、`MainWindow.xaml(.cs)` | 匯入後排入、Ready 時重畫、關閉時 Dispose、時間軸區域加高 |
 | 7 | `App/Controls/TimelineView.cs` | A1／A2 畫波形、破音紅色、「波形產生中」、文字底色、音訊軌 48 |
 | 8 | 測試、README、規格 4.1 | 單元與整合測試；文件補上波形 |

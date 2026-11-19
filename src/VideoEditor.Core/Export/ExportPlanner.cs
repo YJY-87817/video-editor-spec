@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
+using VideoEditor.Core.Editing;
 using VideoEditor.Core.Models;
-using TimelineModel = VideoEditor.Core.Timeline.Timeline;
 
 namespace VideoEditor.Core.Export;
 
@@ -33,7 +33,7 @@ public static class ExportPlanner
     private const int MaxCommandLength = 30000;
 
     /// <param name="reverseBufferBytes">倒放時每一小段的記憶體上限，測試時可調小以驗證分段。</param>
-    public static ExportPlan Build(TimelineModel timeline, OutputSettings settings, string outputPath,
+    public static ExportPlan Build(Timeline timeline, OutputSettings settings, string outputPath,
         long reverseBufferBytes = ReverseGraph.DefaultBufferBytes)
     {
         var clips = timeline.VideoClips;
@@ -178,7 +178,7 @@ public static class ExportPlanner
     }
 
     /// <summary>規格：不低於來源；AAC 實務上限 512k，來源更高（如 PCM）時取上限。</summary>
-    public static long AudioBitRate(TimelineModel timeline)
+    public static long AudioBitRate(Timeline timeline)
     {
         var highest = timeline.AllClips.Where(c => c.Media.HasAudio).Select(c => c.Media.AudioBitRate).DefaultIfEmpty(0).Max();
         return Math.Clamp(highest, MinAudioBitRate, MaxAudioBitRate);
@@ -221,7 +221,7 @@ public static class ExportPlanner
         return tags.Count == 0 ? format : $"{format},setparams={string.Join(':', tags)}";
     }
 
-    private static List<string> CollectWarnings(TimelineModel timeline, MediaInfo reference, Size2 referenceSize, FitMode mode)
+    private static List<string> CollectWarnings(Timeline timeline, MediaInfo reference, Size2 referenceSize, FitMode mode)
     {
         var warnings = new List<string>();
         // 畫面位置放大時，等於把來源的一小塊放大成整個畫面，畫質一定會下降；加黑邊不使用畫面位置。

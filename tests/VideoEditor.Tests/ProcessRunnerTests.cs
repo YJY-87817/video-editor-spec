@@ -4,6 +4,7 @@ namespace VideoEditor.Tests;
 
 /// <summary>把 FFmpeg 輸出切成固定大小區塊（rawvideo 影格）的讀取方式。</summary>
 [Collection("media")]
+[Trait("Category", "Integration")]
 public class ProcessRunnerTests(TestMedia media)
 {
     // 10 格 4×2 灰階影格，每格 8 個位元組。

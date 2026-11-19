@@ -14,8 +14,7 @@ using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Logging;
 using VideoEditor.Core.Models;
-using VideoEditor.Core.Timeline;
-using TimelineModel = VideoEditor.Core.Timeline.Timeline;
+using VideoEditor.Core.Editing;
 
 namespace VideoEditor.App;
 
@@ -28,7 +27,7 @@ public partial class MainWindow
         if (!IsInitialized) return;
         UpdateOutputInfo();
         UpdatePreviewLayout();
-        UpdateFramingControls(Timeline.SelectedClip);
+        UpdateFramingControls(TimelineView.SelectedClip);
     }
 
     private void UpdateOutputInfo()

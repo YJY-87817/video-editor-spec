@@ -14,8 +14,7 @@ using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
 using VideoEditor.Core.Playback;
-using VideoEditor.Core.Timeline;
-using TimelineModel = VideoEditor.Core.Timeline.Timeline;
+using VideoEditor.Core.Editing;
 
 namespace VideoEditor.App;
 
@@ -26,19 +25,20 @@ public partial class MainWindow
     private void OnEnginePosition()
     {
         var position = _engine!.Position;
-        _updatingSlider = true;
-        ScrubSlider.Maximum = Math.Max(0.001, _engine.Duration);
-        ScrubSlider.Value = position;
-        _updatingSlider = false;
+        using (_sliderGuard.Enter())
+        {
+            ScrubSlider.Maximum = Math.Max(0.001, _engine.Duration);
+            ScrubSlider.Value = position;
+        }
         TimeText.Text = PlaybackText.Position(position, _engine.Duration);
-        if (IsTimelinePreview) Timeline.Playhead = position;
+        if (IsTimelinePreview) TimelineView.Playhead = position;
         UpdateMarkRange();
         UpdateFramingForPosition();
     }
 
     private void OnScrubChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        if (!_updatingSlider) _engine?.Seek(e.NewValue);
+        if (!_sliderGuard.Active) _engine?.Seek(e.NewValue);
     }
 
     private void OnTimelinePlayheadDragged(double time)

@@ -1,8 +1,7 @@
 using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
-using VideoEditor.Core.Timeline;
-using TimelineModel = VideoEditor.Core.Timeline.Timeline;
+using VideoEditor.Core.Editing;
 
 namespace VideoEditor.Tests;
 
@@ -17,7 +16,7 @@ public class ReverseTimelineTests
     [Fact]
     public void ReversedClipStartsAtLastSourceFrame()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(Media(), 1, 2.5);
         t.SetReversed(clip, true);
 
@@ -32,7 +31,7 @@ public class ReverseTimelineTests
     [InlineData(true)]
     public void TimelineTimeIsInverseOfSourceTime(bool reversed)
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(Media(), 0, 1);
         var clip = t.Append(Media(), 3, 6);
         t.SetReversed(clip, reversed);
@@ -43,7 +42,7 @@ public class ReverseTimelineTests
     [Fact]
     public void ReversingKeepsPositionAndLength()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(Media(), 2, 5);
         t.SetReversed(clip, true);
         Assert.Equal((0.0, 3.0, 2.0, 5.0), (clip.Start, clip.Duration, clip.SourceIn, clip.SourceOut));
@@ -54,7 +53,7 @@ public class ReverseTimelineTests
     [Fact]
     public void TrimmingReversedClipEditsTheMatchingSourceEnd()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(Media(), 2, 5);
         t.SetReversed(clip, true);
 
@@ -74,7 +73,7 @@ public class ReverseTimelineTests
     [Fact]
     public void MusicClipsCannotBeReversed()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var music = t.Append(new MediaInfo { Path = "m.m4a", Duration = 5, HasAudio = true }, 0, 5);
         Assert.Throws<ArgumentException>(() => t.SetReversed(music, true));
     }
@@ -138,7 +137,7 @@ public class ReverseGraphTests
     [Fact]
     public void EachChunkIsItsOwnFfmpegRunFromLastToFirst()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(PlanMedia, 1, 2.5);
         t.SetReversed(clip, true);
         var plan = ExportPlanner.Build(t, new OutputSettings(AspectRatio.Original, FitMode.Fill), "o.mp4",
@@ -259,7 +258,7 @@ public class ReverseGraphTests
     [Fact]
     public void DiskEstimateIncludesReverseIntermediateFiles()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(PlanMedia with { BitRate = 8_000_000 }, 0, 2);
         var forward = ExportService.EstimateBytes(t);
         t.SetReversed(clip, true);
@@ -270,6 +269,7 @@ public class ReverseGraphTests
 
 /// <summary>實際倒放匯出，逐格比對來源。</summary>
 [Collection("media")]
+[Trait("Category", "Integration")]
 public class ReverseIntegrationTests(TestMedia media)
 {
     private async Task<byte[]> Frame(string path, int index) => await ProcessRunner.RunForBytesAsync(media.Tools.Ffmpeg,
@@ -295,7 +295,7 @@ public class ReverseIntegrationTests(TestMedia media)
     public async Task ReversedExportPlaysEveryFrameBackwards(int framesPerChunk)
     {
         var source = await media.Probe(media.Landscape);
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(source, 1, 2.5);
         t.SetReversed(clip, true);
         var output = media.Output($"reversed-{framesPerChunk}.mp4");
@@ -322,7 +322,7 @@ public class ReverseIntegrationTests(TestMedia media)
 
         async Task<long> Peak(string name, bool reversed)
         {
-            var t = new TimelineModel();
+            var t = new Timeline();
             t.SetReversed(t.Append(source, 0, 4), reversed);
             var directory = Directory.CreateDirectory(Path.Combine(media.Directory, name)).FullName;
             var output = Path.Combine(directory, "out.mp4");
@@ -342,7 +342,7 @@ public class ReverseIntegrationTests(TestMedia media)
     public async Task ReversedExportCleansUpItsIntermediateFiles()
     {
         var source = await media.Probe(media.Landscape);
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.SetReversed(t.Append(source, 0, 1), true);
         var directory = Directory.CreateDirectory(Path.Combine(media.Directory, "reverse-cleanup")).FullName;
         var output = Path.Combine(directory, "out.mp4");
@@ -370,7 +370,7 @@ public class ReverseIntegrationTests(TestMedia media)
     {
         // 29.97 fps：每格 1001/30000 秒，中間檔與接合都不能讓時間戳記走樣。
         var source = await media.Probe(media.MakeClip("ntsc.mp4", "testsrc2=s=640x360:r=30000/1001:d=2", "sine=f=440:d=2", "-pix_fmt", "yuv420p"));
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.SetReversed(t.Append(source, 0, 40 * 1001 / 30000.0), true);
         var output = media.Output("ntsc-reversed.mp4");
         var plan = ExportPlanner.Build(t, new OutputSettings(AspectRatio.Original, FitMode.Fill), output,
@@ -394,7 +394,7 @@ public class ReverseIntegrationTests(TestMedia media)
     public async Task ReversedFullRangeSourceKeepsItsPixelValues(string color, int expected)
     {
         var source = await media.Probe(media.MakeSolid($"reverse-full-{color}.mp4", color, "yuvj420p"));
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.SetReversed(t.Append(source, 0, 0.5), true);
         var result = await media.Export(t, new OutputSettings(AspectRatio.R16x9, FitMode.Fill), $"reverse-full-{color}-out.mp4");
         Assert.Equal("pc", result.ColorRange);
@@ -428,7 +428,7 @@ public class ReverseIntegrationTests(TestMedia media)
         var source = await media.Probe(media.MakeClip("vfr.mp4", "testsrc2=s=640x360:r=30:d=2", "sine=f=440:d=2",
             "-vf", "select='lt(t,1)+not(mod(n,2))'", "-fps_mode", "vfr", "-pix_fmt", "yuv420p"));
         Assert.True(source.IsVariableFrameRate);
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.SetReversed(t.Append(source, 0, 2), true);
         var output = media.Output($"vfr-reversed-{framesPerChunk}.mp4");
         var plan = ExportPlanner.Build(t, new OutputSettings(AspectRatio.Original, FitMode.Fill), output,
@@ -460,7 +460,7 @@ public class ReverseIntegrationTests(TestMedia media)
         // 畫面 2 秒（60 格）、聲音 2.1 秒：整段加入時片段是 63 格，最後 3 格只有聲音。
         // 每段 20 格 → 最後一小段（第 60–62 格）完全沒有畫面。
         var source = await media.Probe(media.MakeClip("tail-audio.mp4", "testsrc2=s=640x360:r=30:d=2", "sine=f=440:d=2.1", "-pix_fmt", "yuv420p"));
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = new TimelineEditor(t).Add(source, new InOutPoints()).Clip!;
         t.SetReversed(clip, true);
         Assert.Equal(63, (int)Math.Round(clip.Duration * 30));
@@ -481,7 +481,7 @@ public class ReverseIntegrationTests(TestMedia media)
         var source = await media.Probe(media.Landscape);
         var directory = Directory.CreateDirectory(Path.Combine(media.Directory, "輸出 資料夾's (1)")).FullName;
         var output = Path.Combine(directory, "輸出 影片's.mp4");
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.SetReversed(t.Append(source, 0, 1), true);
         var plan = ExportPlanner.Build(t, new OutputSettings(AspectRatio.Original, FitMode.Fill), output,
             ReverseGraph.FrameBytes(source, source.DisplayWidth, source.DisplayHeight) * 10);
@@ -497,7 +497,7 @@ public class ReverseIntegrationTests(TestMedia media)
         // 來源只有 0.5–1.0 秒有聲音；2 秒的片段倒放後，聲音應該在 1.0–1.5 秒。
         var source = await media.Probe(media.MakeClip("beep.mp4", "testsrc2=s=640x360:r=30:d=2",
             "sine=f=440:d=2,volume=enable='not(between(t,0.5,1))':volume=0", "-pix_fmt", "yuv420p"));
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.SetReversed(t.Append(source, 0, 2), true);
         var output = media.Output("beep-reversed.mp4");
         var plan = ExportPlanner.Build(t, new OutputSettings(AspectRatio.Original, FitMode.Fill), output,
@@ -513,7 +513,7 @@ public class ReverseIntegrationTests(TestMedia media)
     public async Task ReversedClipJoinsWithForwardClips()
     {
         var source = await media.Probe(media.Landscape);
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(source, 0, 1);
         t.SetReversed(t.Append(source, 0, 1), true);
         var output = media.Output("forward-reverse.mp4");
@@ -573,6 +573,7 @@ public class ReverseIntegrationTests(TestMedia media)
 /// <summary>同步回報的 IProgress，測試時不必等待 SynchronizationContext。</summary>
 /// <summary>關閉時刪除倒放預覽的暫存資料夾。</summary>
 [Collection("media")]
+[Trait("Category", "Integration")]
 public class ReversePreviewCleanupTests(TestMedia media)
 {
     [Fact]

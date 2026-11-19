@@ -1,6 +1,5 @@
 using VideoEditor.Core.Models;
-using VideoEditor.Core.Timeline;
-using TimelineModel = VideoEditor.Core.Timeline.Timeline;
+using VideoEditor.Core.Editing;
 
 namespace VideoEditor.Tests;
 
@@ -118,7 +117,7 @@ public class TimelineEditorTests
     [Fact]
     public void AddUsesTheMarksThenClearsThem()
     {
-        var timeline = new TimelineModel();
+        var timeline = new Timeline();
         var points = new InOutPoints();
         points.SetIn(2);
         points.SetOut(5);
@@ -136,7 +135,7 @@ public class TimelineEditorTests
     [Fact]
     public void AddWithoutMarksTakesTheWholeMedia()
     {
-        var timeline = new TimelineModel();
+        var timeline = new Timeline();
 
         var result = new TimelineEditor(timeline).Add(Media(7), new InOutPoints());
 
@@ -146,7 +145,7 @@ public class TimelineEditorTests
     [Fact]
     public void AddTooShortReportsErrorAndKeepsTheMarks()
     {
-        var timeline = new TimelineModel();
+        var timeline = new Timeline();
         var points = new InOutPoints();
         points.SetIn(1);
         points.SetOut(1.05);
@@ -162,7 +161,7 @@ public class TimelineEditorTests
     [Fact]
     public void AddMediaWithoutStreamsReportsError()
     {
-        var timeline = new TimelineModel();
+        var timeline = new Timeline();
 
         var result = new TimelineEditor(timeline).Add(new MediaInfo { Path = "x.bin", Duration = 5 }, new InOutPoints());
 
@@ -174,7 +173,7 @@ public class TimelineEditorTests
     [Fact]
     public void TransformOutsideTimelinePreviewSwitchesToIt()
     {
-        var timeline = new TimelineModel();
+        var timeline = new Timeline();
         var clip = timeline.Append(Media(), 0, 4);
 
         var followUp = new TimelineEditor(timeline).ChangeTransform(clip, t => t.Rotate(90), timelinePreview: false, playhead: 0);
@@ -190,7 +189,7 @@ public class TimelineEditorTests
     [InlineData(8, PreviewFollowUp.SeekToClip)]    // 剛好在片段結尾，已不屬於它
     public void TransformInTimelinePreviewSeeksOnlyWhenPlayheadIsOutsideTheClip(double playhead, PreviewFollowUp expected)
     {
-        var timeline = new TimelineModel();
+        var timeline = new Timeline();
         timeline.Append(Media(), 0, 4);
         var clip = timeline.Append(Media(), 0, 4); // 位於 4–8 秒
 
@@ -203,7 +202,7 @@ public class TimelineEditorTests
     [Fact]
     public void TransformOnMusicClipIsRejected()
     {
-        var timeline = new TimelineModel();
+        var timeline = new Timeline();
         var music = timeline.Append(new MediaInfo { Path = "m.m4a", Duration = 5, HasAudio = true }, 0, 5);
 
         Assert.Throws<ArgumentException>(() =>
@@ -249,7 +248,7 @@ public class TimelineSnapTests
     public void TrimSnappedToAnOffGridPlayheadStillCountsAsSnapped()
     {
         // 播放頭停在兩格之間（拖曳或暫停後多半如此）。
-        var timeline = new TimelineModel();
+        var timeline = new Timeline();
         var clip = timeline.Append(new MediaInfo
         {
             Path = "a.mp4", Duration = 10, HasVideo = true, HasAudio = true,
@@ -267,7 +266,7 @@ public class TimelineSnapTests
     [Fact]
     public void SnappedTrimPutsTheEdgeExactlyOnThePlayhead()
     {
-        var timeline = new TimelineModel();
+        var timeline = new Timeline();
         var clip = timeline.Append(new MediaInfo
         {
             Path = "a.mp4", Duration = 10, HasVideo = true, HasAudio = true,

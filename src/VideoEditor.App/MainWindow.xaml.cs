@@ -16,8 +16,7 @@ using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Logging;
 using VideoEditor.Core.Models;
 using VideoEditor.Core.Playback;
-using VideoEditor.Core.Timeline;
-using TimelineModel = VideoEditor.Core.Timeline.Timeline;
+using VideoEditor.Core.Editing;
 
 namespace VideoEditor.App;
 
@@ -25,22 +24,22 @@ public partial class MainWindow : Window, IExportView, IImportView
 {
     private const double ZoomStep = 1.5;
 
-    private readonly TimelineModel _timeline = new();
+    private readonly Timeline _timeline = new();
     private readonly TimelineEditor _editor;
     private readonly ObservableCollection<MediaItem> _media = [];
     private readonly FfmpegTools? _tools;
     private readonly ImportController? _import;
     private readonly PreviewEngine? _engine;
     private readonly WaveformCache? _waveforms;
-    private TimelineModel? _sourcePreview;
+    private Timeline? _sourcePreview;
     private MediaItem? _selectedMedia;
     private readonly InOutPoints _points = new();
     private MediaInfo? _surfaceMedia;
     private FrameTransform _surfaceTransform;
-    private bool _updatingSlider;
-    private bool _updatingVolume;
-    private bool _updatingClipList;
-    private bool _updatingReverse;
+    private readonly ReentryGuard _sliderGuard = new();
+    private readonly ReentryGuard _volumeGuard = new();
+    private readonly ReentryGuard _clipListGuard = new();
+    private readonly ReentryGuard _reverseGuard = new();
     private readonly ExportController? _export;
 
     public MainWindow()
@@ -50,12 +49,12 @@ public partial class MainWindow : Window, IExportView, IImportView
         UpdateModeIndicator();
         VolumeSlider.Value = 100;
         MediaList.ItemsSource = _media;
-        Timeline.Timeline = _timeline;
-        Timeline.PlayheadDragged += OnTimelinePlayheadDragged;
-        Timeline.SelectionChanged += OnTimelineSelectionChanged;
-        Timeline.EditStarted += () => _engine?.Pause();
-        Timeline.ClipsChanged += OnClipsChanged;
-        Timeline.ViewChanged += UpdateTimelineScrollBar;
+        TimelineView.Timeline = _timeline;
+        TimelineView.PlayheadDragged += OnTimelinePlayheadDragged;
+        TimelineView.SelectionChanged += OnTimelineSelectionChanged;
+        TimelineView.EditStarted += () => _engine?.Pause();
+        TimelineView.ClipsChanged += OnClipsChanged;
+        TimelineView.ViewChanged += UpdateTimelineScrollBar;
         ProgressPanel.CancelExportRequested += () => _export?.Cancel();
         ProgressPanel.CancelImportRequested += () => _import?.Cancel();
 
@@ -92,16 +91,16 @@ public partial class MainWindow : Window, IExportView, IImportView
         };
         // 聲音波形：匯入後在背景產生，好了就重畫時間軸。這兩個事件在背景執行緒觸發。
         _waveforms = new WaveformCache(new WaveformExtractor(_tools));
-        _waveforms.Ready += _ => Dispatcher.BeginInvoke(Timeline.InvalidateVisual);
+        _waveforms.Ready += _ => Dispatcher.BeginInvoke(TimelineView.InvalidateVisual);
         _waveforms.Failed += (media, error) => Dispatcher.BeginInvoke(() =>
         {
             var stderr = (error as FfmpegException)?.Stderr;
             var detail = (string.IsNullOrWhiteSpace(stderr) ? error.Message : stderr).Split('\n')[0];
             StatusText.Text = $"無法產生 {media.FileName} 的聲音波形：{detail}";
-            Timeline.InvalidateVisual();
+            TimelineView.InvalidateVisual();
         });
-        Timeline.WaveformOf = _waveforms.Get;
-        Timeline.WaveformPending = _waveforms.IsPending;
+        TimelineView.WaveformOf = _waveforms.Get;
+        TimelineView.WaveformPending = _waveforms.IsPending;
         UpdateOutputInfo();
         UpdateMarks();
 

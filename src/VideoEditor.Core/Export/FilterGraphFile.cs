@@ -48,7 +48,7 @@ public static class FilterGraphFile
             Log.Info($"濾鏡圖檔案：使用 {NewOption}");
             return NewOption;
         }
-        catch (Exception e) when (e is FfmpegException or Win32Exception or IOException or UnauthorizedAccessException)
+        catch (Exception e) when (ExpectedErrors.IsFileOrProcess(e))
         {
             Log.Info($"濾鏡圖檔案：{NewOption} 不能用，改用 {LegacyOption}");
             return LegacyOption;
@@ -56,7 +56,7 @@ public static class FilterGraphFile
         finally
         {
             try { File.Delete(file); }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+            catch (Exception e) when (ExpectedErrors.IsFile(e)) { }
         }
     }
 

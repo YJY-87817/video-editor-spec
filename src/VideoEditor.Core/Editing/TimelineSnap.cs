@@ -1,4 +1,4 @@
-namespace VideoEditor.Core.Timeline;
+namespace VideoEditor.Core.Editing;
 
 /// <summary>拉的是片段的哪一邊。</summary>
 public enum TrimEdge { Start, End }

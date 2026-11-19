@@ -13,8 +13,7 @@ using VideoEditor.App.Preview;
 using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
-using VideoEditor.Core.Timeline;
-using TimelineModel = VideoEditor.Core.Timeline.Timeline;
+using VideoEditor.Core.Editing;
 
 namespace VideoEditor.App;
 
@@ -22,19 +21,10 @@ public partial class MainWindow
 {
     // ---- 預覽 ----
 
-    private static readonly Brush SourceModeBrush = FrozenBrush(0x4A, 0x90, 0xD9);
-    private static readonly Brush SourceModeBadge = FrozenBrush(0xCC, 0x2E, 0x6F, 0xB5);
-    private static readonly Brush TimelineModeBrush = FrozenBrush(0xF0, 0x88, 0x3E);
-    private static readonly Brush TimelineModeBadge = FrozenBrush(0xCC, 0xC8, 0x65, 0x1B);
-
-    private static Brush FrozenBrush(byte r, byte g, byte b) => FrozenBrush(0xFF, r, g, b);
-
-    private static Brush FrozenBrush(byte a, byte r, byte g, byte b)
-    {
-        var brush = new SolidColorBrush(Color.FromArgb(a, r, g, b));
-        brush.Freeze();
-        return brush;
-    }
+    private static readonly Brush SourceModeBrush = Palette.SourceBlue;
+    private static readonly Brush SourceModeBadge = Palette.Frozen(0xCC, 0x2E, 0x6F, 0xB5);
+    private static readonly Brush TimelineModeBrush = Palette.Frozen(0xF0, 0x88, 0x3E);
+    private static readonly Brush TimelineModeBadge = Palette.Frozen(0xCC, 0xC8, 0x65, 0x1B);
 
     /// <summary>預覽區的色框與標籤，讓人一眼分辨目前看的是匯入的原始影片，還是時間軸上剪好的結果。</summary>
     private void UpdateModeIndicator()
@@ -54,17 +44,17 @@ public partial class MainWindow
         if (IsTimelinePreview)
         {
             _sourcePreview = null;
-            _engine.Load(_timeline, Timeline.Playhead);
+            _engine.Load(_timeline, TimelineView.Playhead);
             return;
         }
 
         _sourcePreview = null;
         if (_selectedMedia == null)
         {
-            _engine.Load(new TimelineModel());
+            _engine.Load(new Timeline());
             return;
         }
-        _sourcePreview = new TimelineModel();
+        _sourcePreview = new Timeline();
         _sourcePreview.Append(_selectedMedia.Info, 0, _selectedMedia.Info.Duration);
         _engine.Load(_sourcePreview);
     }

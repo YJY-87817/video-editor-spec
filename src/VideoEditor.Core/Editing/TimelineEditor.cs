@@ -1,7 +1,6 @@
 using VideoEditor.Core.Models;
-using TimelineModel = VideoEditor.Core.Timeline.Timeline;
 
-namespace VideoEditor.Core.Timeline;
+namespace VideoEditor.Core.Editing;
 
 /// <summary>編輯後預覽要怎麼跟上。</summary>
 public enum PreviewFollowUp
@@ -23,7 +22,7 @@ public sealed record AddResult(TimelineClip? Clip, string? Error);
 public sealed record SplitResult(TimelineClip? Clip, string? Error);
 
 /// <summary>時間軸上的編輯動作與它們的規則，不碰任何畫面元件。</summary>
-public sealed class TimelineEditor(TimelineModel timeline)
+public sealed class TimelineEditor(Timeline timeline)
 {
     /// <summary>把素材依入出點接到時間軸尾端。成功後清掉入出點。</summary>
     public AddResult Add(MediaInfo media, InOutPoints points)

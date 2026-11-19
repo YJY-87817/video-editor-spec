@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using VideoEditor.Core.Models;
 
-namespace VideoEditor.Core.Timeline;
+namespace VideoEditor.Core.Editing;
 
 /// <summary>來源時間上的一段區間（秒）。</summary>
 public readonly record struct TimeRange(double From, double To)

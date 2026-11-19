@@ -1,6 +1,6 @@
 using VideoEditor.Core.Models;
 
-namespace VideoEditor.Core.Timeline;
+namespace VideoEditor.Core.Editing;
 
 /// <summary>Page Up／Page Down 可以跳到的剪輯點。</summary>
 public static class EditPoints

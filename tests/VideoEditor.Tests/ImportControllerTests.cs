@@ -5,6 +5,7 @@ namespace VideoEditor.Tests;
 
 /// <summary>驗證匯入流程對畫面的通知順序與結果；實際呼叫 FFmpeg。</summary>
 [Collection("media")]
+[Trait("Category", "Integration")]
 public class ImportControllerTests(TestMedia media)
 {
     private ImportController Create(FakeView view) =>

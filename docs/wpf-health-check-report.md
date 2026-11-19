@@ -3,7 +3,7 @@
 - **專案**：個人影片編輯器（`video-editor-spec` 倉庫，3 個專案）
 - **報告日期**：2026-11-18
 - **性質**：原始分析是唯讀的靜態分析：沒有修改、新增、刪除或移動任何專案檔案，也沒有建置或執行測試（分析環境是 Linux，無法建置 WPF）。之後依本報告做的修改見「處理進度」。
-- **處理進度**：2026-11-19 起，已處理的項目已從本報告移除（階段 1 到階段 4 的主要項目，見 PR #39、#43、#45 與之後的修正），已移除的 ID：A-2、Q-2、Q-3、Q-4、Q-5、Q-6、Q-9、S-1、W-1、P-1、P-2、P-5、S-3、S-4、S-6、S-7、T-1。只處理一部分的項目（Q-1、T-2、S-2、S-8、P-4）只保留尚待處理的部分。完整歷史見 git。
+- **處理進度**：2026-11-19 起，已處理的項目已從本報告移除（階段 1 到階段 4 的主要項目，見 PR #39、#43、#45 與之後的修正），已移除的 ID：A-2、A-5、Q-2、Q-3、Q-4、Q-5、Q-6、Q-7、Q-9、S-1、W-1、W-6、P-1、P-2、P-5、S-3、S-4、S-6、S-7、T-1、T-4。只處理一部分的項目（Q-1、T-2、S-2、S-5、S-8、P-4、P-6、Q-8、W-3）只保留尚待處理的部分。完整歷史見 git。
 - **嚴重程度**：Critical（嚴重錯誤或安全風險）／High（可能造成錯誤、資料遺失或重大維護問題）／Medium（架構或品質問題）／Low（改善建議）
 - **分類**：已確認問題／潛在風險／待確認事項
 
@@ -82,7 +82,7 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
                │ 參照
 ┌─ VideoEditor.Core（net10.0，無 UI、無第三方套件）─────────────┐
 │  Models/    MediaInfo、OutputSettings、ClipFraming、FrameMath、…│
-│  Timeline/  Timeline、TimelineEditor、TimelineSnap、InOutPoints│
+│  Editing/   Timeline、TimelineEditor、TimelineSnap、InOutPoints│
 │  Ffmpeg/    ProcessRunner、MediaProbe、FrameExtractor、各種 Cache│
 │  Export/    ExportController、ExportPlanner、ExportService、   │
 │             ReverseGraph、ReversePreviewCache                 │
@@ -118,7 +118,7 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 | `INotifyPropertyChanged`／`ICommand`／`DataContext` | 全專案沒有使用 |
 | 命令模式 | 有「輕量版」：按鈕與快捷鍵共用 `Execute(PreviewCommand)`，鍵位對應表放在 Core 的 `PreviewKeys` 並被測試 |
 | 做得好 | Core 與 UI 的分離；View 介面反轉；滑鼠擷取（`CaptureMouse`／`OnLostMouseCapture`）；凍結的靜態筆刷；`Progress<T>` 與 `Dispatcher.BeginInvoke` 的跨執行緒回報；`IsInitialized` 防護；所有控制項都有 `AutomationId` |
-| 風險 | `MainWindow` 持有過多狀態；4 個 `_updatingXxx` 布林旗標手動避免事件循環（不具例外安全）；UI 邏輯難以單元測試；狀態同步依賴手動呼叫 `UpdateXxx()` |
+| 風險 | `MainWindow` 持有過多狀態；4 個 `ReentryGuard` 手動避免事件循環；UI 邏輯難以單元測試；狀態同步依賴手動呼叫 `UpdateXxx()` |
 | 建議 | **不要全面導入 MVVM 框架。** 持續把規則抽進 Core 並補測試；必要時只為最複雜的區塊（預覽與時間軸互動）引入輕量的 Presenter／ViewModel |
 
 ### 其他 WPF 觀察
@@ -126,7 +126,7 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 - **Event Handler 與記憶體洩漏**：所有事件訂閱的雙方壽命都與視窗相同；`DispatcherTimer` 在 `Dispose` 有 `Stop`；沒有靜態事件被訂閱。**未發現洩漏風險。**
 - **視窗生命週期**：`OnClosing` 在匯出中會先詢問並等待取消與清理完成，設計周全；`OnClosed` 釋放引擎與波形快取。
 - **ObservableCollection**：`_media` 只在 UI 執行緒更新。片段清單則每次以新 `List<ClipRow>` 重新指派 `ItemsSource`，片段數量少時沒有問題。
-- **ResourceDictionary／Style**：樣式只寫在 `Window.Resources`；顏色在 XAML 與 C# 重複硬編碼（見 W-3）。
+- **ResourceDictionary／Style**：樣式只寫在 `Window.Resources`；XAML 與 C# 共用的顏色已集中到 `Palette`；`TimelineView` 的片段底色等單一控制項用的顏色仍寫在該控制項內，所有 UI 文字都硬編碼為繁體中文，沒有 `.resx`。
 
 ---
 
@@ -134,10 +134,10 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 
 | 面向 | 評價 | 重點 |
 |---|---|---|
-| 命名與風格 | 良好 | 命名一致（`_camelCase` 欄位、PascalCase）；註解以「為什麼」為主，XML 說明註解約 549 行；唯一問題是命名空間與類別同名 `Timeline`（Q-7） |
+| 命名與風格 | 良好 | 命名一致（`_camelCase` 欄位、PascalCase）；註解以「為什麼」為主，XML 說明註解約 549 行；命名空間已改為 `VideoEditor.Core.Editing`，不再與 `Timeline` 類別同名 |
 | 類別與方法職責 | 方法良好，少數類別過大 | 最長的方法依序為 `ExportController.RunAsync` 98 行、`MediaProbe.Parse` 68 行、`MainWindow` 建構子 57 行、`PreviewEngine.Tick` 與 `ExtractPendingFramesAsync` 各 54 行；`PreviewEngine` 與 `MainWindow` 過大（Q-1、A-1） |
-| 重複程式碼 | 輕微 | 預期例外清單在 7 處各寫一遍（Q-8）；顏色常數在 XAML 與 C# 重複（W-3） |
-| 複雜條件 | 良好 | 未見過度巢狀；`ClipRow.Label` 單行有 5 個條件運算（A-5） |
+| 重複程式碼 | 輕微 | 預期例外清單已集中到 `ExpectedErrors`；XAML 與 C# 共用的顏色已集中到 `Palette` |
+| 複雜條件 | 良好 | 未見過度巢狀 |
 | Nullable | 良好 | 全專案啟用；`!` 抽樣僅 3 處；FFmpeg 缺失時 `_engine` 等欄位為 `null`，使用點都有防護（A-3 已下調） |
 | 例外處理 | 優秀 | 以 `catch (...) when (e is …)` 的窄過濾為主；寬鬆 `catch` 只有 3 處且都有理由；3 處空 `catch` 都有註解；背景指令佇列與 `async void` 的最外層都會攔下例外並記錄 |
 | IDisposable／資源釋放 | 良好 | 行程取消會終止整個行程樹；先寫暫存檔再改名；鎖定檔避免多程式互相清除；少數 `CancellationTokenSource`／`SemaphoreSlim` 未釋放（Q-11） |
@@ -198,7 +198,7 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 
 ### 6.2 需要注意
 
-- **App 層（約 2,700 行，約占 src C# 的 44%）沒有自動化測試**，而最大的風險集中在這裡（逐格擷取狀態機、視窗事件接線）；播放時鐘、倒帶挑格、拖曳命中與貼齊的規則已抽到 Core 並有測試（見 T-2）。
+- **App 層（約 2,700 行，約占 src C# 的 44%）沒有自動化測試**，而最大的風險集中在這裡（逐格擷取的實際執行、視窗事件接線）；播放時鐘、倒帶挑格、拖曳命中與貼齊的規則已抽到 Core 並有測試（見 T-2）。
 - **沒有 Undo／存檔**是規格明列的非目標，不算缺陷。
 
 ---
@@ -216,8 +216,8 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 | 5 | S-8 | 相依套件漏洞（待查 CVE）、無鎖定檔、Actions 未以 SHA 固定 | Low~Medium | 部分已處理，待確認 | S |
 | 6 | P-3 | 影格 LOH 配置、快取上限 | Low~Medium | 潛在，待實測 | M |
 | 7 | P-4 | 其餘 Core 類別沒有 `ConfigureAwait(false)` | Low | 已確認（部分已處理） | S |
-| 8 | P-6 | 每個片段的輸入參數仍受命令列長度限制（約 260 到 450 個） | Low~Medium | 已確認（部分已處理） | L | 其餘 Core 類別沒有 `ConfigureAwait(false)` | Low | 已確認（部分已處理） | S |
-| 9 | 其餘 | A-3、A-5、A-6、Q-7、Q-8、Q-10、Q-11、Q-12、W-3~W-9、P-7、P-9、S-5、T-3~T-7 | Low | — | S |
+| 8 | P-6 | 每個片段的輸入參數仍受命令列長度限制（約 260 到 450 個） | Low~Medium | 已確認（部分已處理） | L |
+| 9 | 其餘 | A-3、A-6、Q-8、Q-10、Q-11、Q-12、W-3~W-5、W-7~W-9、P-7、P-9、S-5、T-3、T-5~T-7 | Low | — | S |
 
 **已關閉或下調**：A-4 事件洩漏（不成立）；A-3 下調為 Low；`PreviewEngine.cs:326`／`:384` 的 `.Result`（不會阻塞，不成立）。
 
@@ -232,7 +232,7 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 #### A-1　`MainWindow` 是 God Object，且沒有 ViewModel
 - **Medium／已確認**
 - **位置**：`MainWindow.xaml.cs:27-43`、`MainWindow.*.cs`（7 個 partial、87 個方法）、`MainWindow.xaml`（44 個事件處理、54 個具名元素）
-- **問題**：視窗同時持有 Timeline 模型、Editor、媒體清單、入出點、預覽引擎、波形快取、匯出與匯入控制器，以及 4 個避免事件循環的 `_updatingXxx` 旗標。partial 只是切分檔案，不是切分職責。
+- **問題**：視窗同時持有 Timeline 模型、Editor、媒體清單、入出點、預覽引擎、波形快取、匯出與匯入控制器，以及 4 個避免事件循環的 `ReentryGuard`。partial 只是切分檔案，不是切分職責。
 - **影響**：狀態同步靠手動呼叫（`UpdateMarks()`、`UpdateOutputInfo()`…），新增功能時漏呼叫就會畫面不同步；UI 邏輯無法單元測試。
 - **建議**：先抽「狀態＋規則」到 Core（例如 `_selectedMedia`、`_points`、`_surface*` 與模式判斷）並補測試。不建議全面導入 MVVM。
 
@@ -245,9 +245,6 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 #### A-4　事件掛載沒有解除（已關閉）
 - 所有訂閱的雙方壽命與視窗相同，`DispatcherTimer` 在 `Dispose` 有 `Stop`，沒有靜態事件被訂閱。**不成立。**
 
-#### A-5　`ClipModels.cs` 的小問題
-- **Low／已確認**：複製了整份 `using`（約 11 行未使用）；`ClipRow.Label`（第 33 行）單行 5 個條件運算且超過 200 字元；檔名與內容（`MediaItem`、`ClipRow`）不符。
-
 #### A-6　預設路徑與環境資訊散落在 Core
 - **Low／已確認**：`ReversePreviewCache.DefaultRoot`（`Path.GetTempPath()`）與 `FfmpegLocator`（`AppContext.BaseDirectory`、`PATH`）。兩者都有參數可覆寫，測試友善，不構成問題。
 
@@ -257,17 +254,14 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 - **Medium／已確認（部分已處理）**
 - **位置**：`Preview/PreviewEngine.cs`（約 765 行，約 35 個欄位、12 個常數）
 - **問題**：同時負責播放時鐘與漂移校正、LibVLC 兩個播放器的指令佇列、倒帶（FFmpeg 成批解碼）、逐格擷取與預取與 LRU 快取、倒放預覽檔等待。
-- **已處理**：播放位置、倒帶位置與漂移判斷（`PlaybackClock`）、倒帶時要顯示哪一格與下一批要解哪一格（`RewindPlan`）、影格範圍與預設影格率（`FrameMath`、`MediaInfo.EffectiveFrameRate`）已抽到 Core 並有測試。
-- **仍待處理**：LibVLC 指令佇列、逐格擷取與預取的狀態（`_extracting`、`_pendingFrame`、`_prefetchCancel`）、快取與播放狀態仍在同一個類別，直接依賴 `LibVLC`、`DispatcherTimer`、`WriteableBitmap`，無法單元測試。
-- **建議**：繼續把與 UI／VLC 無關的規則抽到 Core（逐格請求的合併與取消規則可以先做）；涉及執行緒與 LibVLC 的部分建議等 Windows 實測後再動。
+- **已處理**：逐格請求的排隊、只留最新、背景預取可被插隊、解好的影格該不該顯示（`FrameRequestQueue`）、播放位置、倒帶位置與漂移判斷（`PlaybackClock`）、倒帶時要顯示哪一格與下一批要解哪一格（`RewindPlan`）、影格範圍與預設影格率（`FrameMath`、`MediaInfo.EffectiveFrameRate`）已抽到 Core 並有測試。
+- **仍待處理**：LibVLC 指令佇列、逐格擷取的實際執行（`ExtractPendingFramesAsync` 本身仍在 `PreviewEngine`）、快取與播放狀態仍在同一個類別，直接依賴 `LibVLC`、`DispatcherTimer`、`WriteableBitmap`，無法單元測試。
+- **建議**：涉及執行緒與 LibVLC 的部分建議等 Windows 實測後再動。
 
-#### Q-7　命名空間 `VideoEditor.Core.Timeline` 與類別 `Timeline` 同名
-- **Low／已確認**：每個檔案都要加 `using TimelineModel = …` 別名；`MainWindow.xaml` 的 `x:Name="Timeline"` 也與類別同名。建議改名（機械式重構）。
-
-#### Q-8　預期例外清單在多處各寫一遍
-- **Low／已確認**
-- **位置**：`ImportController.cs:54-55`、`:108`；`ExportController.cs:139`、`:145`、`:176`；`PreviewEngine.cs:566`、`:680`
-- **問題**：`FfmpegException or Win32Exception or IOException or UnauthorizedAccessException` 的組合在至少 7 處各有不同子集。建議抽成共用判斷。
+#### Q-8　預期例外清單（部分已處理）
+- **Low／已確認（部分已處理）**
+- **已處理**：行程與檔案系統的清單集中到 `ExpectedErrors`，Core 與 `PreviewEngine` 共用。
+- **仍待處理**：`FileLog`（`Logging` 在最底層，不能依賴 `Ffmpeg`）、`MainWindow.Import`（含 `NotSupportedException` 等圖片解碼例外）與 `ExportService.FreeSpace`（含 `ArgumentException`）的清單不同，維持原樣。
 
 #### Q-10　執行緒假設與實際不完全一致
 - **Low／待確認**：`PreviewEngine` 類別註解說除 LibVLC 回呼外只在 UI 執行緒使用，但背景佇列會存取 `_videoPlayer`、`_musicPlayer`、`_sink` 與 `PlaybackRate`（`:469`）；`ImportController` 的 `_total`／`_done`／`_queued` 非執行緒安全，依賴一律由 UI 執行緒呼叫，但沒有文件說明。
@@ -287,20 +281,16 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 - **影響**：片段多、時間軸放大時播放可能掉格；需要實測確認。
 - **建議**（待量測後決定）：把播放頭畫在獨立疊加元素；快取波形幾何與標籤；播放頭沒移動一個像素時不重繪。
 
-#### W-3　顏色與樣式硬編碼，且在 XAML 與 C# 重複
-- **Low~Medium／已確認**
-- **位置**：`MainWindow.xaml`（`#FFD24A`：16、90、113、129 行；`#4A90D9`：97 行）、`ProgressOverlay.xaml`（`#4A90D9`：112、122 行）、`MainWindow.Preview.cs:25-28`、`TimelineView.cs:26-47`；`App.xaml` 的資源是空的
-- **問題**：同一個顏色在 XAML 與程式碼各寫一份，沒有集中的 `ResourceDictionary` 或主題。另外所有 UI 文字都硬編碼為繁體中文，沒有 `.resx`。
-- **建議**：色票抽到 `App.xaml`，C# 端以 `FindResource` 取用。
+#### W-3　其餘的硬編碼顏色與文字
+- **Low／已確認（部分已處理）**
+- **已處理**：XAML 與 C# 共用的顏色（黃色強調、來源藍）集中到 `Palette`。
+- **仍待處理**：`TimelineView` 與 `MainWindow.Preview.cs` 內單一控制項用的顏色仍寫在原處；所有 UI 文字硬編碼為繁體中文，沒有 `.resx`。
 
 #### W-4　`ProgressOverlay` 隱性依賴宿主視窗的隱含樣式
 - **Low／已確認**：`ProgressOverlay.xaml:121、133、146` 的文字沒有 `Foreground`，顏色來自 `MainWindow.xaml:21-23` 的隱含 `TextBlock` 樣式；換到其他視窗會在深色背景上變成預設黑字。
 
 #### W-5　全域把 `Button`／`RadioButton` 設為 `Focusable=False`
 - **Low／設計取捨**：避免按鈕搶走焦點而吃掉空白鍵與方向鍵，但代價是無法用 Tab 操作按鈕，不利鍵盤無障礙。
-
-#### W-6　`_updatingXxx` 旗標不是例外安全的
-- **Low／已確認**：`MainWindow.Playback.cs:29-32`、`MainWindow.Timeline.cs:34-47`、`:20-24`。旗標「設 true → 改控制項 → 設 false」沒有 `try/finally`；中間丟例外會讓對應事件處理器永遠失效。目前改的都是簡單屬性，機率很低。
 
 #### W-7　資料繫結只有基本用法
 - **Low／已確認**：`MediaItem` 沒有 `INotifyPropertyChanged`，目前縮圖在建立時就設好所以正常；`ClipList` 每次編輯重新指派 `ItemsSource` 並以旗標避免循環。
@@ -356,10 +346,10 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 - **仍待處理**：(1) 白名單只擋網路協定，播放清單類檔案仍可能被導向讀取其他本機檔案（是否可行取決於 FFmpeg 版本與組建）；(2) LibVLC 是原生程式碼，預設載入網路存取模組，沒有處理；(3) 使用者自備的 FFmpeg 沒有版本管理。
 - **建議**：查證 LibVLC 3.0.x 能否以啟動選項停用網路模組；文件說明風險並建議使用最新版 FFmpeg。
 
-#### S-5　`Preflight` 的路徑檢查有小缺口
-- **Low／已確認**
-- **位置**：`Export/ExportService.cs:26`、`:36`、`:39-42`、`:33`
-- **問題**：`Path.GetFullPath` 與 `GetDirectoryName(...)!` 在 `try` 之外，格式不合法時可能丟出未被攔截的例外（實際上 `SaveFileDialog` 已先過濾）；可寫入探測建立 `.write-test-<guid>` 後若 `Delete` 失敗會留下殘檔；「輸出不能與來源相同」只比對完整路徑字串，不處理硬連結、符號連結、8.3 短檔名；`CreateDirectory` 在使用者確認前就建立資料夾。
+#### S-5　`Preflight` 剩下的小缺口
+- **Low／已確認（部分已處理）**
+- **已處理**：路徑格式不合法會回報成訊息；寫入探測檔刪不掉不再讓匯出失敗；來源比對會解開符號連結與連結資料夾。
+- **仍待處理**：硬連結與 8.3 短檔名無法用路徑字串比對；`CreateDirectory` 在 `Preflight` 內建立（使用者已在儲存對話方塊選好位置才會走到，視為順著他的選擇）。
 
 #### S-8　相依套件與供應鏈
 - **Low~Medium／部分已處理**
@@ -371,14 +361,11 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 #### T-2　App 層沒有自動化測試
 - **Medium／已確認（部分已處理）**
 - **現況**：`PreviewEngine`、`TimelineView`、`MainWindow.*`、`VlcVideoSink`、`ProgressOverlay` 約 2,700 行仍沒有測試。不需要引入 UI 自動化，延續目前做法，把規則抽進 Core 再測試即可。
-- **已處理**：預覽時鐘與漂移判斷、倒帶挑格、快捷鍵修飾鍵判斷、時間軸的命中區域與移動貼齊規則已抽到 Core 並補測試。
-- **仍待處理**：`MainWindow` 的狀態與視窗事件接線、逐格擷取狀態機、波形與倒放預覽的 UI 協調。
+- **已處理**：逐格請求的排隊與插隊規則、預覽時鐘與漂移判斷、倒帶挑格、快捷鍵修飾鍵判斷、時間軸的命中區域與移動貼齊規則已抽到 Core 並補測試。
+- **仍待處理**：`MainWindow` 的狀態與視窗事件接線、逐格擷取的實際執行（狀態機的規則已抽出）、波形與倒放預覽的 UI 協調。
 
 #### T-3　部分 Core 類別沒有直接的測試引用
 - **Low／待確認**：以類別名稱搜尋，`PreviewGeometry`（64 行）與 `TemporaryFiles` 在測試目錄 0 個檔案出現（後者可能被間接覆蓋）。請以覆蓋率報告確認。
-
-#### T-4　整合測試依賴 FFmpeg 且沒有分類
-- **Low／已確認**：`TestMedia.cs:12`、`:21`。沒有 FFmpeg 時使用 `media` 集合的測試類別會因 fixture 建立失敗而整批失敗，而非略過；沒有 `[Trait]`。建議加 `Category=Integration` 或 skippable 測試。
 
 #### T-5　CI 沒有覆蓋率與靜態分析
 - **Low／已確認**：`dotnet test` 沒有 `--collect`（雖已引用 `coverlet.collector`）；沒有 `.editorconfig`、格式檢查、`TreatWarningsAsErrors`。
@@ -403,7 +390,7 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 5. 執行覆蓋率報告（T-3）。
 
 ### 階段 4（剩餘）：結構改善
-- Q-1、T-2：繼續把與 UI／VLC 無關的規則抽進 Core 並補測試。
+- Q-1、T-2：與 UI／VLC 無關的規則已抽完；剩下的部分（LibVLC 指令佇列、擷取的實際執行）等 Windows 實測後再動。
 
 ### 階段 5：視需要
 - W-2：依階段 0 的量測結果，決定是否分離播放頭的繪製。
