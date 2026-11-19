@@ -360,11 +360,12 @@ public sealed class TimelineView : FrameworkElement
             var left = TimeToX(clip.Start);
             var right = TimeToX(clip.End);
             if (p.X < left || p.X > right) continue;
-            // 片段太窄時，保留中間可以拖曳移動。
-            var grab = Math.Min(EdgeGrab, (right - left) / 3);
-            if (p.X - left <= grab) return (clip, DragKind.TrimStart);
-            if (right - p.X <= grab) return (clip, DragKind.TrimEnd);
-            return (clip, DragKind.Move);
+            return (clip, TimelineDrag.Classify(p.X, left, right, EdgeGrab) switch
+            {
+                ClipHit.TrimStart => DragKind.TrimStart,
+                ClipHit.TrimEnd => DragKind.TrimEnd,
+                _ => DragKind.Move,
+            });
         }
         return (null, DragKind.None);
     }
@@ -416,14 +417,8 @@ public sealed class TimelineView : FrameworkElement
             case DragKind.Move:
                 var raw = time - _dragGrabOffset;
                 var target = SnapMove(_dragClip!, raw);
-                var actual = _timeline.Move(_dragClip!, target);
-                // 貼齊的位置放不下（開頭會小於 0，或同軌那裡已有片段）時，片段會被推到別處；
-                // 這時不算貼齊，改照滑鼠原本的位置移動，避免片段突然跳走。
-                if (Math.Abs(actual - target) > 1e-6)
-                {
-                    _snapKind = SnapKind.None;
-                    _timeline.Move(_dragClip!, raw);
-                }
+                // 貼齊的位置放不下時不算貼齊，改照滑鼠原本的位置移動。
+                if (!TimelineDrag.MoveWithSnap(_timeline, _dragClip!, raw, target)) _snapKind = SnapKind.None;
                 break;
             case DragKind.TrimStart:
                 _timeline.TrimStart(_dragClip!, Snap(time));

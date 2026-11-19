@@ -295,3 +295,69 @@ public class SplitExportTests(TestMedia media)
         Assert.Equal(wholeResult.Duration, splitResult.Duration, 2);
     }
 }
+
+public class TimelineDragTests
+{
+    [Theory]
+    [InlineData(100, ClipHit.TrimStart)] // 左緣上
+    [InlineData(107, ClipHit.TrimStart)] // 剛好在邊緣範圍內
+    [InlineData(108, ClipHit.Move)]
+    [InlineData(200, ClipHit.Move)]
+    [InlineData(292, ClipHit.Move)]
+    [InlineData(293, ClipHit.TrimEnd)]
+    [InlineData(300, ClipHit.TrimEnd)]
+    public void WideClipHasEdgesAndAMiddle(double x, ClipHit expected) =>
+        Assert.Equal(expected, TimelineDrag.Classify(x, 100, 300, 7));
+
+    [Theory]
+    [InlineData(100, ClipHit.TrimStart)]
+    [InlineData(103, ClipHit.TrimStart)] // 寬 9：邊緣各 3
+    [InlineData(104, ClipHit.Move)] // 中間仍可拖曳移動
+    [InlineData(105, ClipHit.Move)]
+    [InlineData(106, ClipHit.TrimEnd)]
+    public void NarrowClipKeepsItsMiddleForMoving(double x, ClipHit expected) =>
+        Assert.Equal(expected, TimelineDrag.Classify(x, 100, 109, 7));
+
+    private static MediaInfo Media() => new()
+    {
+        Path = "a.mp4", Duration = 100, HasVideo = true, DisplayWidth = 1920, DisplayHeight = 1080, FrameRate = new Rational(30, 1),
+    };
+
+    [Fact]
+    public void SnappedPositionIsUsedWhenItFits()
+    {
+        var t = new TimelineModel();
+        var clip = t.Append(Media(), 0, 2);
+
+        var snapped = TimelineDrag.MoveWithSnap(t, clip, raw: 5.3, snapped: 5.0);
+
+        Assert.True(snapped);
+        Assert.Equal(5.0, clip.Start, 6);
+    }
+
+    [Fact]
+    public void FallsBackToTheMousePositionWhenTheSnapTargetIsTaken()
+    {
+        var t = new TimelineModel();
+        var first = t.Append(Media(), 0, 2);   // 0～2
+        var second = t.Append(Media(), 0, 2);  // 2～4
+        // 貼齊的位置（1.0）與第一個片段重疊，會被推到別處；滑鼠原位（6.0）放得下。
+        var snapped = TimelineDrag.MoveWithSnap(t, second, raw: 6.0, snapped: 1.0);
+
+        Assert.False(snapped);
+        Assert.Equal(6.0, second.Start, 6);
+        Assert.Equal(0, first.Start, 6);
+    }
+
+    [Fact]
+    public void NegativeSnapTargetFallsBackToTheMousePosition()
+    {
+        var t = new TimelineModel();
+        var clip = t.Append(Media(), 0, 2);
+
+        var snapped = TimelineDrag.MoveWithSnap(t, clip, raw: 3.0, snapped: -1.0);
+
+        Assert.False(snapped);
+        Assert.Equal(3.0, clip.Start, 6);
+    }
+}
