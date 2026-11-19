@@ -271,12 +271,24 @@ public class MissingFramesTests
     }
 
     [Fact]
+    public void PermanentRecordsNeverExpire()
+    {
+        var (frames, advance) = Make();
+        frames.AddPermanent(5);
+        advance(3600);
+        Assert.True(frames.Contains(5));
+    }
+
+    [Fact]
     public void ClearForgetsEverything()
     {
         var (frames, _) = Make();
         frames.Add(1);
+        frames.AddPermanent(2);
         frames.Clear();
         Assert.False(frames.Contains(1));
+        Assert.False(frames.Contains(2));
+        Assert.Equal(0, frames.Count);
     }
 
     [Fact]

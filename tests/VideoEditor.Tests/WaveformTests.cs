@@ -275,7 +275,8 @@ public class WaveformCacheTests
         var all = Task.WhenAll(Enumerable.Range(0, 4).Select(i => cache.Request(Media($"{i}.mp4"))));
         // 等第一個開始，再多給其他請求一點時間；若限制失效，它們會在這段時間內一起開始。
         // 等得不夠久只會讓測試漏抓問題，不會讓它誤報失敗。
-        while (Volatile.Read(ref running) < 1) await Task.Delay(5);
+        for (var i = 0; i < 2000 && Volatile.Read(ref running) < 1; i++) await Task.Delay(5);
+        Assert.True(Volatile.Read(ref running) >= 1, "10 秒內沒有任何擷取開始");
         await Task.Delay(100);
         gate.SetResult();
         await all.WaitAsync(TimeSpan.FromSeconds(30));

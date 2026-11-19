@@ -97,7 +97,9 @@ internal sealed class VlcVideoSink : IDisposable
 
     private IntPtr OnLock(IntPtr opaque, IntPtr planes)
     {
-        lock (_gate) Marshal.WriteIntPtr(planes, _buffer);
+        // 不取 _gate：UI 執行緒複製影格時持有它，LibVLC 的解碼執行緒不該為此等待。
+        // _buffer 在 OnFormat 設好之後、播放期間不會變；已釋放時 OnFormat 回報失敗，不會走到這裡。
+        Marshal.WriteIntPtr(planes, _buffer);
         return IntPtr.Zero;
     }
 

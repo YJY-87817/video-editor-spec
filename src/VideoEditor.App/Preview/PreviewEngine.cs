@@ -551,8 +551,8 @@ public sealed class PreviewEngine : IDisposable
             var size = FrameExtractor.PreviewSize(media.DisplayWidth, media.DisplayHeight, MaxPreviewLongSide);
             var frames = await _extractor.ExtractRangeAsync(media.Path, start, count, step, fps, size);
             for (var i = 0; i < frames.Count; i++) _frames.Add((media.Path, start + i * step), frames[i]);
-            // 來源結尾附近可能解不出影格，記下來，之後不再重試。
-            if (frames.Count == 0) _missingFrames.Add((media.Path, target));
+            // 來源結尾附近可能沒有影格可解，記下來，之後不再重試。
+            if (frames.Count == 0) _missingFrames.AddPermanent((media.Path, target));
         }
         catch (Exception e) when (ExpectedErrors.IsProcess(e))
         {
@@ -678,7 +678,7 @@ public sealed class PreviewEngine : IDisposable
                 }
                 if (frame == null)
                 {
-                    if (!request.Show) _missingFrames.Add(key);
+                    if (!request.Show) _missingFrames.AddPermanent(key);
                     continue;
                 }
                 // 拖曳中也顯示解好的影格，畫面才會跟著動；但不可蓋掉較新的畫面（如空白處的黑畫面）。
