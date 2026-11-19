@@ -2,7 +2,8 @@
 
 - **專案**：個人影片編輯器（`video-editor-spec` 倉庫，3 個專案）
 - **報告日期**：2026-11-18
-- **性質**：唯讀的靜態分析。沒有修改、新增、刪除或移動任何專案檔案，也沒有建置或執行測試（分析環境是 Linux，無法建置 WPF）。
+- **性質**：原始分析是唯讀的靜態分析：沒有修改、新增、刪除或移動任何專案檔案，也沒有建置或執行測試（分析環境是 Linux，無法建置 WPF）。之後依本報告做的修改見「處理進度」。
+- **處理進度**：2026-11-19 起，已處理的項目已從本報告移除（階段 1 到階段 4 的主要項目，見 PR #39、#43），已移除的 ID：A-2、Q-2、Q-3、Q-4、Q-5、Q-6、W-1、P-1、P-2、P-5、S-3、S-4、S-6、S-7、T-1。只處理一部分的項目（Q-1、T-2、S-2、S-8、P-4）只保留尚待處理的部分。完整歷史見 git。
 - **嚴重程度**：Critical（嚴重錯誤或安全風險）／High（可能造成錯誤、資料遺失或重大維護問題）／Medium（架構或品質問題）／Low（改善建議）
 - **分類**：已確認問題／潛在風險／待確認事項
 
@@ -29,10 +30,10 @@
 | 項目 | 結果 |
 |---|---|
 | Critical／High | **0 項** |
-| Medium | 11 項（主要是架構規模、可觀察性、逾時保護、快捷鍵修飾鍵） |
+| Medium | 5 項：P-6、Q-1、T-2、A-1、W-2（Q-1、T-2 已部分處理；主要是匯出片段上限、`PreviewEngine`／`MainWindow` 規模、App 層測試、播放頭重繪成本） |
 | 整體評價 | 程式品質偏高：例外處理有紀律、資源釋放周全、方法長度控制良好、Core 與 UI 分離確實、測試量大且多為真實 FFmpeg 的整合測試 |
-| 最值得優先處理 | ① 快捷鍵不檢查修飾鍵 ② VLC 指令佇列例外過濾過窄 ③ 完全沒有 Logging ④ FFmpeg 沒有逾時保護 |
-| 不建議做的事 | 為了形式全面導入 MVVM 框架；對規模約 5,700 行的單視窗工具，收益有限 |
+| 最值得優先處理 | ① 在 Windows 上實機驗證並量測播放頭重繪成本（W-2） ② 決定匯出片段上限要不要處理（P-6） ③ 繼續把 `PreviewEngine`／`MainWindow` 的規則抽進 Core 並補測試（Q-1、T-2、A-1） |
+| 不建議做的事 | 為了形式全面導入 MVVM 框架；對規模約 6,200 行的單視窗工具，收益有限 |
 
 ---
 
@@ -44,7 +45,7 @@
 | 框架 | .NET 10（App：`net10.0-windows`；Core 與 Tests：`net10.0`），不是 .NET Framework |
 | Solution | `VideoEditor.slnx`（新式 XML 格式），3 個專案 |
 | 專案 | `VideoEditor.App`（WPF、`WinExe`）、`VideoEditor.Core`（類別庫）、`VideoEditor.Tests`（xUnit） |
-| 規模 | C# 約 5,680 行（src）、XAML 約 270 行、測試約 4,200 行（行數含註解與空行） |
+| 規模 | C# 約 6,180 行（src）、XAML 約 280 行、測試約 4,950 行（行數含註解與空行） |
 | 公開型別 | 約 70 個，其中介面只有 2 個（`IImportView`、`IExportView`） |
 | Nullable／ImplicitUsings | 三個專案皆啟用 |
 | 啟動入口 | `App.xaml` 的 `StartupUri="MainWindow.xaml"`；`App.xaml.cs` 的 `OnStartup` 初始化 LibVLC 並註冊 `DispatcherUnhandledException` |
@@ -76,18 +77,21 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 │    7 個 partial（共 87 個方法）＋ MainWindow.xaml             │
 │    （44 個事件處理、54 個具名元素）                           │
 │  Controls/  TimelineView（自繪，544 行）、ProgressOverlay     │
-│  Preview/   PreviewEngine（769 行，LibVLC＋FFmpeg）、VlcVideoSink │
+│  Preview/   PreviewEngine（765 行，LibVLC＋FFmpeg）、VlcVideoSink │
 └──────────────┬───────────────────────────────────────────────┘
                │ 參照
 ┌─ VideoEditor.Core（net10.0，無 UI、無第三方套件）─────────────┐
-│  Models/    MediaInfo、OutputSettings、ClipFraming、…          │
+│  Models/    MediaInfo、OutputSettings、ClipFraming、FrameMath、…│
 │  Timeline/  Timeline、TimelineEditor、TimelineSnap、InOutPoints│
 │  Ffmpeg/    ProcessRunner、MediaProbe、FrameExtractor、各種 Cache│
-│  Export/    ExportController、ExportPlanner、ExportService     │
-│  Playback/  PreviewCommand、FrameBatch、PlaybackText           │
+│  Export/    ExportController、ExportPlanner、ExportService、   │
+│             ReverseGraph、ReversePreviewCache                 │
+│  Playback/  PreviewCommand、FrameBatch、PlaybackClock、RewindPlan│
+│  Logging/   FileLog、Log                                       │
 └──────────────────────────────────────────────────────────────┘
                ▲ 參照
         VideoEditor.Tests（只測 Core；未參照 App）
+        Core 資料夾的依賴方向：Models ← Timeline ← Ffmpeg ← Export（Playback 獨立、Logging 在最底層），由 ArchitectureTests 鎖住
 ```
 
 ### 結構特徵
@@ -100,8 +104,7 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 
 ### 結構弱點
 
-1. Core 的命名空間有循環相依：`Ffmpeg` 與 `Export` 互相 `using`；`Timeline` 依賴 `Ffmpeg` 與 `Export`（為了取用 `FrameIndex`、`FirstFrameAtOrAfter` 這類純函式）。
-2. `MainWindow`（持有 13 個以上的狀態欄位）與 `PreviewEngine`（約 35 個欄位、18 個常數）是兩個過大的類別。
+`MainWindow`（持有 13 個以上的狀態欄位）與 `PreviewEngine`（約 35 個欄位）是兩個過大的類別（A-1、Q-1）。
 
 ---
 
@@ -136,9 +139,9 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 | 重複程式碼 | 輕微 | 預期例外清單在 7 處各寫一遍（Q-8）；顏色常數在 XAML 與 C# 重複（W-3） |
 | 複雜條件 | 良好 | 未見過度巢狀；`ClipRow.Label` 單行有 5 個條件運算（A-5） |
 | Nullable | 良好 | 全專案啟用；`!` 抽樣僅 3 處；FFmpeg 缺失時 `_engine` 等欄位為 `null`，使用點都有防護（A-3 已下調） |
-| 例外處理 | 優秀 | 以 `catch (...) when (e is …)` 的窄過濾為主；寬鬆 `catch` 只有 3 處且都有理由；3 處空 `catch` 都有註解；缺口在 `Enqueue` 與兩個 `async void`（Q-2、Q-6） |
+| 例外處理 | 優秀 | 以 `catch (...) when (e is …)` 的窄過濾為主；寬鬆 `catch` 只有 3 處且都有理由；3 處空 `catch` 都有註解；背景指令佇列與 `async void` 的最外層都會攔下例外並記錄 |
 | IDisposable／資源釋放 | 良好 | 行程取消會終止整個行程樹；先寫暫存檔再改名；鎖定檔避免多程式互相清除；少數 `CancellationTokenSource`／`SemaphoreSlim` 未釋放（Q-11） |
-| Async／Await | 良好 | 沒有 `.GetAwaiter().GetResult()`；`.Result` 僅 2 處且都先檢查完成；`.Wait` 只有 `Dispose` 一處（Q-3）；`async void` 只有 3 處且都是事件處理器；Core 缺少 `ConfigureAwait(false)`（P-4） |
+| Async／Await | 良好 | 沒有 `.GetAwaiter().GetResult()`；`.Result` 僅 2 處且都先檢查完成；`.Wait` 只有 `Dispose` 一處（有逾時，逾時時略過原生資源釋放）；`async void` 只有 3 處且都是事件處理器並有 `try/catch`；`ProcessRunner` 與匯出收尾已用 `ConfigureAwait(false)`，其餘 Core 類別沒有（P-4） |
 | 靜態與全域狀態 | 良好 | 沒有可變的全域單例；只有 `ProcessRunner.Started` 靜態事件（供測試使用） |
 
 ---
@@ -157,10 +160,8 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 
 **主要缺口**
 
-1. 沒有逾時保護，前景預覽與匯入不可取消（P-2）。
-2. VLC 指令佇列的例外過濾過窄，且可能使 `Dispose` 中斷（Q-2）。
-3. 沒有 Logging，也沒有 `UnobservedTaskException`／`AppDomain.UnhandledException` 處理（T-1）。
-4. 匯出的片段數量受命令列 30,000 字元上限限制（P-6）。
+1. 匯出的片段數量受命令列 30,000 字元上限限制（P-6）。
+2. 播放頭重繪成本與預覽影格的記憶體都還沒有在 Windows 上實測（W-2、P-3）。
 
 ### 5.2 安全性
 
@@ -187,18 +188,18 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 
 | 項目 | 結果 |
 |---|---|
-| 測試數量 | 264 個 `[Fact]`／`[Theory]`（`InlineData` 案例不另計），分在 13 個檔案，約 4,200 行 |
+| 測試數量 | 約 320 個 `[Fact]`／`[Theory]`（`InlineData` 案例不另計；執行時約 500 個案例），分在 17 個檔案，約 4,950 行 |
 | 測試性質 | 多數為真實 FFmpeg 的整合測試：匯出後以 `ffprobe` 量測影格數、亮度範圍、音量；有 FFmpeg 記憶體峰值量測；有取消、缺少編碼器、磁碟空間不足、素材被刪除等失敗路徑 |
 | 可測試性設計 | 良好：`IExportView`／`IImportView` 搭配 Fake；建構子可注入 `listEncoders`、`freeSpace`；規則集中在 Core |
 | 覆蓋較多的類別（以測試中的引用次數估計） | `TimelineSnap` 40、`ExportPlanner` 34、`ReverseGraph` 30、`ProcessRunner` 26、`ClipFraming` 15 |
-| Logging | **無**（搜尋 `ILogger`、`Debug.Write`、`Trace`、`Console`、檔案記錄皆無結果） |
+| Logging | 有：`FileLog`／`Log` 寫到 `%LOCALAPPDATA%\VideoEditor\logs`，記錄未處理的例外、FFmpeg 失敗時的命令列與錯誤輸出、匯出的開始與結果（README 有說明） |
 | 文件 | `README`（執行、發佈、操作、設計決定、已知限制、授權）、規格書（含非目標）、4 份規劃文件（記錄決策與實作結果） |
-| CI | Windows 建置、測試、發佈驗證；固定 FFmpeg 版本；最小權限；沒有收集覆蓋率 |
+| CI | Windows 建置、測試、發佈驗證；固定 FFmpeg 版本；最小權限；沒有收集覆蓋率；已啟用 Dependabot |
 
 ### 6.2 需要注意
 
-- **App 層（約 2,600 行，約占 src C# 的 46%）沒有自動化測試**，而最大的風險集中在這裡（播放時鐘、倒帶、拖曳狀態機）。
-- **沒有 Undo／存檔**是規格明列的非目標，不算缺陷；但這放大了快捷鍵誤觸（W-1）的影響。
+- **App 層（約 2,700 行，約占 src C# 的 44%）沒有自動化測試**，而最大的風險集中在這裡（逐格擷取狀態機、視窗事件接線）；播放時鐘、倒帶挑格、拖曳命中與貼齊的規則已抽到 Core 並有測試（見 T-2）。
+- **沒有 Undo／存檔**是規格明列的非目標，不算缺陷。
 
 ---
 
@@ -208,25 +209,17 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 
 | 優先 | ID | 問題 | 嚴重度 | 分類 | 成本 |
 |---|---|---|---|---|---|
-| 1 | W-1 | 快捷鍵不檢查修飾鍵（Ctrl+S 會分割片段，且無法復原） | Medium | 已確認 | S |
-| 2 | Q-2 | `Enqueue` 例外過濾過窄，`Dispose` 可能因此中斷 | Medium | 潛在 | S |
-| 3 | T-1 | 沒有 Logging，缺少全域未觀察例外處理 | Medium | 已確認 | M |
-| 4 | P-2 | FFmpeg／ffprobe 沒有逾時，前景預覽與匯入不可取消 | Medium | 潛在 | M |
-| 5 | Q-4 | `ExportService` 依賴 `plan.Arguments` 最後一項是輸出路徑的隱含契約 | Medium | 已確認 | S |
-| 6 | P-6 | 匯出受命令列 30,000 字元限制 | Medium | 設計限制 | M |
-| 7 | Q-1／T-2 | `PreviewEngine` 職責過多，且 App 層約 46% 無測試 | Medium | 已確認 | L |
-| 8 | A-1 | `MainWindow` 持有過多狀態、手動同步 | Medium | 已確認 | L |
-| 9 | A-2 | Core 命名空間循環相依 | Medium | 已確認 | S~M |
-| 10 | W-2 | 播放時每個 tick 重繪整個時間軸 | Medium | 潛在，待實測 | M |
-| 11 | S-2 | 不受信任媒體直接交給 FFmpeg／LibVLC（無 `-protocol_whitelist`） | Low~Medium | 潛在，待確認 | S~M |
-| 12 | S-8 | 相依套件漏洞與供應鏈（待查 CVE、無 Dependabot） | Low~Medium | 待確認 | S |
-| 13 | Q-3／Q-5／P-4 | `Dispose` 等待、UI 執行緒 `Thread.Sleep`、Core 無 `ConfigureAwait(false)` | Low~Medium | 潛在／已確認 | S |
-| 14 | P-1 | 啟動時同步清理上次暫存 | Low~Medium | 已確認 | S |
-| 15 | P-3／P-5 | 影格 LOH 配置；子行程在非取消例外時不被終止，也無 Job Object | Low~Medium | 潛在 | M |
-| 16 | S-1／S-6 | FFmpeg 搜尋順序；中繼資料沒有合理性上限 | Low~Medium | 已確認／待確認 | S |
-| 17 | Q-6／S-7 | 兩個 `async void` 沒有 `try/catch`；縮圖解碼失敗中斷整批匯入 | Low | 潛在 | S |
-| 18 | Q-9 | 配樂漂移校正可能重複排入佇列 | Low~Medium | 潛在，待確認 | S |
-| 19 | 其餘 | A-3、A-5、A-6、Q-7、Q-8、Q-10、Q-11、Q-12、W-3~W-9、P-7、P-9、S-3~S-5、T-3~T-7 | Low | — | S |
+| 1 | P-6 | 匯出受命令列 30,000 字元限制（約 80 個片段） | Medium | 設計限制 | M |
+| 2 | Q-1／T-2 | `PreviewEngine` 職責過多，App 層仍無測試 | Medium | 已確認（部分已處理） | L |
+| 3 | A-1 | `MainWindow` 持有過多狀態、手動同步 | Medium | 已確認 | L |
+| 4 | W-2 | 播放時每個 tick 重繪整個時間軸 | Medium | 潛在，待實測 | M |
+| 5 | S-2 | 白名單只擋網路協定；LibVLC 未處理 | Low~Medium | 部分已處理，待確認 | S~M |
+| 6 | S-8 | 相依套件漏洞（待查 CVE）、無鎖定檔、Actions 未以 SHA 固定 | Low~Medium | 部分已處理，待確認 | S |
+| 7 | P-3 | 影格 LOH 配置、快取上限 | Low~Medium | 潛在，待實測 | M |
+| 8 | S-1 | FFmpeg 搜尋順序 | Low~Medium | 已確認 | S |
+| 9 | Q-9 | 配樂漂移校正可能重複排入佇列 | Low~Medium | 潛在，待確認 | S |
+| 10 | P-4 | 其餘 Core 類別沒有 `ConfigureAwait(false)` | Low | 已確認（部分已處理） | S |
+| 11 | 其餘 | A-3、A-5、A-6、Q-7、Q-8、Q-10、Q-11、Q-12、W-3~W-9、P-7、P-9、S-5、T-3~T-7 | Low | — | S |
 
 **已關閉或下調**：A-4 事件洩漏（不成立）；A-3 下調為 Low；`PreviewEngine.cs:326`／`:384` 的 `.Result`（不會阻塞，不成立）。
 
@@ -244,12 +237,6 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 - **問題**：視窗同時持有 Timeline 模型、Editor、媒體清單、入出點、預覽引擎、波形快取、匯出與匯入控制器，以及 4 個避免事件循環的 `_updatingXxx` 旗標。partial 只是切分檔案，不是切分職責。
 - **影響**：狀態同步靠手動呼叫（`UpdateMarks()`、`UpdateOutputInfo()`…），新增功能時漏呼叫就會畫面不同步；UI 邏輯無法單元測試。
 - **建議**：先抽「狀態＋規則」到 Core（例如 `_selectedMedia`、`_points`、`_surface*` 與模式判斷）並補測試。不建議全面導入 MVVM。
-
-#### A-2　Core 命名空間有循環相依
-- **Medium／已確認**
-- **位置**：`Ffmpeg/*` 與 `Export/*` 互相 `using`；`Timeline/Timeline.cs:57`（`Export.ReverseGraph.FirstFrameAtOrAfter`）、`:147`、`:247`（`Ffmpeg.FrameExtractor.FrameIndex`）
-- **問題**：時間軸模型為了取得影格索引這類純數學函式，依賴負責啟動 FFmpeg 的類別，並用完整限定名繞過 `using`。
-- **建議**：把這類純函式搬到 `Models` 或獨立的 `FrameMath`，低風險。
 
 #### A-3　FFmpeg 缺失時欄位為 null（已下調）
 - **Low／已確認（部分驗證）**
@@ -269,45 +256,12 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 ### 8.2 程式碼品質（Q）
 
 #### Q-1　`PreviewEngine` 職責過多
-- **Medium／已確認**
-- **位置**：`Preview/PreviewEngine.cs`（769 行，約 35 個欄位、18 個常數）
+- **Medium／已確認（部分已處理）**
+- **位置**：`Preview/PreviewEngine.cs`（約 765 行，約 35 個欄位、12 個常數）
 - **問題**：同時負責播放時鐘與漂移校正、LibVLC 兩個播放器的指令佇列、倒帶（FFmpeg 成批解碼）、逐格擷取與預取與 LRU 快取、倒放預覽檔等待。
-- **影響**：欄位互相牽動，修改難以確認副作用；直接依賴 `LibVLC`、`DispatcherTimer`、`WriteableBitmap`，無法單元測試。
-- **建議**：先把與 UI／VLC 無關的規則抽到 Core（時鐘與漂移判斷、影格範圍計算、倒帶批次規劃）。Core 已有 `PreviewPlanner` 與 `FrameBatch` 可作為落腳處。
-
-#### Q-2　`Enqueue` 例外過濾過窄，`Dispose` 可能因此拋出例外
-- **Medium／潛在**
-- **位置**：`PreviewEngine.cs:472-482`（`Enqueue`）、`:762`（`_commands.Wait(...)`）
-- **問題**：`Enqueue` 只攔 `VLCException` 與 `InvalidOperationException`。其他例外會讓該 Task 進入 Faulted，且無人觀察；後續的 `ContinueWith` 不檢查前一個 Task 狀態，佇列照常繼續。`Dispose` 對最後一個 Task 呼叫 `Wait`，若它是 Faulted 會拋出 `AggregateException`，使後面的 `_videoPlayer.Dispose()`、`_vlc.Dispose()`、`_proxies.Dispose()` 都不會執行。
-- **影響**：關閉視窗時可能留下 libvlc 資源與倒放暫存資料夾（暫存資料夾下次啟動由 `CleanupStale` 清掉）。
-- **建議**：`Enqueue` 內攔截所有例外並回報；`Dispose` 改為 `try { Wait } catch`。
-- **待確認**：VLC 呼叫實際是否會丟出其他型別的例外。
-
-#### Q-3　`Dispose` 在 UI 執行緒等待，逾時後仍釋放播放器
-- **Low~Medium／潛在**
-- **位置**：`PreviewEngine.cs:762`
-- **問題**：`Wait(2 秒)` 的回傳值被忽略；逾時後直接 `Dispose` 播放器，背景佇列中仍在執行的 `Play`／`Stop` 可能與 `Dispose` 同時進行。
-- **建議**：檢查回傳值，逾時時不要繼續操作已釋放的物件。
-
-#### Q-4　`ExportService.ExportAsync` 依賴 `plan.Arguments` 的隱含格式
-- **Medium／已確認**
-- **位置**：`Export/ExportService.cs`，`ExportAsync` 開頭：`ReverseGraph.Resolve(plan.Arguments.Take(plan.Arguments.Count - 1), work).Append(temporary)`
-- **問題**：假設 `ExportPlanner` 產生的參數清單最後一個元素就是輸出路徑，直接丟掉再接上暫存檔路徑。這個契約只存在於兩個類別的默契中。
-- **影響**：若之後在輸出路徑後追加參數或調整順序，匯出會產生錯誤的命令列，且是靜默的。
-- **建議**：讓 `ExportPlan` 把「輸出前的參數」與「輸出路徑」分開存放。
-- **待確認**：`ExportPlanner` 端是否有測試鎖住這個行為。
-
-#### Q-5　`TemporaryFiles.Retry` 使用 `Thread.Sleep`，可能在 UI 執行緒執行
-- **Low~Medium／潛在**
-- **位置**：`Ffmpeg/TemporaryFiles.cs:34`（最多 20 次 × 100 ms，約 2 秒）
-- **問題**：`ExportService.ExportAsync` 的 `finally` 呼叫 `DeleteDirectory(work)`；Core 的 `await` 沒有 `ConfigureAwait(false)`，從 UI 執行緒呼叫時 `finally` 會回到 UI 執行緒。檔案被佔用時 UI 最多卡約 2 秒。`ReversePreviewCache.Dispose` 在 `OnClosed` 也呼叫同一個方法。
-- **建議**：在非同步路徑改用 `await Task.Delay`，或把清理放進 `Task.Run`。
-
-#### Q-6　兩個 `async void` 路徑沒有 `try/catch`
-- **Low／潛在**
-- **位置**：`MainWindow.Export.cs:48`（`OnExportClick`）、`MainWindow.xaml.cs:97-101`（`Loaded` 的 async lambda）；對照 `MainWindow.Import.cs:32`（`RunImport` 有完整處理）
-- **問題**：`ExportController.RunAsync` 只攔截特定例外；其他例外（例如 `ProcessRunner.Start` 丟出的 `InvalidOperationException`）會從 `async void` 逸出，最終由全域處理器顯示完整堆疊的對話框。UI 狀態由 `finally` 還原，不會卡死。
-- **建議**：與 `RunImport` 採同一模式，在 UI 邊界包一層 `try/catch`。
+- **已處理**：播放位置、倒帶位置與漂移判斷（`PlaybackClock`）、倒帶時要顯示哪一格與下一批要解哪一格（`RewindPlan`）、影格範圍與預設影格率（`FrameMath`、`MediaInfo.EffectiveFrameRate`）已抽到 Core 並有測試。
+- **仍待處理**：LibVLC 指令佇列、逐格擷取與預取的狀態（`_extracting`、`_pendingFrame`、`_prefetchCancel`）、快取與播放狀態仍在同一個類別，直接依賴 `LibVLC`、`DispatcherTimer`、`WriteableBitmap`，無法單元測試。
+- **建議**：繼續把與 UI／VLC 無關的規則抽到 Core（逐格請求的合併與取消規則可以先做）；涉及執行緒與 LibVLC 的部分建議等 Windows 實測後再動。
 
 #### Q-7　命名空間 `VideoEditor.Core.Timeline` 與類別 `Timeline` 同名
 - **Low／已確認**：每個檔案都要加 `using TimelineModel = …` 別名；`MainWindow.xaml` 的 `x:Name="Timeline"` 也與類別同名。建議改名（機械式重構）。
@@ -333,13 +287,6 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 - **Low／已確認**：`TimelineClip.Volume` 是 `public set` 且無範圍驗證（其他欄位為 `internal set`）；`ClipModels.cs`、`MainWindow.Export.cs` 等複製整份 `using`；`ProcessRunner.Started` 靜態事件僅供測試使用；`Timeline.Duration` 每次存取都用 LINQ 重算。
 
 ### 8.3 WPF（W）
-
-#### W-1　快捷鍵處理沒有檢查修飾鍵
-- **Medium／已確認**
-- **位置**：`MainWindow.Playback.cs:56-61`（`OnPreviewKeyDown`）、`Core/Playback/PreviewCommand.cs:31-47`（`FromKeyName`）
-- **問題**：處理器只看 `e.Key.ToString()`，不檢查 `Keyboard.Modifiers`（App 內只有 `TimelineView` 的 3 處用到）。因此 **Ctrl+S 會分割選取的片段**，Ctrl+I／Ctrl+O 會標記入出點，Ctrl+L／J／K／Delete 也會觸發；處理器在 Tunnel 階段並設 `e.Handled = true`。
-- **影響**：使用者習慣性按 Ctrl+S（存檔）會讓片段在播放頭被切開。本專案沒有存檔也沒有復原，所以這個習慣動作很可能發生，且無法還原。
-- **建議**：只在沒有 Ctrl／Alt／Windows 鍵時才處理，Shift 可保留。
 
 #### W-2　播放時每個 tick 都重繪整個時間軸
 - **Medium／潛在，待實測**
@@ -374,38 +321,22 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 
 ### 8.4 穩定性與效能（P）
 
-#### P-1　啟動時同步清理上次遺留的暫存資料夾
-- **Low~Medium／已確認程式行為**
-- **位置**：`MainWindow.xaml.cs:72`（`ReversePreviewCache.CleanupStale()`）、`ReversePreviewCache.cs:137-144`
-- **問題**：在視窗建構子內同步執行；上次當機時若留下大量倒放中間檔（FFV1 無損，可能數 GB），視窗會遲遲不出現。
-- **建議**：改成 `Loaded` 之後以背景工作執行。
-
-#### P-2　對 FFmpeg 行程沒有逾時，前景預覽請求不可取消
-- **Medium／潛在**
-- **位置**：`PreviewEngine.cs:669-675`（要顯示的畫面一律用 `CancellationToken.None`）、`:633`；`ProcessRunner.cs` 全部方法都沒有逾時；`ImportController.ImportAsync` 沒有 `CancellationToken` 參數
-- **問題**：`_extracting` 在迴圈結束前一直為 `true`；若某個 FFmpeg 因損毀檔案或網路磁碟卡住，之後所有 `ShowFrameAtPosition` 只更新 `_pendingFrame`，**預覽畫面會凍結到重啟**。匯入逐檔依序處理，一個 `ffprobe` 卡住會讓整批與進度面板都卡住，使用者無法取消。
-- **建議**：對探測與單格擷取加上逾時（例如 30 秒）並終止行程；`ImportAsync` 接受 `CancellationToken` 並提供取消。
-
 #### P-3　預覽影格的記憶體：LOH 配置與快取上限
 - **Low~Medium／潛在，待實測**
 - **位置**：`ProcessRunner.cs:86`、`:92`（每格 `new byte[chunkSize]`）、`PreviewEngine.cs` 常數（`MaxPreviewLongSide = 1280`、`FrameCacheCapacity = 64`）
 - **問題**：每格配置寬 × 高 × 4 位元組（1280×720 約 3.5 MiB），遠超 LOH 門檻 85,000 位元組；倒帶與逐格移動時不斷產生與丟棄，容易引發第 2 代 GC。快取上限（由常數估算）16:9 約 225 MiB、1:1 約 400 MiB。
 - **建議**：先量測；確認後改用 `ArrayPool<byte>` 或重用被淘汰的緩衝區，並考慮調降快取上限。
 
-#### P-4　Core 類別庫幾乎不使用 `ConfigureAwait(false)`
-- **Low~Medium／已確認**：在讀過的 Core 檔案中，只有 `ReversePreviewCache.RenderAsync` 有使用。從 UI 執行緒呼叫時，影格讀取迴圈、`finally` 內的檔案刪除（Q-5 的根本原因）、匯出進度處理都會回到 UI 執行緒。目前沒有死結（沒有同步等待）。建議統一加 `.ConfigureAwait(false)` 並用 CA2007 強制。
-
-#### P-5　非取消例外不會終止子行程，且沒有 Job Object
-- **Low~Medium／潛在，待確認**
-- **位置**：`ProcessRunner.cs`：只有 `RunWithStreamAsync`（111-119 行）有「例外時 `KillQuietly` 再 `throw`」，`RunForBytesAsync`、`RunForChunksAsync`、`RunWithLinesAsync` 沒有。
-- **問題**：這三個方法在非取消例外時，`using var process` 只釋放 `Process` 物件，不會結束實際子行程；主程式被強制結束時，匯出中的 `ffmpeg.exe` 是否自行結束待確認。
-- **建議**：把 `RunWithStreamAsync` 的保護寫法套到其他三個方法；考慮用 Job Object 綁定子行程生命週期。
+#### P-4　Core 類別庫大多沒有使用 `ConfigureAwait(false)`
+- **Low／已確認（部分已處理）**
+- **已處理**：`ProcessRunner` 內部與匯出收尾已加，逐格讀取不再每次回到 UI 執行緒，匯出收尾的暫存刪除也移到背景。
+- **仍待處理**：其他 Core 類別沒有加。其中 `ImportController`、`ExportController` 在 await 之後要操作畫面，必須留在 UI 執行緒，所以不建議用 CA2007 全域強制。目前沒有死結（沒有同步等待）。
 
 #### P-6　匯出的片段數量有上限
 - **Medium／已確認，設計限制**
-- **位置**：`Export/ExportPlanner.cs:30`（`MaxCommandLength = 30000`）、`:161-162`
-- **問題**：整個濾鏡圖都放在命令列參數，超過約 30,000 字元就丟出 `InvalidOperationException("片段數量過多…")`（會被 `ExportController` 捕捉並顯示成訊息，不會當機）。實際可匯出的片段數待測。
-- **建議**：改用 `-filter_complex_script` 或 `-/filter_complex` 把濾鏡圖寫進暫存檔。
+- **位置**：`Export/ExportPlanner.cs`（`MaxCommandLength = 30000`）
+- **問題**：整個濾鏡圖與每個片段的輸入參數都放在命令列，超過約 30,000 字元就丟出 `InvalidOperationException("片段數量過多…")`（會被 `ExportController` 捕捉並顯示成訊息，不會當機）。實測：素材路徑 8 字元可到 89 個片段、55 字元可到 78 個；已記載在 README「已知限制」。
+- **評估**：每個片段的濾鏡圖約 266 字元、輸入參數約 100 字元。把濾鏡圖搬到腳本檔只能把上限提高到約 300 個，不是解除；真正解除要改成「同一素材只開一次輸入」，會改變解碼與定位行為。腳本檔需要 FFmpeg 7 以上的 `-/filter_complex`（舊版是 `-filter_complex_script`，新版是否保留未驗證），所以要先確認支援的 FFmpeg 版本。
 
 #### P-7　影格快取沒有失效機制，失敗的影格永遠不會重試
 - **Low／已確認**：`_missingFrames`（`PreviewEngine.cs:562-564`、`:686`、`:696`）只增不減；短暫失敗會讓該格被永久標記；來源檔案被外部覆蓋後會顯示舊影格。
@@ -417,9 +348,9 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 | 影格擷取（`ExtractPendingFramesAsync`、`FetchRewindFramesAsync`） | 透過 `Observe()` 轉成錯誤訊息，已知例外各自處理 | 良好 |
 | 波形（`WaveformCache.RunAsync`） | 全部攔截並觸發 `Failed` | 良好 |
 | 倒放預覽產生 | 失敗存在 Task 內，播放等待時才回報；`Sync` 對被捨棄項目的 `ContinueWith` 未觀察例外 | 可接受 |
-| `PreviewEngine.Enqueue` | 只攔 2 種例外 | 有缺口（Q-2） |
-| `async void`（匯出、載入） | 沒有 `try/catch` | 見 Q-6 |
-| 全域 | 只有 `DispatcherUnhandledException`，沒有其他處理與紀錄 | 見 T-1 |
+| `PreviewEngine.Enqueue` | 攔截所有例外並記錄、回報 | 良好 |
+| `async void`（匯出、載入） | 有 `try/catch`，錯誤顯示在狀態列並記錄 | 良好 |
+| 全域 | `DispatcherUnhandledException`、`AppDomain.UnhandledException`、`UnobservedTaskException` 都會寫入紀錄 | 良好 |
 
 #### P-9　其他效能觀察
 - **Low／已確認**：`Timeline.Move`（`Timeline.cs:171-189`）每次滑鼠移動為 O(n²) 並用 LINQ 配置，100 個片段時約 2 萬次比較，影響很小；`Timeline.Duration`、`VideoClipAt` 每次呼叫都重新走訪，片段數少時可忽略。
@@ -434,45 +365,28 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 - **建議**：忽略相對路徑的 `PATH` 項目；在 UI 顯示實際使用的 FFmpeg 路徑與版本。
 
 #### S-2　不受信任的媒體檔直接交給 FFmpeg 與 LibVLC 解析
-- **Low~Medium／潛在，可利用性待確認**
-- **位置**：`MediaProbe.cs:13`、`FrameExtractor.cs`、`WaveformExtractor.cs:24`、`ExportPlanner.cs:107`、`PreviewEngine.cs:339`（`new Media(_vlc, path)`）
-- **問題**：全專案沒有 `-protocol_whitelist`；FFmpeg 依檔案內容判斷格式，已知手法是以精心製作的播放清單類檔案（可偽裝成 `.mp4`）讓 FFmpeg 讀取其他本機檔案或對外發出網路請求（是否可行取決於 FFmpeg 版本與組建）。LibVLC 是原生程式碼，預設載入網路存取模組。使用者自備的 FFmpeg 沒有版本管理（CI 固定的版本只影響測試）。
-- **建議**：對處理使用者媒體的呼叫在 `-i` 之前加 `-protocol_whitelist file`（需用現有整合測試驗證不影響倒放的 concat 清單）；查證 LibVLC 3.0.x 能否以啟動選項停用網路模組；文件說明風險並建議使用最新版 FFmpeg。
-
-#### S-3　`ffprobe` 的路徑是位置參數
-- **Low／已確認程式行為，可利用性極低**
-- **位置**：`MediaProbe.cs:13`、`MainWindow.xaml.cs:100`（`GetCommandLineArgs().Skip(1).Where(File.Exists)`）
-- **問題**：命令列來源的相對路徑若以 `-` 開頭，會被 `ffprobe` 當成選項；單一 argv 無法同時帶選項與值，實際危害很難成立。其餘 FFmpeg 呼叫都用 `-i`，不受影響。
-- **建議**：路徑先轉成絕對路徑；`ffprobe` 也改用 `-i`。
-
-#### S-4　未處理例外對話框顯示完整堆疊與路徑
-- **Low／已確認**：`App.xaml.cs:10-14`；`FfmpegException.Stderr` 也原樣顯示。本機單人工具風險很低，只有使用者公開貼出截圖時才會洩漏路徑（常含使用者名稱）。建議對話框顯示簡短訊息，細節寫入紀錄（見 T-1）。
+- **Low~Medium／部分已處理**
+- **已處理**：所有 FFmpeg／ffprobe 的輸入都加了 `-protocol_whitelist file`，偽裝成 .mp4 的播放清單不能再把 FFmpeg 導向網路。
+- **仍待處理**：(1) 白名單只擋網路協定，播放清單類檔案仍可能被導向讀取其他本機檔案（是否可行取決於 FFmpeg 版本與組建）；(2) LibVLC 是原生程式碼，預設載入網路存取模組，沒有處理；(3) 使用者自備的 FFmpeg 沒有版本管理。
+- **建議**：查證 LibVLC 3.0.x 能否以啟動選項停用網路模組；文件說明風險並建議使用最新版 FFmpeg。
 
 #### S-5　`Preflight` 的路徑檢查有小缺口
 - **Low／已確認**
 - **位置**：`Export/ExportService.cs:26`、`:36`、`:39-42`、`:33`
 - **問題**：`Path.GetFullPath` 與 `GetDirectoryName(...)!` 在 `try` 之外，格式不合法時可能丟出未被攔截的例外（實際上 `SaveFileDialog` 已先過濾）；可寫入探測建立 `.write-test-<guid>` 後若 `Delete` 失敗會留下殘檔；「輸出不能與來源相同」只比對完整路徑字串，不處理硬連結、符號連結、8.3 短檔名；`CreateDirectory` 在使用者確認前就建立資料夾。
 
-#### S-6　媒體中繼資料沒有合理性上限
-- **Low~Medium／潛在，待確認**：`MediaProbe.Parse` 對寬、高、影格率、長度皆未設上限；惡意或損毀檔案宣稱極端值時，`ReverseGraph.Split` 可能規劃出大量區塊而耗盡記憶體、時間軸寬度變得極大。屬於「自己匯入檔案後自己當機」的阻斷服務。建議在 `Parse` 內加範圍檢查。
-
-#### S-7　縮圖解碼失敗會中斷整批匯入
-- **Low／已確認程式路徑**
-- **位置**：`MainWindow.Import.cs:47`、`:76-84`；`ImportController.cs:54-55`
-- **問題**：縮圖在 `AddMedia` 內由 `BitmapImage` 解碼，失敗時丟出的 `NotSupportedException`／`FileFormatException` 不在例外過濾清單內（`FileFormatException` 不是 `IOException`），會跳出迴圈，同批其餘檔案不再匯入。縮圖來自 FFmpeg 的 `mjpeg` 輸出，正常不會損毀，機率低。
-- **建議**：縮圖解碼包進自己的 `try/catch`，失敗時回傳 `null`。
-
 #### S-8　相依套件與供應鏈
-- **Low~Medium／待確認**：`LibVLCSharp 3.10.2` 與 `VideoLAN.LibVLC.Windows 3.0.24` 是否有已知漏洞待查（LibVLC 是原生解碼器，攻擊面較大）；沒有 `packages.lock.json`、沒有 Dependabot 設定；CI 的 Actions 以版本標籤（`@v7`、`@v6`）而非 commit SHA 引用；FFmpeg 透過 Chocolatey 固定版本安裝。
+- **Low~Medium／部分已處理**
+- **已處理**：已啟用 Dependabot（NuGet 與 GitHub Actions，每週）。
+- **仍待處理**：`LibVLCSharp 3.10.2` 與 `VideoLAN.LibVLC.Windows 3.0.24` 是否有已知漏洞待查（LibVLC 是原生解碼器，攻擊面較大）；沒有 `packages.lock.json`；CI 的 Actions 以版本標籤（`@v7`、`@v6`）而非 commit SHA 引用；FFmpeg 透過 Chocolatey 固定版本安裝。
 
 ### 8.6 測試與維護性（T）
 
-#### T-1　沒有任何 Logging
-- **Medium／已確認**：全專案沒有紀錄機制，也沒有 `TaskScheduler.UnobservedTaskException`／`AppDomain.UnhandledException` 處理。錯誤只顯示成對話框或狀態列，Q-2、P-8、S-4 中的靜默失敗事後無從查證。
-- **建議**：加入最小的檔案紀錄（`%LOCALAPPDATA%`），記錄未處理例外、FFmpeg 命令列與錯誤輸出尾段；注意路徑可能含使用者名稱。
-
-#### T-2　App 層（約 46%）沒有自動化測試
-- **Medium／已確認**：`PreviewEngine`、`TimelineView`、`MainWindow.*`、`VlcVideoSink`、`ProgressOverlay` 約 2,600 行沒有測試。不需要引入 UI 自動化，延續目前做法，把規則抽進 Core 再測試即可。
+#### T-2　App 層沒有自動化測試
+- **Medium／已確認（部分已處理）**
+- **現況**：`PreviewEngine`、`TimelineView`、`MainWindow.*`、`VlcVideoSink`、`ProgressOverlay` 約 2,700 行仍沒有測試。不需要引入 UI 自動化，延續目前做法，把規則抽進 Core 再測試即可。
+- **已處理**：預覽時鐘與漂移判斷、倒帶挑格、快捷鍵修飾鍵判斷、時間軸的命中區域與移動貼齊規則已抽到 Core 並補測試。
+- **仍待處理**：`MainWindow` 的狀態與視窗事件接線、逐格擷取狀態機、波形與倒放預覽的 UI 協調。
 
 #### T-3　部分 Core 類別沒有直接的測試引用
 - **Low／待確認**：以類別名稱搜尋，`PreviewGeometry`（64 行）與 `TemporaryFiles` 在測試目錄 0 個檔案出現（後者可能被間接覆蓋）。請以覆蓋率報告確認。
@@ -493,35 +407,18 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 
 ## 9. 建議後續改善路線
 
-> 這是建議，不是已執行的變更。每一階段完成後建議重新執行建置與測試。
+> 階段 1 到階段 4 的主要項目已完成（PR #39、#43），這裡只留尚未做的。每一階段完成後建議重新執行建置與測試。
 
-### 階段 0：先在 Windows 上驗證（不改程式碼）
-1. 執行 `dotnet build` 與 `dotnet test`，確認目前 0 失敗，記錄警告數。
+### 階段 0：在 Windows 上驗證（不改程式碼）
+1. `dotnet build` 與 `dotnet test` 已由 CI（`windows-latest`、FFmpeg 9.0.2）執行並通過；可再記錄警告數。
 2. 執行 `dotnet list package --vulnerable --include-transitive`（S-8）。
 3. 用 Visual Studio 診斷工具量測播放時的 CPU 與 GC（W-2、P-3）。
-4. 手動測試：Ctrl+S（W-1）、強制結束程式後 FFmpeg 是否結束（P-5）、多片段匯出的上限（P-6）。
+4. 手動測試：Ctrl+S 不分割片段、匯入中途取消、損毀檔案不中斷整批匯入、播放／倒帶／拖曳時間軸、強制結束程式後 FFmpeg 是否結束、多片段匯出的上限（P-6）。
 5. 執行覆蓋率報告（T-3）。
 
-### 階段 1：低成本、高價值的修正（約 1～2 天）
-- W-1：快捷鍵加入修飾鍵檢查。
-- Q-2、Q-3：修正 `Enqueue` 與 `Dispose`。
-- Q-6、S-7、S-3：補齊 `try/catch` 與路徑正規化。
-- Q-4：讓 `ExportPlan` 明確區分輸出路徑。
-- S-8：啟用 Dependabot。
-
-### 階段 2：可觀察性（約 1～2 天）
-- T-1：加入檔案紀錄，並註冊 `UnobservedTaskException` 與 `AppDomain.UnhandledException`。
-- S-4：對話框改為簡短訊息，細節寫入紀錄。
-
-### 階段 3：韌性
-- P-2：加入逾時與匯入取消。
-- P-4、Q-5：Core 加 `ConfigureAwait(false)`，以 CA2007 強制。
-- P-5、P-1、S-2、S-6：子行程處理、啟動清理背景化、`-protocol_whitelist`、中繼資料上限。
-
-### 階段 4：結構改善（逐步，每次一項）
-- A-2：搬移 `FrameIndex`、`FirstFrameAtOrAfter` 等純函式，解開命名空間循環。
-- P-6：改用 `-filter_complex_script`，解除片段數量上限。
-- Q-1、T-2：把播放時鐘與漂移判斷、時間軸拖曳狀態機抽進 Core 並補測試。
+### 階段 4（剩餘）：結構改善
+- P-6：先確認要支援的 FFmpeg 版本，再決定是否把濾鏡圖放進腳本檔（效益約 3.7 倍，見 P-6）。
+- Q-1、T-2：繼續把與 UI／VLC 無關的規則抽進 Core 並補測試。
 
 ### 階段 5：視需要
 - W-2：依階段 0 的量測結果，決定是否分離播放頭的繪製。
@@ -533,20 +430,16 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 
 | # | 內容 | 如何確認 |
 |---|---|---|
-| 1 | 目前建置警告數與測試是否全數通過 | Windows 上 `dotnet build`、`dotnet test` |
-| 2 | LibVLCSharp 與 libvlc 套件的已知漏洞 | `dotnet list package --vulnerable --include-transitive` |
-| 3 | 預覽影格的 GC 暫停是否可感、快取實際記憶體（P-3） | `dotnet-counters` 或 Visual Studio 診斷工具 |
-| 4 | 播放時時間軸重繪的實際成本（W-2） | Profiler |
-| 5 | 主程式被強制結束時 FFmpeg 是否自行結束（P-5） | 匯出中結束程式後觀察 `ffmpeg.exe` |
-| 6 | 實際可匯出的片段數上限（P-6） | 以多片段專案測試 |
-| 7 | FFmpeg 是否會跟隨偽裝成 `.mp4` 的播放清單去讀本機檔案或連網（S-2） | 在隔離環境用使用者的 FFmpeg 版本測試 |
-| 8 | LibVLC 3.0.x 能否以啟動選項停用網路模組（S-2） | 查閱 VLC 3.0 文件 |
-| 9 | 匯出同時使用預覽時，兩個 FFmpeg 各最多約 512 MiB 緩衝是否使低記憶體電腦過載 | 實測 |
-| 10 | 連按兩次關閉鈕時，第二次會略過取消等待（`_closingAfterExport` 已為 `true`），視窗可能在清理 `.part` 暫存檔前結束 | 實際操作 |
-| 11 | VLC 呼叫實際是否會丟出 `VLCException`／`InvalidOperationException` 以外的例外（Q-2） | 執行觀察 |
-| 12 | `ExportPlanner` 是否有測試鎖住「輸出路徑為最後一個參數」的行為（Q-4） | 閱讀 `ExportControllerTests`／`ExportIntegrationTests` |
-| 13 | `PreviewGeometry`、`TemporaryFiles` 是否被間接覆蓋（T-3） | 覆蓋率報告 |
-| 14 | 傳給 `SetVideoCallbacks` 的委派是否被 LibVLCSharp 內部持有（W-8） | 查閱 LibVLCSharp 3.10.2 原始碼 |
+| 1 | LibVLCSharp 與 libvlc 套件的已知漏洞 | `dotnet list package --vulnerable --include-transitive` |
+| 2 | 預覽影格的 GC 暫停是否可感、快取實際記憶體（P-3） | `dotnet-counters` 或 Visual Studio 診斷工具 |
+| 3 | 播放時時間軸重繪的實際成本（W-2） | Profiler |
+| 4 | 主程式被強制結束時，匯出中的 FFmpeg 是否自行結束（必要時再考慮 Job Object） | 匯出中結束程式後觀察 `ffmpeg.exe` |
+| 5 | FFmpeg 是否會跟隨偽裝成 `.mp4` 的播放清單去讀本機檔案或連網（S-2） | 在隔離環境用使用者的 FFmpeg 版本測試 |
+| 6 | LibVLC 3.0.x 能否以啟動選項停用網路模組（S-2） | 查閱 VLC 3.0 文件 |
+| 7 | 匯出同時使用預覽時，兩個 FFmpeg 各最多約 512 MiB 緩衝是否使低記憶體電腦過載 | 實測 |
+| 8 | 連按兩次關閉鈕時，第二次會略過取消等待（`_closingAfterExport` 已為 `true`），視窗可能在清理 `.part` 暫存檔前結束 | 實際操作 |
+| 9 | `PreviewGeometry`、`TemporaryFiles` 是否被間接覆蓋（T-3） | 覆蓋率報告 |
+| 10 | 傳給 `SetVideoCallbacks` 的委派是否被 LibVLCSharp 內部持有（W-8） | 查閱 LibVLCSharp 3.10.2 原始碼 |
 
 ---
 
