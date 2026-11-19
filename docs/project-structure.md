@@ -52,6 +52,8 @@ dotnet test                                      # 全部，需要 ffmpeg.exe／
 dotnet test --filter "Category!=Integration"     # 只跑不需要 FFmpeg 的測試
 ```
 
+套件以 `packages.lock.json` 鎖定（`Directory.Build.props` 開啟），CI 用鎖定模式還原。更新套件後要重新產生鎖定檔：`dotnet restore --force-evaluate`（Linux 加 `-p:EnableWindowsTargeting=true`），再把變動的 `packages.lock.json` 一併提交。Dependabot 的套件更新 PR 會自動更新它。CI 也會收集覆蓋率並上傳成 artifact（`coverage`），工作摘要裡列出覆蓋率最低的檔案。
+
 整合測試用 `[Collection("media")]` 共用一組由 FFmpeg 當場產生的短片（`TestMedia`），標了 `Category=Integration`。在 Linux 上可以編譯整個 solution（`-p:EnableWindowsTargeting=true`），但 WPF 畫面只能在 Windows 上執行與驗證。CI（`.github/workflows/ci.yml`）在 Windows 上建置、測試並驗證發佈資料夾。
 
 ## 規劃文件
