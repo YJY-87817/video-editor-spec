@@ -171,14 +171,6 @@ public class EditPointsTests
         points.SetOut(4);
         Assert.Equal([0, 1.5, 4, 10], EditPoints.Source(Media(), points));
     }
-
-    [Theory]
-    [InlineData("S", PreviewCommand.SplitClip)]
-    [InlineData("PageUp", PreviewCommand.PreviousEditPoint)]
-    [InlineData("Prior", PreviewCommand.PreviousEditPoint)]
-    [InlineData("PageDown", PreviewCommand.NextEditPoint)]
-    [InlineData("Next", PreviewCommand.NextEditPoint)]
-    public void Keys(string key, PreviewCommand command) => Assert.Equal(command, PreviewKeys.FromKeyName(key));
 }
 
 public class ClipSnapTests

@@ -2,6 +2,8 @@
 
 依 [video-editor-spec.md](video-editor-spec.md) 實作的 Windows 影片編輯工具（C# / WPF）。
 
+開發者請先看 [專案結構導覽](docs/project-structure.md)。
+
 ## 執行
 
 需要 .NET 10 SDK，以及 `ffmpeg.exe` 與 `ffprobe.exe`（放在程式目錄的 `tools\ffmpeg`，或加入 PATH；PATH 裡的相對路徑項目會被略過，要用完整路徑）。程式啟動時會把實際使用的 FFmpeg 路徑與版本寫進紀錄，狀態列沒有其他訊息時也會顯示一次。FFmpeg 必須含 libx264 與 libx265。

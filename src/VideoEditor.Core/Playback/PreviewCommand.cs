@@ -33,6 +33,15 @@ public enum KeyModifiers
     Windows = 8,
 }
 
+/// <summary>
+/// 預覽快捷鍵用到的按鍵。App 端把 WPF 的 <c>Key</c> 以 switch 對應過來（拼錯會編譯失敗），核心不必依賴 WPF，
+/// 按鍵也不必每次轉成字串。WPF 的 <c>Key.Prior</c>／<c>Key.Next</c> 與 <c>Key.PageUp</c>／<c>Key.PageDown</c> 是同一個值。
+/// </summary>
+public enum PreviewKey
+{
+    Space, J, K, L, Left, Right, I, O, Delete, S, PageUp, PageDown,
+}
+
 public static class PreviewKeys
 {
     /// <summary>
@@ -41,25 +50,21 @@ public static class PreviewKeys
     /// </summary>
     public static bool ShouldHandle(KeyModifiers modifiers) => modifiers == KeyModifiers.None;
 
-    /// <summary>
-    /// 快捷鍵對應的指令。keyName 是 WPF <c>Key</c> 列舉的名稱（<c>e.Key.ToString()</c>），
-    /// 這樣核心不必依賴 WPF。沒有對應的按鍵回傳 null。
-    /// </summary>
-    public static PreviewCommand? FromKeyName(string keyName) => keyName switch
+    /// <summary>快捷鍵對應的指令。每個 <see cref="PreviewKey"/> 都有對應的指令。</summary>
+    public static PreviewCommand FromKey(PreviewKey key) => key switch
     {
-        "Space" => PreviewCommand.TogglePlay,
-        "J" => PreviewCommand.Rewind,
-        "K" => PreviewCommand.Pause,
-        "L" => PreviewCommand.PlayOrFaster,
-        "Left" => PreviewCommand.StepBack,
-        "Right" => PreviewCommand.StepForward,
-        "I" => PreviewCommand.MarkIn,
-        "O" => PreviewCommand.MarkOut,
-        "Delete" => PreviewCommand.DeleteClip,
-        "S" => PreviewCommand.SplitClip,
-        // Key.PageUp 與 Key.Prior、Key.PageDown 與 Key.Next 是同一個值，轉成文字可能是其中任一個。
-        "PageUp" or "Prior" => PreviewCommand.PreviousEditPoint,
-        "PageDown" or "Next" => PreviewCommand.NextEditPoint,
-        _ => null,
+        PreviewKey.Space => PreviewCommand.TogglePlay,
+        PreviewKey.J => PreviewCommand.Rewind,
+        PreviewKey.K => PreviewCommand.Pause,
+        PreviewKey.L => PreviewCommand.PlayOrFaster,
+        PreviewKey.Left => PreviewCommand.StepBack,
+        PreviewKey.Right => PreviewCommand.StepForward,
+        PreviewKey.I => PreviewCommand.MarkIn,
+        PreviewKey.O => PreviewCommand.MarkOut,
+        PreviewKey.Delete => PreviewCommand.DeleteClip,
+        PreviewKey.S => PreviewCommand.SplitClip,
+        PreviewKey.PageUp => PreviewCommand.PreviousEditPoint,
+        PreviewKey.PageDown => PreviewCommand.NextEditPoint,
+        _ => throw new ArgumentOutOfRangeException(nameof(key), key, "沒有對應的預覽指令"),
     };
 }

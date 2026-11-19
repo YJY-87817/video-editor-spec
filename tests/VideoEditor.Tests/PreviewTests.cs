@@ -135,24 +135,30 @@ public class PlaybackTextTests
 public class PreviewKeysTests
 {
     [Theory]
-    [InlineData("Space", PreviewCommand.TogglePlay)]
-    [InlineData("J", PreviewCommand.Rewind)]
-    [InlineData("K", PreviewCommand.Pause)]
-    [InlineData("L", PreviewCommand.PlayOrFaster)]
-    [InlineData("Left", PreviewCommand.StepBack)]
-    [InlineData("Right", PreviewCommand.StepForward)]
-    [InlineData("I", PreviewCommand.MarkIn)]
-    [InlineData("O", PreviewCommand.MarkOut)]
-    [InlineData("Delete", PreviewCommand.DeleteClip)]
-    public void ShortcutsMapToCommands(string key, PreviewCommand expected) =>
-        Assert.Equal(expected, PreviewKeys.FromKeyName(key));
+    [InlineData(PreviewKey.Space, PreviewCommand.TogglePlay)]
+    [InlineData(PreviewKey.J, PreviewCommand.Rewind)]
+    [InlineData(PreviewKey.K, PreviewCommand.Pause)]
+    [InlineData(PreviewKey.L, PreviewCommand.PlayOrFaster)]
+    [InlineData(PreviewKey.Left, PreviewCommand.StepBack)]
+    [InlineData(PreviewKey.Right, PreviewCommand.StepForward)]
+    [InlineData(PreviewKey.I, PreviewCommand.MarkIn)]
+    [InlineData(PreviewKey.O, PreviewCommand.MarkOut)]
+    [InlineData(PreviewKey.Delete, PreviewCommand.DeleteClip)]
+    [InlineData(PreviewKey.S, PreviewCommand.SplitClip)]
+    [InlineData(PreviewKey.PageUp, PreviewCommand.PreviousEditPoint)]
+    [InlineData(PreviewKey.PageDown, PreviewCommand.NextEditPoint)]
+    public void ShortcutsMapToCommands(PreviewKey key, PreviewCommand expected) =>
+        Assert.Equal(expected, PreviewKeys.FromKey(key));
 
-    [Theory]
-    [InlineData("A")]
-    [InlineData("F1")]
-    [InlineData("j")] // WPF 的按鍵名稱一律大寫
-    [InlineData("")]
-    public void OtherKeysAreIgnored(string key) => Assert.Null(PreviewKeys.FromKeyName(key));
+    [Fact]
+    public void EveryKeyHasACommand()
+    {
+        foreach (var key in Enum.GetValues<PreviewKey>()) PreviewKeys.FromKey(key); // 沒有對應會丟例外
+    }
+
+    [Fact]
+    public void UnknownKeyIsRejected() =>
+        Assert.Throws<ArgumentOutOfRangeException>(() => PreviewKeys.FromKey((PreviewKey)999));
 
     [Fact]
     public void ShortcutsAreHandledOnlyWithoutModifiers() => Assert.True(PreviewKeys.ShouldHandle(KeyModifiers.None));

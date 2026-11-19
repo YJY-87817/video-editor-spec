@@ -3,7 +3,7 @@
 - **專案**：個人影片編輯器（`video-editor-spec` 倉庫，3 個專案）
 - **報告日期**：2026-11-18
 - **性質**：原始分析是唯讀的靜態分析：沒有修改、新增、刪除或移動任何專案檔案，也沒有建置或執行測試（分析環境是 Linux，無法建置 WPF）。之後依本報告做的修改見「處理進度」。
-- **處理進度**：2026-11-19 起，已處理的項目已從本報告移除（階段 1 到階段 4 的主要項目，見 PR #39、#43、#45 與之後的修正），已移除的 ID：A-2、A-5、Q-2、Q-3、Q-4、Q-5、Q-6、Q-7、Q-9、S-1、W-1、W-6、P-1、P-2、P-5、S-3、S-4、S-6、S-7、T-1、T-4。只處理一部分的項目（Q-1、T-2、S-2、S-5、S-8、P-4、P-6、Q-8、W-3）只保留尚待處理的部分。完整歷史見 git。
+- **處理進度**：2026-11-19 起，已處理的項目已從本報告移除（階段 1 到階段 4 的主要項目，見 PR #39、#43、#45 與之後的修正），已移除的 ID：A-2、A-5、Q-2、Q-3、Q-4、Q-5、Q-6、Q-7、Q-9、S-1、W-1、W-6、P-1、P-2、P-5、S-3、S-4、S-6、S-7、T-1、S-5、T-4、W-4、W-8、P-7、Q-11、T-3、T-6、T-7。只處理一部分的項目（Q-1、T-2、S-2、S-8、P-4、P-6、Q-8、Q-12、W-3、W-9）只保留尚待處理的部分。完整歷史見 git。
 - **嚴重程度**：Critical（嚴重錯誤或安全風險）／High（可能造成錯誤、資料遺失或重大維護問題）／Medium（架構或品質問題）／Low（改善建議）
 - **分類**：已確認問題／潛在風險／待確認事項
 
@@ -140,7 +140,7 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 | 複雜條件 | 良好 | 未見過度巢狀 |
 | Nullable | 良好 | 全專案啟用；`!` 抽樣僅 3 處；FFmpeg 缺失時 `_engine` 等欄位為 `null`，使用點都有防護（A-3 已下調） |
 | 例外處理 | 優秀 | 以 `catch (...) when (e is …)` 的窄過濾為主；寬鬆 `catch` 只有 3 處且都有理由；3 處空 `catch` 都有註解；背景指令佇列與 `async void` 的最外層都會攔下例外並記錄 |
-| IDisposable／資源釋放 | 良好 | 行程取消會終止整個行程樹；先寫暫存檔再改名；鎖定檔避免多程式互相清除；少數 `CancellationTokenSource`／`SemaphoreSlim` 未釋放（Q-11） |
+| IDisposable／資源釋放 | 良好 | 行程取消會終止整個行程樹；先寫暫存檔再改名；鎖定檔避免多程式互相清除 |
 | Async／Await | 良好 | 沒有 `.GetAwaiter().GetResult()`；`.Result` 僅 2 處且都先檢查完成；`.Wait` 只有 `Dispose` 一處（有逾時，逾時時略過原生資源釋放）；`async void` 只有 3 處且都是事件處理器並有 `try/catch`；`ProcessRunner` 與匯出收尾已用 `ConfigureAwait(false)`，其餘 Core 類別沒有（P-4） |
 | 靜態與全域狀態 | 良好 | 沒有可變的全域單例；只有 `ProcessRunner.Started` 靜態事件（供測試使用） |
 
@@ -172,7 +172,7 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 | SQL Injection | 不適用（沒有資料庫） |
 | 網路行為 | 程式碼本身沒有任何網路呼叫、自動更新或遙測；外部 FFmpeg／LibVLC 見 S-2 |
 | 外部指令執行 | 只執行 `ffmpeg.exe`／`ffprobe.exe`；使用 `ArgumentList` 與 `UseShellExecute=false`，**沒有 Shell 字串拼接** |
-| 不安全程式碼 | 無 `unsafe`、`DllImport`；只有 `VlcVideoSink` 的 `Marshal.AllocHGlobal`（W-8） |
+| 不安全程式碼 | 無 `unsafe`、`DllImport`；只有 `VlcVideoSink` 的 `Marshal.AllocHGlobal`，已有已釋放旗標與回呼委派參照 |
 | 濾鏡字串注入 | **未發現可行路徑**：進入 `-filter_complex` 的值都是數字、列舉，或 ffprobe 從固定名稱表輸出的字串；`FrameTransform.Filter()` 與 `ClipFraming.CropFilter()` 只輸出固定字串或數值 |
 | 檔案路徑 | 輸出不能與來源相同；暫存檔名含隨機碼並以 `File.Exists` 迴圈避免撞名；倒放清單只含程式自己產生的檔名 |
 | 使用者輸入驗證 | 輸入面很窄（檔案路徑與固定選項），沒有文字輸入欄位 |
@@ -193,7 +193,7 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 | 可測試性設計 | 良好：`IExportView`／`IImportView` 搭配 Fake；建構子可注入 `listEncoders`、`freeSpace`；規則集中在 Core |
 | 覆蓋較多的類別（以測試中的引用次數估計） | `TimelineSnap` 40、`ExportPlanner` 34、`ReverseGraph` 30、`ProcessRunner` 26、`ClipFraming` 15 |
 | Logging | 有：`FileLog`／`Log` 寫到 `%LOCALAPPDATA%\VideoEditor\logs`，記錄未處理的例外、FFmpeg 失敗時的命令列與錯誤輸出、匯出的開始與結果（README 有說明） |
-| 文件 | `README`（執行、發佈、操作、設計決定、已知限制、授權）、規格書（含非目標）、4 份規劃文件（記錄決策與實作結果） |
+| 文件 | `README`（執行、發佈、操作、設計決定、已知限制、授權）、規格書（含非目標）、`docs/project-structure.md`（專案結構導覽）、`docs/` 下 4 份規劃文件（記錄決策與實作結果） |
 | CI | Windows 建置、測試、發佈驗證；固定 FFmpeg 版本；最小權限；沒有收集覆蓋率；已啟用 Dependabot |
 
 ### 6.2 需要注意
@@ -217,7 +217,7 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 | 6 | P-3 | 影格 LOH 配置、快取上限 | Low~Medium | 潛在，待實測 | M |
 | 7 | P-4 | 其餘 Core 類別沒有 `ConfigureAwait(false)` | Low | 已確認（部分已處理） | S |
 | 8 | P-6 | 每個片段的輸入參數仍受命令列長度限制（約 260 到 450 個） | Low~Medium | 已確認（部分已處理） | L |
-| 9 | 其餘 | A-3、A-6、Q-8、Q-10、Q-11、Q-12、W-3~W-5、W-7~W-9、P-7、P-9、S-5、T-3、T-5~T-7 | Low | — | S |
+| 9 | 其餘 | A-3、A-6、Q-8、Q-10、Q-12、W-3、W-5、W-7、W-9、P-9、T-5 | Low | — | S |
 
 **已關閉或下調**：A-4 事件洩漏（不成立）；A-3 下調為 Low；`PreviewEngine.cs:326`／`:384` 的 `.Result`（不會阻塞，不成立）。
 
@@ -266,11 +266,8 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 #### Q-10　執行緒假設與實際不完全一致
 - **Low／待確認**：`PreviewEngine` 類別註解說除 LibVLC 回呼外只在 UI 執行緒使用，但背景佇列會存取 `_videoPlayer`、`_musicPlayer`、`_sink` 與 `PlaybackRate`（`:469`）；`ImportController` 的 `_total`／`_done`／`_queued` 非執行緒安全，依賴一律由 UI 執行緒呼叫，但沒有文件說明。
 
-#### Q-11　少數 `CancellationTokenSource` 與 `SemaphoreSlim` 未釋放
-- **Low／已確認**：`WaveformCache`、`ReversePreviewCache` 的 `_gate`、`_disposed`；`WaveformCache` 失敗的工作會留在 `_tasks` 內，同一素材不會重試（可能是刻意設計，但沒有文件）。
-
 #### Q-12　其他小項目
-- **Low／已確認**：`TimelineClip.Volume` 是 `public set` 且無範圍驗證（其他欄位為 `internal set`）；`ClipModels.cs`、`MainWindow.Export.cs` 等複製整份 `using`；`ProcessRunner.Started` 靜態事件僅供測試使用；`Timeline.Duration` 每次存取都用 LINQ 重算。
+- **Low／已確認（部分已處理）**：`MainWindow.Export.cs` 等檔案複製整份 `using`（約有未使用的）；`ProcessRunner.Started` 靜態事件僅供測試使用。`TimelineClip.Volume` 已加範圍驗證，`Timeline.Duration` 已改為直接走訪。
 
 ### 8.3 WPF（W）
 
@@ -286,20 +283,14 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 - **已處理**：XAML 與 C# 共用的顏色（黃色強調、來源藍）集中到 `Palette`。
 - **仍待處理**：`TimelineView` 與 `MainWindow.Preview.cs` 內單一控制項用的顏色仍寫在原處；所有 UI 文字硬編碼為繁體中文，沒有 `.resx`。
 
-#### W-4　`ProgressOverlay` 隱性依賴宿主視窗的隱含樣式
-- **Low／已確認**：`ProgressOverlay.xaml:121、133、146` 的文字沒有 `Foreground`，顏色來自 `MainWindow.xaml:21-23` 的隱含 `TextBlock` 樣式；換到其他視窗會在深色背景上變成預設黑字。
-
 #### W-5　全域把 `Button`／`RadioButton` 設為 `Focusable=False`
 - **Low／設計取捨**：避免按鈕搶走焦點而吃掉空白鍵與方向鍵，但代價是無法用 Tab 操作按鈕，不利鍵盤無障礙。
 
 #### W-7　資料繫結只有基本用法
 - **Low／已確認**：`MediaItem` 沒有 `INotifyPropertyChanged`，目前縮圖在建立時就設好所以正常；`ClipList` 每次編輯重新指派 `ItemsSource` 並以旗標避免循環。
 
-#### W-8　`VlcVideoSink` 的原生記憶體與回呼生命週期
-- **Low／待確認**：`Dispose` 沒有「已釋放」旗標，之後若再觸發 `OnFormat` 會重新配置且不會釋放（`PreviewEngine.Dispose` 的順序正確，實務上不太會發生）；`CopyLatest` 在持有 `_gate` 鎖時呼叫 `consume`；傳給 `SetVideoCallbacks` 的實例方法委派是否被 LibVLCSharp 內部持有，取決於套件實作。
-
 #### W-9　其他小項目
-- **Low／已確認**：以 `e.Key.ToString()` 傳字串進 Core，每次按鍵都配置字串且拼寫錯誤編譯期抓不到；`FatalPanel` 只擋滑鼠，不擋鍵盤（已確認指令在 `_engine == null` 時都安全）。
+- **Low／已確認（部分已處理）**：`FatalPanel` 只擋滑鼠，不擋鍵盤（已確認指令在 `_engine == null` 時都安全）。快捷鍵已改用 `PreviewKey` 列舉，不再以字串傳遞。
 
 ### 8.4 穩定性與效能（P）
 
@@ -320,9 +311,6 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 - **已處理**：命令列超過 20,000 字元時，濾鏡圖改放進暫存檔再交給 FFmpeg。讀檔的選項不比對版本號，而是匯出前試跑一個極小的濾鏡圖：支援 `-/filter_complex`（FFmpeg 7 以上）就用它，否則用 `-filter_complex_script`。上限從約 80 個片段提高到：路徑 8 字元約 450 個、55 字元約 260 個。
 - **仍待處理**：每個片段各有一組 `-ss -t -i 路徑` 輸入參數仍在命令列上，超過約 30,000 字元時匯出前會丟出 `InvalidOperationException("片段數量過多…")`（`ExportController` 會捕捉並顯示成訊息，不會當機）。要真正解除，得改成「同一素材只開一次輸入」，會改變解碼與定位行為，不建議。
 - **待確認**：新語法路徑只在 CI 的 FFmpeg 9.0.2 驗證過；舊語法路徑在 FFmpeg 6.1.1 驗證過。
-
-#### P-7　影格快取沒有失效機制，失敗的影格永遠不會重試
-- **Low／已確認**：`_missingFrames`（`PreviewEngine.cs:562-564`、`:686`、`:696`）只增不減；短暫失敗會讓該格被永久標記；來源檔案被外部覆蓋後會顯示舊影格。
 
 #### P-8　背景工作的錯誤處理盤點
 
@@ -346,11 +334,6 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 - **仍待處理**：(1) 白名單只擋網路協定，播放清單類檔案仍可能被導向讀取其他本機檔案（是否可行取決於 FFmpeg 版本與組建）；(2) LibVLC 是原生程式碼，預設載入網路存取模組，沒有處理；(3) 使用者自備的 FFmpeg 沒有版本管理。
 - **建議**：查證 LibVLC 3.0.x 能否以啟動選項停用網路模組；文件說明風險並建議使用最新版 FFmpeg。
 
-#### S-5　`Preflight` 剩下的小缺口
-- **Low／已確認（部分已處理）**
-- **已處理**：路徑格式不合法會回報成訊息；寫入探測檔刪不掉不再讓匯出失敗；來源比對會解開符號連結與連結資料夾。
-- **仍待處理**：硬連結與 8.3 短檔名無法用路徑字串比對；`CreateDirectory` 在 `Preflight` 內建立（使用者已在儲存對話方塊選好位置才會走到，視為順著他的選擇）。
-
 #### S-8　相依套件與供應鏈
 - **Low~Medium／部分已處理**
 - **已處理**：已啟用 Dependabot（NuGet 與 GitHub Actions，每週）。
@@ -364,17 +347,8 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 - **已處理**：逐格請求的排隊與插隊規則、預覽時鐘與漂移判斷、倒帶挑格、快捷鍵修飾鍵判斷、時間軸的命中區域與移動貼齊規則已抽到 Core 並補測試。
 - **仍待處理**：`MainWindow` 的狀態與視窗事件接線、逐格擷取的實際執行（狀態機的規則已抽出）、波形與倒放預覽的 UI 協調。
 
-#### T-3　部分 Core 類別沒有直接的測試引用
-- **Low／待確認**：以類別名稱搜尋，`PreviewGeometry`（64 行）與 `TemporaryFiles` 在測試目錄 0 個檔案出現（後者可能被間接覆蓋）。請以覆蓋率報告確認。
-
 #### T-5　CI 沒有覆蓋率與靜態分析
 - **Low／已確認**：`dotnet test` 沒有 `--collect`（雖已引用 `coverlet.collector`）；沒有 `.editorconfig`、格式檢查、`TreatWarningsAsErrors`。
-
-#### T-6　少數測試依賴時間
-- **Low／已確認**：`ReverseTests.cs:574`（`Task.Delay(300)`）、`:657`（輪詢最多 5 秒）、`WaveformTests.cs:271`（`Task.Delay(30)`）；CI 較慢時可能偶發失敗。
-
-#### T-7　文件與維護性的小項目
-- **Low／已確認**：沒有給開發者的專案結構導覽（規格第 5 節可部分替代，未讀完）；4 份規劃文件放在倉庫根目錄，`FIX-PLAN.md` 各階段多已完成，之後可移到 `docs/`。
 
 ---
 
@@ -387,7 +361,7 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 2. 執行 `dotnet list package --vulnerable --include-transitive`（S-8）。
 3. 用 Visual Studio 診斷工具量測播放時的 CPU 與 GC（W-2、P-3）。
 4. 手動測試：Ctrl+S 不分割片段、匯入中途取消、損毀檔案不中斷整批匯入、播放／倒帶／拖曳時間軸、強制結束程式後 FFmpeg 是否結束、多片段（200 個以上）匯出時濾鏡圖檔案的新語法（P-6）。
-5. 執行覆蓋率報告（T-3）。
+5. 執行覆蓋率報告，確認 `PreviewEngine`、`TimelineView` 以外還有沒有未被測試到的 Core 類別。
 
 ### 階段 4（剩餘）：結構改善
 - Q-1、T-2：與 UI／VLC 無關的規則已抽完；剩下的部分（LibVLC 指令佇列、擷取的實際執行）等 Windows 實測後再動。
@@ -410,8 +384,6 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 | 6 | LibVLC 3.0.x 能否以啟動選項停用網路模組（S-2） | 查閱 VLC 3.0 文件 |
 | 7 | 匯出同時使用預覽時，兩個 FFmpeg 各最多約 512 MiB 緩衝是否使低記憶體電腦過載 | 實測 |
 | 8 | 連按兩次關閉鈕時，第二次會略過取消等待（`_closingAfterExport` 已為 `true`），視窗可能在清理 `.part` 暫存檔前結束 | 實際操作 |
-| 9 | `PreviewGeometry`、`TemporaryFiles` 是否被間接覆蓋（T-3） | 覆蓋率報告 |
-| 10 | 傳給 `SetVideoCallbacks` 的委派是否被 LibVLCSharp 內部持有（W-8） | 查閱 LibVLCSharp 3.10.2 原始碼 |
 
 ---
 

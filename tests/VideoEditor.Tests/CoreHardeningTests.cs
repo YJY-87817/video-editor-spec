@@ -132,3 +132,99 @@ public class ReentryGuardTests
         Assert.False(guard.Active);
     }
 }
+
+public class TemporaryFilesTests : IDisposable
+{
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "VideoEditorTests", Guid.NewGuid().ToString("N"));
+
+    public TemporaryFilesTests() => Directory.CreateDirectory(_root);
+
+    public void Dispose() => TemporaryFiles.DeleteDirectory(_root);
+
+    [Fact]
+    public void DeletesDirectoryWithContents()
+    {
+        var directory = Path.Combine(_root, "nested");
+        Directory.CreateDirectory(Path.Combine(directory, "inner"));
+        File.WriteAllText(Path.Combine(directory, "inner", "a.tmp"), "x");
+        File.WriteAllText(Path.Combine(directory, "b.tmp"), "x");
+
+        Assert.True(TemporaryFiles.DeleteDirectory(directory));
+        Assert.False(Directory.Exists(directory));
+    }
+
+    [Fact]
+    public void MissingDirectoryOrFileIsFine()
+    {
+        Assert.True(TemporaryFiles.DeleteDirectory(Path.Combine(_root, "never-created")));
+        Assert.True(TemporaryFiles.DeleteFile(Path.Combine(_root, "never-created.tmp")));
+    }
+
+    [Fact]
+    public void DeletesFile()
+    {
+        var file = Path.Combine(_root, "one.tmp");
+        File.WriteAllText(file, "x");
+        Assert.True(TemporaryFiles.DeleteFile(file));
+        Assert.False(File.Exists(file));
+    }
+
+    [Fact]
+    public void GivesUpWithoutThrowingWhenTheFileStaysLocked()
+    {
+        // Linux 允許刪除開著的檔案，這個情境只在 Windows 才成立。
+        if (!OperatingSystem.IsWindows()) return;
+        var file = Path.Combine(_root, "locked.tmp");
+        using var held = new FileStream(file, FileMode.Create, FileAccess.Write, FileShare.None);
+        Assert.False(TemporaryFiles.DeleteFile(file)); // 重試約 2 秒後放棄
+        Assert.True(File.Exists(file));
+    }
+}
+
+public class TimelineClipVolumeTests
+{
+    private static TimelineClip Clip()
+    {
+        var timeline = new Timeline();
+        return timeline.Append(new MediaInfo { Path = "a.mp4", Duration = 5, HasVideo = true, HasAudio = true, DisplayWidth = 640, DisplayHeight = 360, FrameRate = new Rational(30, 1) }, 0, 1);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(0.5)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void AcceptsGainsInRange(double gain)
+    {
+        var clip = Clip();
+        clip.Volume = gain;
+        Assert.Equal(gain, clip.Volume);
+    }
+
+    [Theory]
+    [InlineData(-0.1)]
+    [InlineData(2.01)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void RejectsGainsOutOfRange(double gain)
+    {
+        var clip = Clip();
+        Assert.Throws<ArgumentOutOfRangeException>(() => clip.Volume = gain);
+        Assert.Equal(1.0, clip.Volume); // 值不變
+    }
+
+    [Fact]
+    public void TimelineDurationIsTheLatestClipEndOnEitherTrack()
+    {
+        var timeline = new Timeline();
+        Assert.Equal(0, timeline.Duration);
+        var video = new MediaInfo { Path = "v.mp4", Duration = 5, HasVideo = true, DisplayWidth = 640, DisplayHeight = 360, FrameRate = new Rational(30, 1) };
+        var music = new MediaInfo { Path = "m.m4a", Duration = 9, HasAudio = true };
+        timeline.Append(video, 0, 3);
+        Assert.Equal(3, timeline.Duration);
+        timeline.Append(music, 0, 8);
+        Assert.Equal(8, timeline.Duration);
+        timeline.Append(video, 0, 2);
+        Assert.Equal(8, timeline.Duration);
+    }
+}

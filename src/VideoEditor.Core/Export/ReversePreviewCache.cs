@@ -28,6 +28,8 @@ public sealed class ReversePreviewCache(FfmpegTools tools, string? directory = n
 
     private readonly Dictionary<(string Path, long In, long Out, int Width, int Height), Entry> _files = [];
     // 一次只產生一個，避免同時跑多個 FFmpeg 拖慢播放。
+    // _gate 與 _disposed 刻意不在 Dispose 釋放：沒有用到等候控制代碼或計時器，沒有原生資源要釋放；
+    // 取消後進行中的工作仍會執行 finally 裡的 _gate.Release()，提早釋放會丟出 ObjectDisposedException。
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly CancellationTokenSource _disposed = new();
 

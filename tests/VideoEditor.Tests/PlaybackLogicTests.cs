@@ -224,3 +224,78 @@ public class PendingSeekTests
         Assert.True(maxPending <= 2, $"待執行的指令最多 2 個（目標競爭時可能多排一個），實際 {maxPending}");
     }
 }
+
+public class MissingFramesTests
+{
+    private static (MissingFrames<int> Frames, Action<double> Advance) Make()
+    {
+        var now = TimeSpan.Zero;
+        return (new MissingFrames<int>(TimeSpan.FromSeconds(30), () => now), seconds => now += TimeSpan.FromSeconds(seconds));
+    }
+
+    [Fact]
+    public void RememberedUntilItExpires()
+    {
+        var (frames, advance) = Make();
+        Assert.False(frames.Contains(7));
+        frames.Add(7);
+        Assert.True(frames.Contains(7));
+        advance(29);
+        Assert.True(frames.Contains(7));
+        advance(2); // 超過 30 秒：再試一次
+        Assert.False(frames.Contains(7));
+        Assert.Equal(0, frames.Count); // 過期記錄已清掉
+    }
+
+    [Fact]
+    public void FailingAgainRestartsTheTimer()
+    {
+        var (frames, advance) = Make();
+        frames.Add(1);
+        advance(20);
+        frames.Add(1);
+        advance(20); // 距離第一次 40 秒，距離第二次 20 秒
+        Assert.True(frames.Contains(1));
+    }
+
+    [Fact]
+    public void OtherFramesAreIndependent()
+    {
+        var (frames, advance) = Make();
+        frames.Add(1);
+        advance(20);
+        frames.Add(2);
+        advance(15);
+        Assert.False(frames.Contains(1));
+        Assert.True(frames.Contains(2));
+    }
+
+    [Fact]
+    public void PermanentRecordsNeverExpire()
+    {
+        var (frames, advance) = Make();
+        frames.AddPermanent(5);
+        advance(3600);
+        Assert.True(frames.Contains(5));
+    }
+
+    [Fact]
+    public void ClearForgetsEverything()
+    {
+        var (frames, _) = Make();
+        frames.Add(1);
+        frames.AddPermanent(2);
+        frames.Clear();
+        Assert.False(frames.Contains(1));
+        Assert.False(frames.Contains(2));
+        Assert.Equal(0, frames.Count);
+    }
+
+    [Fact]
+    public void DefaultClockExpiresRecords()
+    {
+        var frames = new MissingFrames<int>(TimeSpan.Zero);
+        frames.Add(1);
+        Assert.False(frames.Contains(1));
+    }
+}
