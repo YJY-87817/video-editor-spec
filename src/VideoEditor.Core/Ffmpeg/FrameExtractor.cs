@@ -16,7 +16,7 @@ public sealed class FrameExtractor(FfmpegTools tools)
             "-frames:v", "1", "-an", "-vf", $"scale={size.Width}:{size.Height},setsar=1",
             "-f", "rawvideo", "-pix_fmt", "bgra", "pipe:1",
         ];
-        var chunks = await ProcessRunner.RunForChunksAsync(tools.Ffmpeg, args, FrameBytes(size), 1, token);
+        var chunks = await ProcessRunner.RunForChunksAsync(tools.Ffmpeg, args, FrameBytes(size), 1, token, FfmpegTimeouts.Frame);
         return chunks.Count == 1 ? new RawFrame(chunks[0], size.Width, size.Height) : null;
     }
 
@@ -35,7 +35,7 @@ public sealed class FrameExtractor(FfmpegTools tools)
             "-fps_mode", "passthrough", "-frames:v", count.ToString(CultureInfo.InvariantCulture),
             "-f", "rawvideo", "-pix_fmt", "bgra", "pipe:1",
         ];
-        var chunks = await ProcessRunner.RunForChunksAsync(tools.Ffmpeg, args, FrameBytes(size), count, token);
+        var chunks = await ProcessRunner.RunForChunksAsync(tools.Ffmpeg, args, FrameBytes(size), count, token, FfmpegTimeouts.FrameRange);
         return chunks.Select(bytes => new RawFrame(bytes, size.Width, size.Height)).ToList();
     }
 
@@ -47,7 +47,7 @@ public sealed class FrameExtractor(FfmpegTools tools)
             "-v", "error", "-ss", Seconds(time), "-i", path, "-frames:v", "1", "-an",
             "-vf", $"scale={width}:-2", "-c:v", "mjpeg", "-q:v", "5", "-f", "image2pipe", "pipe:1",
         ];
-        return ProcessRunner.RunForBytesAsync(tools.Ffmpeg, args, token);
+        return ProcessRunner.RunForBytesAsync(tools.Ffmpeg, args, token, FfmpegTimeouts.Thumbnail);
     }
 
     /// <summary>預覽解析度：長邊不超過 maxLongSide，取偶數。</summary>

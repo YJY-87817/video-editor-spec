@@ -18,7 +18,7 @@ public sealed class FfmpegEncoders(FfmpegTools tools)
     }
 
     private async Task<IReadOnlySet<string>> QueryAsync() =>
-        Parse(Encoding.UTF8.GetString(await ProcessRunner.RunForBytesAsync(tools.Ffmpeg, ["-hide_banner", "-encoders"])));
+        Parse(Encoding.UTF8.GetString(await ProcessRunner.RunForBytesAsync(tools.Ffmpeg, ["-hide_banner", "-encoders"], timeout: FfmpegTimeouts.EncoderList)));
 
     /// <summary>解析 <c>ffmpeg -encoders</c> 的輸出：分隔線之後每行是「旗標 名稱 說明」。</summary>
     public static IReadOnlySet<string> Parse(string output)

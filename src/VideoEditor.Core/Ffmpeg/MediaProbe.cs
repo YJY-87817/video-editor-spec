@@ -11,7 +11,7 @@ public sealed class MediaProbe(FfmpegTools tools)
     public async Task<MediaInfo> ProbeAsync(string path, CancellationToken token = default)
     {
         string[] args = ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", "-i", path];
-        var json = await ProcessRunner.RunForBytesAsync(tools.Ffprobe, args, token);
+        var json = await ProcessRunner.RunForBytesAsync(tools.Ffprobe, args, token, FfmpegTimeouts.Probe);
         return Parse(Encoding.UTF8.GetString(json), path);
     }
 
