@@ -63,7 +63,7 @@ public partial class MainWindow
 
     void IImportView.AddMedia(MediaInfo info, byte[]? thumbnail)
     {
-        var item = new MediaItem(info) { Thumbnail = thumbnail == null ? null : CreateThumbnail(thumbnail) };
+        var item = new MediaItem(info) { Thumbnail = thumbnail == null ? null : TryCreateThumbnail(thumbnail) };
         _media.Add(item);
         // 不等加入時間軸就先算波形，加入時多半已經好了。
         _waveforms?.Request(info);
@@ -73,15 +73,23 @@ public partial class MainWindow
     void IImportView.ShowFailure(string name, string message) =>
         MessageBox.Show(this, $"無法匯入 {name}：\n{message}", "匯入失敗", MessageBoxButton.OK, MessageBoxImage.Warning);
 
-    private static BitmapSource CreateThumbnail(byte[] bytes)
+    /// <summary>縮圖只是裝飾：解碼失敗時不要讓整批匯入中斷，回傳 null 顯示空白。</summary>
+    private static BitmapSource? TryCreateThumbnail(byte[] bytes)
     {
-        var image = new BitmapImage();
-        image.BeginInit();
-        image.CacheOption = BitmapCacheOption.OnLoad;
-        image.StreamSource = new MemoryStream(bytes);
-        image.EndInit();
-        image.Freeze();
-        return image;
+        try
+        {
+            var image = new BitmapImage();
+            image.BeginInit();
+            image.CacheOption = BitmapCacheOption.OnLoad;
+            image.StreamSource = new MemoryStream(bytes);
+            image.EndInit();
+            image.Freeze();
+            return image;
+        }
+        catch (Exception e) when (e is NotSupportedException or FileFormatException or IOException or InvalidOperationException or ArgumentException)
+        {
+            return null;
+        }
     }
 
     private void OnMediaSelected(object sender, SelectionChangedEventArgs e)

@@ -56,7 +56,15 @@ public partial class MainWindow
 
         var dialog = new SaveFileDialog { Filter = "MP4 影片|*.mp4", FileName = "輸出.mp4", DefaultExt = ".mp4" };
         if (dialog.ShowDialog(this) != true) return;
-        await _export.RunAsync(_timeline, new OutputSettings(SelectedRatio, SelectedMode), dialog.FileName);
+        try
+        {
+            await _export.RunAsync(_timeline, new OutputSettings(SelectedRatio, SelectedMode), dialog.FileName);
+        }
+        catch (Exception ex)
+        {
+            // async void 的例外不會回到呼叫端；預料之外的錯誤要顯示出來，而不是丟給全域處理器。
+            StatusText.Text = $"匯出時發生錯誤：{ex.Message}";
+        }
     }
 
     // ---- IExportView：匯出流程需要的畫面更新 ----
