@@ -12,6 +12,7 @@ using Microsoft.Win32;
 using VideoEditor.App.Preview;
 using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
+using VideoEditor.Core.Logging;
 using VideoEditor.Core.Models;
 using VideoEditor.Core.Timeline;
 using TimelineModel = VideoEditor.Core.Timeline.Timeline;
@@ -63,6 +64,7 @@ public partial class MainWindow
         catch (Exception ex)
         {
             // async void 的例外不會回到呼叫端；預料之外的錯誤要顯示出來，而不是丟給全域處理器。
+            Log.Error("匯出時發生預料之外的錯誤", ex);
             StatusText.Text = $"匯出時發生錯誤：{ex.Message}";
         }
     }

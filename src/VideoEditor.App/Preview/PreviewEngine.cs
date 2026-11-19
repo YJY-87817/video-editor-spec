@@ -7,6 +7,7 @@ using System.Windows.Threading;
 using LibVLCSharp.Shared;
 using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
+using VideoEditor.Core.Logging;
 using VideoEditor.Core.Models;
 using VideoEditor.Core.Playback;
 using VideoEditor.Core.Timeline;
@@ -478,6 +479,7 @@ public sealed class PreviewEngine : IDisposable
             try { command(); }
             catch (Exception e)
             {
+                Log.Error("播放指令失敗", e);
                 _dispatcher.BeginInvoke(() => Error?.Invoke($"播放失敗：{e.Message}"));
             }
         }, TaskScheduler.Default);

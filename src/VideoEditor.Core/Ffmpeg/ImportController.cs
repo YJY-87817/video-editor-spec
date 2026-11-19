@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using VideoEditor.Core.Logging;
 using VideoEditor.Core.Models;
 
 namespace VideoEditor.Core.Ffmpeg;
@@ -54,6 +55,7 @@ public sealed class ImportController(MediaProbe probe, FrameExtractor extractor,
                 catch (Exception e) when (e is FfmpegException or InvalidDataException or JsonException
                     or Win32Exception or IOException or UnauthorizedAccessException)
                 {
+                    Log.Warn($"匯入失敗：{path}", e);
                     view.ShowFailure(name, (e as FfmpegException)?.Stderr ?? e.Message);
                 }
                 finally

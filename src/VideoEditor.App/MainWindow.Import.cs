@@ -12,6 +12,7 @@ using Microsoft.Win32;
 using VideoEditor.App.Preview;
 using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
+using VideoEditor.Core.Logging;
 using VideoEditor.Core.Models;
 using VideoEditor.Core.Playback;
 using VideoEditor.Core.Timeline;
@@ -38,6 +39,7 @@ public partial class MainWindow
         }
         catch (Exception e)
         {
+            Log.Error("匯入時發生預料之外的錯誤", e);
             StatusText.Text = $"匯入時發生錯誤：{e.Message}";
         }
     }

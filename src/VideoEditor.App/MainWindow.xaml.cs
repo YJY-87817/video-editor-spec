@@ -13,6 +13,7 @@ using Microsoft.Win32;
 using VideoEditor.App.Preview;
 using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
+using VideoEditor.Core.Logging;
 using VideoEditor.Core.Models;
 using VideoEditor.Core.Playback;
 using VideoEditor.Core.Timeline;
@@ -78,7 +79,11 @@ public partial class MainWindow : Window, IExportView, IImportView
         _engine.PlayingChanged += UpdatePlaybackButtons;
         _engine.Status += message => StatusText.Text = message;
         _engine.SurfaceChanged += OnSurfaceChanged;
-        _engine.Error += message => StatusText.Text = message;
+        _engine.Error += message =>
+        {
+            Log.Warn(message);
+            StatusText.Text = message;
+        };
         // 聲音波形：匯入後在背景產生，好了就重畫時間軸。這兩個事件在背景執行緒觸發。
         _waveforms = new WaveformCache(new WaveformExtractor(_tools));
         _waveforms.Ready += _ => Dispatcher.BeginInvoke(Timeline.InvalidateVisual);
@@ -103,6 +108,7 @@ public partial class MainWindow : Window, IExportView, IImportView
             }
             catch (Exception ex)
             {
+                Log.Error("開啟命令列素材時發生錯誤", ex);
                 StatusText.Text = $"匯入時發生錯誤：{ex.Message}";
             }
         };

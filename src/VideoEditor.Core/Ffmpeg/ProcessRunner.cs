@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using VideoEditor.Core.Logging;
 
 namespace VideoEditor.Core.Ffmpeg;
 
@@ -55,8 +56,15 @@ public static class ProcessRunner
         await process.WaitForExitAsync(CancellationToken.None);
         token.ThrowIfCancellationRequested();
         if (process.ExitCode != 0)
+        {
+            // 命令列與錯誤輸出的尾段是事後查問題最需要的資料。命令列可能含檔案路徑，所以只寫進本機紀錄。
+            Log.Error($"{Path.GetFileName(exe)} 結束代碼 {process.ExitCode}\n命令列：{Quote(exe, process.StartInfo.ArgumentList)}\n錯誤輸出（最後 {MaxErrorLines} 行）：\n{stderr}");
             throw new FfmpegException($"{Path.GetFileName(exe)} 結束代碼 {process.ExitCode}", stderr);
+        }
     }
+
+    private static string Quote(string exe, IEnumerable<string> args) =>
+        string.Join(' ', args.Prepend(exe).Select(a => a.Contains(' ') || a.Length == 0 ? $"\"{a}\"" : a));
 
     /// <summary>執行並回傳標準輸出的全部位元組；兩個管線同時讀取以免死結。</summary>
     public static async Task<byte[]> RunForBytesAsync(string exe, IEnumerable<string> args, CancellationToken token = default)
