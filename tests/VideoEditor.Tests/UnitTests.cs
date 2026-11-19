@@ -562,6 +562,18 @@ public class ExportPlannerTests
         plan.Arguments[plan.Arguments.ToList().IndexOf("-filter_complex") + 1];
 
     [Fact]
+    public void OutputPathIsKeptApartFromTheArguments()
+    {
+        // ExportService 匯出時要把輸出路徑換成暫存檔；兩者分開存放，才不必靠「最後一個參數是輸出路徑」的默契。
+        var t = new TimelineModel();
+        t.Append(Media(), 0, 2);
+        var plan = ExportPlanner.Build(t, new OutputSettings(AspectRatio.R16x9, FitMode.Fill), "o.mp4");
+        Assert.Equal("o.mp4", plan.OutputPath);
+        Assert.DoesNotContain("o.mp4", plan.Arguments);
+        Assert.Equal("+faststart", plan.Arguments[^1]);
+    }
+
+    [Fact]
     public void Uses8BitH264AndCrf18ByDefault()
     {
         var t = new TimelineModel();

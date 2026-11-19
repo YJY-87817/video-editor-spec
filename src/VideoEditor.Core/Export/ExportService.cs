@@ -150,7 +150,7 @@ public sealed class ExportService(FfmpegTools tools)
     {
         var temporary = TemporaryPath(outputPath);
         var work = WorkDirectory(temporary);
-        var args = ReverseGraph.Resolve(plan.Arguments.Take(plan.Arguments.Count - 1), work).Append(temporary);
+        var args = ReverseGraph.Resolve(plan.Arguments, work).Append(temporary);
         var finished = false;
         // 進度依處理的秒數計：先是各個倒放片段，最後才是編碼。
         var total = plan.TotalWork;

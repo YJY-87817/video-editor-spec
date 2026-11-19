@@ -5,8 +5,11 @@ using TimelineModel = VideoEditor.Core.Timeline.Timeline;
 
 namespace VideoEditor.Core.Export;
 
+/// <param name="Arguments">FFmpeg 參數，<b>不含</b>輸出路徑（輸出路徑在 <paramref name="OutputPath"/>，匯出時會換成暫存檔）。</param>
+/// <param name="OutputPath">使用者選的最終輸出路徑。</param>
 public sealed record ExportPlan(
     IReadOnlyList<string> Arguments,
+    string OutputPath,
     double Duration,
     Size2 Size,
     string VideoCodec,
@@ -156,11 +159,11 @@ public static class ExportPlanner
         args.AddRange(["-fps_mode", "passthrough"]);
         if (hasAudio)
             args.AddRange(["-c:a", "aac", "-b:a", AudioBitRate(timeline).ToString(CultureInfo.InvariantCulture), "-ar", AudioSampleRate.ToString(CultureInfo.InvariantCulture)]);
-        args.AddRange(["-t", Num(duration), "-movflags", "+faststart", outputPath]);
+        args.AddRange(["-t", Num(duration), "-movflags", "+faststart"]);
 
-        if (args.Sum(a => a.Length + 3) > MaxCommandLength)
+        if (args.Sum(a => a.Length + 3) + outputPath.Length + 3 > MaxCommandLength)
             throw new InvalidOperationException("片段數量過多，超過 Windows 命令列長度上限。");
-        return new ExportPlan(args, duration, size, codec, pixelFormat, CollectWarnings(timeline, reference, referenceSize, settings.Mode), reverseJobs);
+        return new ExportPlan(args, outputPath, duration, size, codec, pixelFormat, CollectWarnings(timeline, reference, referenceSize, settings.Mode), reverseJobs);
     }
 
     /// <summary>決策：8-bit 用 H.264；10-bit 以上或 HDR 用 H.265，並維持來源色彩格式。</summary>
