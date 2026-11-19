@@ -3,7 +3,7 @@
 - **專案**：個人影片編輯器（`video-editor-spec` 倉庫，3 個專案）
 - **報告日期**：2026-11-18
 - **性質**：原始分析是唯讀的靜態分析：沒有修改、新增、刪除或移動任何專案檔案，也沒有建置或執行測試（分析環境是 Linux，無法建置 WPF）。之後依本報告做的修改見「處理進度」。
-- **處理進度**：2026-11-19 起，已處理的項目已從本報告移除（階段 1 到階段 4 的主要項目，見 PR #39、#43），已移除的 ID：A-2、Q-2、Q-3、Q-4、Q-5、Q-6、W-1、P-1、P-2、P-5、S-3、S-4、S-6、S-7、T-1。只處理一部分的項目（Q-1、T-2、S-2、S-8、P-4）只保留尚待處理的部分。完整歷史見 git。
+- **處理進度**：2026-11-19 起，已處理的項目已從本報告移除（階段 1 到階段 4 的主要項目，見 PR #39、#43、#45 與之後的修正），已移除的 ID：A-2、Q-2、Q-3、Q-4、Q-5、Q-6、Q-9、W-1、P-1、P-2、P-5、S-3、S-4、S-6、S-7、T-1。只處理一部分的項目（Q-1、T-2、S-2、S-8、P-4）只保留尚待處理的部分。完整歷史見 git。
 - **嚴重程度**：Critical（嚴重錯誤或安全風險）／High（可能造成錯誤、資料遺失或重大維護問題）／Medium（架構或品質問題）／Low（改善建議）
 - **分類**：已確認問題／潛在風險／待確認事項
 
@@ -216,10 +216,9 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 | 5 | S-8 | 相依套件漏洞（待查 CVE）、無鎖定檔、Actions 未以 SHA 固定 | Low~Medium | 部分已處理，待確認 | S |
 | 6 | P-3 | 影格 LOH 配置、快取上限 | Low~Medium | 潛在，待實測 | M |
 | 7 | S-1 | FFmpeg 搜尋順序 | Low~Medium | 已確認 | S |
-| 8 | Q-9 | 配樂漂移校正可能重複排入佇列 | Low~Medium | 潛在，待確認 | S |
-| 9 | P-4 | 其餘 Core 類別沒有 `ConfigureAwait(false)` | Low | 已確認（部分已處理） | S |
-| 10 | P-6 | 每個片段的輸入參數仍受命令列長度限制（約 260 到 450 個） | Low~Medium | 已確認（部分已處理） | L | 其餘 Core 類別沒有 `ConfigureAwait(false)` | Low | 已確認（部分已處理） | S |
-| 11 | 其餘 | A-3、A-5、A-6、Q-7、Q-8、Q-10、Q-11、Q-12、W-3~W-9、P-7、P-9、S-5、T-3~T-7 | Low | — | S |
+| 8 | P-4 | 其餘 Core 類別沒有 `ConfigureAwait(false)` | Low | 已確認（部分已處理） | S |
+| 9 | P-6 | 每個片段的輸入參數仍受命令列長度限制（約 260 到 450 個） | Low~Medium | 已確認（部分已處理） | L | 其餘 Core 類別沒有 `ConfigureAwait(false)` | Low | 已確認（部分已處理） | S |
+| 10 | 其餘 | A-3、A-5、A-6、Q-7、Q-8、Q-10、Q-11、Q-12、W-3~W-9、P-7、P-9、S-5、T-3~T-7 | Low | — | S |
 
 **已關閉或下調**：A-4 事件洩漏（不成立）；A-3 下調為 Low；`PreviewEngine.cs:326`／`:384` 的 `.Result`（不會阻塞，不成立）。
 
@@ -270,12 +269,6 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 - **Low／已確認**
 - **位置**：`ImportController.cs:54-55`、`:108`；`ExportController.cs:139`、`:145`、`:176`；`PreviewEngine.cs:566`、`:680`
 - **問題**：`FfmpegException or Win32Exception or IOException or UnauthorizedAccessException` 的組合在至少 7 處各有不同子集。建議抽成共用判斷。
-
-#### Q-9　配樂漂移校正可能重複排入佇列
-- **Low~Medium／潛在，待確認**
-- **位置**：`PreviewEngine.cs:419-421`（`UpdateMusic` 內 `Enqueue(() => _musicPlayer.Time = …)`）
-- **問題**：`Tick` 每 16 ms 一次，偏差超過門檻時每個 tick 都再排入一次 seek，佇列沒有去重或上限。LibVLC 呼叫較慢時可能累積過期指令。
-- **建議**：加入「已有待處理 seek」旗標。
 
 #### Q-10　執行緒假設與實際不完全一致
 - **Low／待確認**：`PreviewEngine` 類別註解說除 LibVLC 回呼外只在 UI 執行緒使用，但背景佇列會存取 `_videoPlayer`、`_musicPlayer`、`_sink` 與 `PlaybackRate`（`:469`）；`ImportController` 的 `_total`／`_done`／`_queued` 非執行緒安全，依賴一律由 UI 執行緒呼叫，但沒有文件說明。
