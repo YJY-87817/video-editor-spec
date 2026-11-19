@@ -521,9 +521,7 @@ public sealed class PreviewEngine : IDisposable
         var (first, last) = FrameRange(clip, fps);
 
         // 高倍速只解每 step 格中的一格，所以找最近的一格來顯示。
-        // 命中時最後一次 TryGet 取到的就是要顯示的影格，不必再查一次。
-        RawFrame? nearest = null;
-        if (RewindPlan.NearestCached(frame, direction, step, f => _frames.TryGet((media.Path, f), out nearest)) != null && nearest != null)
+        if (RewindPlan.NearestCached(frame, direction, step, f => _frames.TryGet((media.Path, f), out var hit) ? hit : null) is { } nearest)
             ShowFrame(nearest, media, clip.Transform);
 
         if (_rewindFetching) return;
