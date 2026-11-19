@@ -57,6 +57,7 @@ public partial class MainWindow : Window, IExportView, IImportView
         Timeline.ClipsChanged += OnClipsChanged;
         Timeline.ViewChanged += UpdateTimelineScrollBar;
         ProgressPanel.CancelExportRequested += () => _export?.Cancel();
+        ProgressPanel.CancelImportRequested += () => _import?.Cancel();
 
         try
         {

@@ -14,6 +14,9 @@ public partial class ProgressOverlay : UserControl
         InitializeComponent();
     }
 
+    /// <summary>按下「取消匯入」。</summary>
+    public event Action? CancelImportRequested;
+
     /// <summary>按下「取消匯出」。</summary>
     public event Action? CancelExportRequested;
 
@@ -84,6 +87,7 @@ public partial class ProgressOverlay : UserControl
     }
 
     private void OnCancelClick(object sender, RoutedEventArgs e) => CancelExportRequested?.Invoke();
+    private void OnCancelImportClick(object sender, RoutedEventArgs e) => CancelImportRequested?.Invoke();
 
     private void UpdateVisibility() =>
         Visibility = ImportRow.Visibility == Visibility.Visible || ReverseRow.Visibility == Visibility.Visible
