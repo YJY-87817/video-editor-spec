@@ -96,8 +96,15 @@ public partial class MainWindow : Window, IExportView, IImportView
 
         Loaded += async (_, _) =>
         {
-            // 可由命令列直接開啟素材。
-            await _import!.ImportAsync(Environment.GetCommandLineArgs().Skip(1).Where(File.Exists));
+            // 可由命令列直接開啟素材。轉成絕對路徑，以 - 開頭的相對路徑才不會被當成選項。
+            try
+            {
+                await _import!.ImportAsync(Environment.GetCommandLineArgs().Skip(1).Where(File.Exists).Select(System.IO.Path.GetFullPath));
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = $"匯入時發生錯誤：{ex.Message}";
+            }
         };
     }
 
