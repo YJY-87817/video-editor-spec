@@ -41,7 +41,7 @@ public class ExportIntegrationTests(TestMedia media)
     {
         var extractor = new FrameExtractor(media.Tools);
         var size = new Size2(64, 36);
-        var frame = await extractor.ExtractAsync(media.Landscape, FrameExtractor.FrameSeekTime(45, 30), size);
+        var frame = await extractor.ExtractAsync(media.Landscape, FrameMath.FrameSeekTime(45, 30), size);
         var exact = await ProcessRunner.RunForBytesAsync(media.Tools.Ffmpeg,
         [
             "-v", "error", "-i", media.Landscape, "-vf", "select=eq(n\\,45),scale=64:36,setsar=1",

@@ -256,7 +256,7 @@ public sealed class PreviewEngine : IDisposable
         }
         // 倒放片段在時間軸上往後一格，是來源的前一格。
         var sourceStep = clip.Reversed ? -direction : direction;
-        SeekTo(clip.ToTimelineTime((FrameExtractor.FrameIndex(clip.ToSourceTime(Position), fps) + sourceStep) / fps), sourceStep);
+        SeekTo(clip.ToTimelineTime((FrameMath.FrameIndex(clip.ToSourceTime(Position), fps) + sourceStep) / fps), sourceStep);
     }
 
     /// <summary>時間軸內容改變（拖曳、修剪、刪除）後，重畫目前位置的影格。</summary>
@@ -516,7 +516,7 @@ public sealed class PreviewEngine : IDisposable
 
         var media = clip.Media;
         var fps = media.FrameRate.Value > 0 ? media.FrameRate.Value : DefaultFrameRate;
-        var frame = FrameExtractor.FrameIndex(clip.ToSourceTime(Position), fps);
+        var frame = FrameMath.FrameIndex(clip.ToSourceTime(Position), fps);
         // 時間軸往回走時，一般片段的來源時間變小，倒放片段的來源時間變大。
         var direction = clip.Reversed ? 1 : -1;
         var step = RewindSpeed;
@@ -596,8 +596,8 @@ public sealed class PreviewEngine : IDisposable
     /// <summary>片段在來源中的第一格與最後一格編號。</summary>
     private static (long First, long Last) FrameRange(TimelineClip clip, double fps)
     {
-        var first = ReverseGraph.FirstFrameAtOrAfter(clip.SourceIn, fps);
-        return (first, Math.Max(first, ReverseGraph.FirstFrameAtOrAfter(clip.SourceOut, fps) - 1));
+        var first = FrameMath.FirstFrameAtOrAfter(clip.SourceIn, fps);
+        return (first, Math.Max(first, FrameMath.FirstFrameAtOrAfter(clip.SourceOut, fps) - 1));
     }
 
     private bool HasFrame(string path, long frame) => _frames.TryGet((path, frame), out _) || _missingFrames.Contains((path, frame));
@@ -617,7 +617,7 @@ public sealed class PreviewEngine : IDisposable
 
         var media = clip.Media;
         var fps = media.FrameRate.Value > 0 ? media.FrameRate.Value : DefaultFrameRate;
-        var frame = FrameExtractor.FrameIndex(clip.ToSourceTime(Position), fps);
+        var frame = FrameMath.FrameIndex(clip.ToSourceTime(Position), fps);
         var size = FrameExtractor.PreviewSize(media.DisplayWidth, media.DisplayHeight, MaxPreviewLongSide);
         var (first, last) = FrameRange(clip, fps);
         if (_frames.TryGet((media.Path, frame), out var cached))
@@ -723,7 +723,7 @@ public sealed class PreviewEngine : IDisposable
             if (_frames.TryGet((path, request.Frame), out var fromBatch)) return fromBatch;
         }
 
-        var seek = FrameExtractor.FrameSeekTime(request.Frame, request.Fps);
+        var seek = FrameMath.FrameSeekTime(request.Frame, request.Fps);
         var frame = await _extractor.ExtractAsync(path, seek, request.Size, token)
             // 來源結尾附近可能定位不到影格，退回前一小段。
             ?? await _extractor.ExtractAsync(path, Math.Max(0, seek - 0.25), request.Size, token);

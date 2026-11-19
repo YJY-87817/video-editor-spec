@@ -44,8 +44,8 @@ public static class ReverseGraph
     {
         if (fps <= 0) fps = DefaultFrameRate;
         var framesPerChunk = Math.Max(1, bufferBytes / Math.Max(1, frameBytes));
-        var first = FirstFrameAtOrAfter(sourceIn, fps);
-        var end = Math.Max(first + 1, FirstFrameAtOrAfter(sourceOut, fps));
+        var first = Models.FrameMath.FirstFrameAtOrAfter(sourceIn, fps);
+        var end = Math.Max(first + 1, Models.FrameMath.FirstFrameAtOrAfter(sourceOut, fps));
         double Boundary(long frame) => Math.Max(0, (frame - 0.5) / fps);
 
         var chunks = new List<Chunk>();
@@ -56,9 +56,6 @@ public static class ReverseGraph
         }
         return chunks;
     }
-
-    /// <summary>時間戳不早於 time 的第一格。</summary>
-    public static long FirstFrameAtOrAfter(double time, double fps) => (long)Math.Ceiling(time * fps - 1e-6);
 
     /// <summary>解碼後一格的大小（位元組），依來源的色度取樣與位元深度估算。</summary>
     public static long FrameBytes(MediaInfo media, int width, int height)
@@ -167,7 +164,7 @@ public static class ReverseGraph
     public static long IntermediateBytes(MediaInfo media, double sourceIn, double sourceOut)
     {
         var fps = media.FrameRate.Value > 0 ? media.FrameRate.Value : DefaultFrameRate;
-        var frames = Math.Max(1, FirstFrameAtOrAfter(sourceOut, fps) - FirstFrameAtOrAfter(sourceIn, fps));
+        var frames = Math.Max(1, Models.FrameMath.FirstFrameAtOrAfter(sourceOut, fps) - Models.FrameMath.FirstFrameAtOrAfter(sourceIn, fps));
         var video = frames * FrameBytes(media, media.DisplayWidth, media.DisplayHeight) * IntermediateCompression;
         var audio = media.HasAudio ? (sourceOut - sourceIn) * Math.Max(1, media.AudioSampleRate) * Math.Max(1, media.AudioChannels) * 4 : 0;
         // 可變影格率的來源多一份固定影格率的中間檔。

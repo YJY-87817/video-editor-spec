@@ -47,13 +47,13 @@ public class SplitTests
         // 取每一格的中間：時間軸上第 k 格（從片段開頭算）在匯出時就是這個位置的畫面。
         // 不取格與格之間的時間，那裡的預覽本來就是四捨五入到相鄰的某一格。
         var times = Enumerable.Range(0, 90).Select(k => start + (k + 0.5) / 30).ToList();
-        var before = times.Select(time => FrameExtractor.FrameIndex(clip.ToSourceTime(time), 30)).ToList();
+        var before = times.Select(time => FrameMath.FrameIndex(clip.ToSourceTime(time), 30)).ToList();
         var end = clip.End;
 
         var right = t.Split(clip, start + 1.234);
         Assert.Equal(clip.End, right.Start, 9);
         Assert.Equal(end, right.End, 9);
-        var after = times.Select(time => FrameExtractor.FrameIndex((time < right.Start ? clip : right).ToSourceTime(time), 30)).ToList();
+        var after = times.Select(time => FrameMath.FrameIndex((time < right.Start ? clip : right).ToSourceTime(time), 30)).ToList();
         Assert.Equal(before, after);
     }
 
@@ -63,13 +63,13 @@ public class SplitTests
         var t = new TimelineModel();
         var clip = t.Append(Media(), 1, 4);
         t.SetReversed(clip, true);
-        var shown = FrameExtractor.FrameIndex(clip.ToSourceTime(1.0), 30);
+        var shown = FrameMath.FrameIndex(clip.ToSourceTime(1.0), 30);
         var right = t.Split(clip, 1.0);
         Assert.Equal(3.0, clip.SourceIn, 9);
         Assert.Equal(4.0, clip.SourceOut, 9);
         Assert.Equal(1.0, right.SourceIn, 9);
         Assert.Equal(3.0, right.SourceOut, 9);
-        Assert.Equal(shown, FrameExtractor.FrameIndex(right.ToSourceTime(right.Start), 30));
+        Assert.Equal(shown, FrameMath.FrameIndex(right.ToSourceTime(right.Start), 30));
     }
 
     [Fact]

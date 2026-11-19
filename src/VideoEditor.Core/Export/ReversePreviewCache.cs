@@ -1,8 +1,8 @@
 using System.Globalization;
-using VideoEditor.Core.Export;
+using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
 
-namespace VideoEditor.Core.Ffmpeg;
+namespace VideoEditor.Core.Export;
 
 /// <summary>一個倒放片段需要的預覽檔：來源、入出點與預覽尺寸。</summary>
 public sealed record ReversePreviewRequest(MediaInfo Media, double SourceIn, double SourceOut, Size2 Size);

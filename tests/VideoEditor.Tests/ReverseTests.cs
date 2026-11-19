@@ -22,8 +22,8 @@ public class ReverseTimelineTests
         t.SetReversed(clip, true);
 
         // 片段第一格是來源第 74 格（2.5 秒前一格），最後一格是第 30 格。
-        Assert.Equal(74, FrameExtractor.FrameIndex(clip.ToSourceTime(0), 30));
-        Assert.Equal(30, FrameExtractor.FrameIndex(clip.ToSourceTime(44 / 30.0), 30));
+        Assert.Equal(74, FrameMath.FrameIndex(clip.ToSourceTime(0), 30));
+        Assert.Equal(30, FrameMath.FrameIndex(clip.ToSourceTime(44 / 30.0), 30));
         Assert.Equal(1, clip.ToSourceTime(clip.End));
     }
 

@@ -30,7 +30,7 @@ public sealed class FrameExtractor(FfmpegTools tools)
         step = Math.Max(1, step);
         string[] args =
         [
-            "-v", "error", "-ss", Seconds(FrameSeekTime(firstFrame, fps)), ..FfmpegInput.LocalFilesOnly, "-i", path,
+            "-v", "error", "-ss", Seconds(FrameMath.FrameSeekTime(firstFrame, fps)), ..FfmpegInput.LocalFilesOnly, "-i", path,
             "-an", "-vf", $"select=not(mod(n\\,{step})),scale={size.Width}:{size.Height},setsar=1",
             "-fps_mode", "passthrough", "-frames:v", count.ToString(CultureInfo.InvariantCulture),
             "-f", "rawvideo", "-pix_fmt", "bgra", "pipe:1",
@@ -56,12 +56,6 @@ public sealed class FrameExtractor(FfmpegTools tools)
         var scale = Math.Min(1.0, (double)maxLongSide / Math.Max(width, height));
         return new Size2(Even(width * scale), Even(height * scale));
     }
-
-    /// <summary>第 n 格的定位時間。略早於該格時間戳，避免捨入後落到下一格。</summary>
-    public static double FrameSeekTime(long frame, double fps) => Math.Max(0, (frame - 0.25) / fps);
-
-    /// <summary>時間所在的影格編號。</summary>
-    public static long FrameIndex(double time, double fps) => (long)Math.Floor(time * fps + 0.5);
 
     /// <summary>一格 BGRA 影格的位元組數。</summary>
     public static int FrameBytes(Size2 size) => size.Width * size.Height * 4;

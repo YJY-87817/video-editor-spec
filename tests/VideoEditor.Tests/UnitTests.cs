@@ -73,13 +73,13 @@ public class FrameMathTests
     [InlineData(1.0 / 30, 30, 1)]
     [InlineData(1.49, 30, 45)]
     public void FrameIndexRounds(double time, double fps, long expected) =>
-        Assert.Equal(expected, FrameExtractor.FrameIndex(time, fps));
+        Assert.Equal(expected, FrameMath.FrameIndex(time, fps));
 
     [Fact]
     public void SeekTimeIsJustBeforeFrame()
     {
-        Assert.Equal(0, FrameExtractor.FrameSeekTime(0, 30));
-        Assert.InRange(FrameExtractor.FrameSeekTime(30, 30), 0.99, 1.0 - 1e-9);
+        Assert.Equal(0, FrameMath.FrameSeekTime(0, 30));
+        Assert.InRange(FrameMath.FrameSeekTime(30, 30), 0.99, 1.0 - 1e-9);
     }
 
     [Fact]
@@ -266,7 +266,7 @@ public class TimelineTests
             var t = new TimelineModel();
             var clip = t.Append(media, 30 / fps, 90 / fps); // 以 I／O 標記加入時，入出點已對齊影格
             t.TrimStart(clip, target);
-            Assert.Equal(FrameExtractor.FrameIndex(clip.SourceIn, fps), ReverseGraph.FirstFrameAtOrAfter(clip.SourceIn, fps));
+            Assert.Equal(FrameMath.FrameIndex(clip.SourceIn, fps), FrameMath.FirstFrameAtOrAfter(clip.SourceIn, fps));
             Assert.True(OnFrame(clip.Duration, fps));
         }
     }

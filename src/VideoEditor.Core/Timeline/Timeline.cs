@@ -63,7 +63,7 @@ public sealed class TimelineClip(MediaInfo media, TrackKind track, double source
         {
             var fps = Media.FrameRate.Value;
             if (fps <= 0) return SourceOut;
-            return Math.Max(SourceIn, (Export.ReverseGraph.FirstFrameAtOrAfter(SourceOut, fps) - 1) / fps);
+            return Math.Max(SourceIn, (FrameMath.FirstFrameAtOrAfter(SourceOut, fps) - 1) / fps);
         }
     }
 }
@@ -153,7 +153,7 @@ public sealed class Timeline
         if (fps <= 0) cut = clip.SourceIn + (time - clip.Start);
         else
         {
-            var frame = Ffmpeg.FrameExtractor.FrameIndex(clip.ToSourceTime(time), fps);
+            var frame = FrameMath.FrameIndex(clip.ToSourceTime(time), fps);
             // 倒放時顯示的這一格是右段（來源前半）的最後一格，切點在它之後。
             cut = (clip.Reversed ? frame + 1 : frame) / fps;
         }
@@ -250,7 +250,7 @@ public sealed class Timeline
     {
         var fps = media.FrameRate.Value;
         if (fps <= 0) return source;
-        double frame = Ffmpeg.FrameExtractor.FrameIndex(source, fps);
+        double frame = FrameMath.FrameIndex(source, fps);
         if (frame / fps < min - Epsilon) frame = Math.Ceiling(min * fps - Epsilon);
         if (frame / fps > max + Epsilon) frame = Math.Floor(max * fps + Epsilon);
         var aligned = frame / fps;
