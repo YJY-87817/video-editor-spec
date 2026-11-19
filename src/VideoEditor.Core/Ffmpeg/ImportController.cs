@@ -55,7 +55,8 @@ public sealed class ImportController(MediaProbe probe, FrameExtractor extractor,
                 catch (Exception e) when (e is FfmpegException or InvalidDataException or JsonException
                     or Win32Exception or IOException or UnauthorizedAccessException)
                 {
-                    Log.Warn($"匯入失敗：{path}", e);
+                    // FfmpegException 的命令列與錯誤輸出已由 ProcessRunner 記錄，這裡不再重複堆疊。
+                    Log.Warn($"匯入失敗：{path}", e is FfmpegException ? null : e);
                     view.ShowFailure(name, (e as FfmpegException)?.Stderr ?? e.Message);
                 }
                 finally

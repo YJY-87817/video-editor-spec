@@ -79,6 +79,37 @@ public sealed class LogTests : IDisposable
     }
 
     [Fact]
+    public void DropsEntriesBeyondTheLimitAndReportsHowManyLater()
+    {
+        long clock = 0;
+        var log = new FileLog(_directory, maxPerWindow: 3, windowMs: 1000, ticks: () => clock);
+        for (var i = 0; i < 10; i++) log.Write("ERROR", $"重複的錯誤 {i}");
+        clock = 2000; // 下一個區間
+        log.Write("ERROR", "之後的錯誤");
+
+        var text = File.ReadAllText(Assert.Single(Files()));
+        // 留下的是開頭的（原始原因），略過的是後面的。
+        Assert.Contains("重複的錯誤 0", text);
+        Assert.Contains("重複的錯誤 2", text);
+        Assert.DoesNotContain("重複的錯誤 3", text);
+        Assert.Contains("略過 7 筆", text);
+        Assert.Contains("之後的錯誤", text);
+    }
+
+    [Fact]
+    public void RecreatesTheFolderIfItIsDeletedWhileRunning()
+    {
+        long clock = 0;
+        var log = new FileLog(_directory, windowMs: 1, ticks: () => clock += 10);
+        log.Write("INFO", "第一筆");
+        Directory.Delete(_directory, recursive: true);
+        log.Write("INFO", "資料夾被刪掉時這筆可能遺失"); // 寫入失敗後會重新建立資料夾
+        log.Write("INFO", "之後的紀錄");
+
+        Assert.Contains(Files(), file => File.ReadAllText(file).Contains("之後的紀錄"));
+    }
+
+    [Fact]
     public void NeverThrowsWhenTheFolderCannotBeUsed()
     {
         // 資料夾的位置已經是一個檔案：建立資料夾與寫入都會失敗。

@@ -150,7 +150,8 @@ public sealed class ExportController(FfmpegTools tools, IExportView view, int do
         }
         catch (Exception error) when (error is FfmpegException or IOException or UnauthorizedAccessException)
         {
-            Log.Error("匯出失敗", error);
+            // FfmpegException 的命令列與錯誤輸出已由 ProcessRunner 記錄，這裡不再重複堆疊。
+            Log.Error("匯出失敗", error is FfmpegException ? null : error);
             view.ShowStatus("匯出失敗。");
             view.ShowError((error as FfmpegException)?.Stderr ?? error.Message);
         }
