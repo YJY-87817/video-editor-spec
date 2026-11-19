@@ -12,15 +12,20 @@ public class FfmpegException(string message, string stderr) : Exception(message)
 /// <summary>FFmpeg 或 ffprobe 超過時間限制沒有完成，已被終止。是 <see cref="FfmpegException"/>，既有的錯誤處理會一併涵蓋。</summary>
 public sealed class FfmpegTimeoutException(string message) : FfmpegException(message, "");
 
-/// <summary>短暫工作的時間上限。超過代表檔案損毀或磁碟卡住，與其讓畫面一直等，不如終止並說明。</summary>
-public static class FfmpegTimeouts
+/// <summary>
+/// 短暫工作的時間上限。超過代表檔案損毀或磁碟卡住，與其讓畫面一直等，不如終止並說明。
+/// 預設值放寬到網路磁碟、休眠中的外接硬碟、數十 GB 的長檔案也來得及；需要更長或更短時由呼叫端傳入。
+/// </summary>
+public sealed record FfmpegTimeouts
 {
-    public static readonly TimeSpan Probe = TimeSpan.FromSeconds(30);
-    public static readonly TimeSpan Thumbnail = TimeSpan.FromSeconds(30);
-    public static readonly TimeSpan Frame = TimeSpan.FromSeconds(30);
+    public static FfmpegTimeouts Default { get; } = new();
+
+    public TimeSpan Probe { get; init; } = TimeSpan.FromMinutes(2);
+    public TimeSpan Thumbnail { get; init; } = TimeSpan.FromMinutes(1);
+    public TimeSpan Frame { get; init; } = TimeSpan.FromMinutes(1);
     /// <summary>一次解出多格（倒帶用）。</summary>
-    public static readonly TimeSpan FrameRange = TimeSpan.FromSeconds(60);
-    public static readonly TimeSpan EncoderList = TimeSpan.FromSeconds(30);
+    public TimeSpan FrameRange { get; init; } = TimeSpan.FromMinutes(2);
+    public TimeSpan EncoderList { get; init; } = TimeSpan.FromSeconds(30);
 }
 
 public static class ProcessRunner

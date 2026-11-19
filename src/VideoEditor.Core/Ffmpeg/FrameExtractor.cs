@@ -5,8 +5,10 @@ namespace VideoEditor.Core.Ffmpeg;
 
 public sealed record RawFrame(byte[] Bgra, int Width, int Height);
 
-public sealed class FrameExtractor(FfmpegTools tools)
+public sealed class FrameExtractor(FfmpegTools tools, FfmpegTimeouts? timeouts = null)
 {
+    private FfmpegTimeouts Limits => timeouts ?? FfmpegTimeouts.Default;
+
     /// <summary>解出指定時間的影格（BGRA）；超出影片結尾時回傳 null。</summary>
     public async Task<RawFrame?> ExtractAsync(string path, double time, Size2 size, CancellationToken token = default)
     {
@@ -16,7 +18,7 @@ public sealed class FrameExtractor(FfmpegTools tools)
             "-frames:v", "1", "-an", "-vf", $"scale={size.Width}:{size.Height},setsar=1",
             "-f", "rawvideo", "-pix_fmt", "bgra", "pipe:1",
         ];
-        var chunks = await ProcessRunner.RunForChunksAsync(tools.Ffmpeg, args, FrameBytes(size), 1, token, FfmpegTimeouts.Frame);
+        var chunks = await ProcessRunner.RunForChunksAsync(tools.Ffmpeg, args, FrameBytes(size), 1, token, Limits.Frame);
         return chunks.Count == 1 ? new RawFrame(chunks[0], size.Width, size.Height) : null;
     }
 
@@ -35,7 +37,7 @@ public sealed class FrameExtractor(FfmpegTools tools)
             "-fps_mode", "passthrough", "-frames:v", count.ToString(CultureInfo.InvariantCulture),
             "-f", "rawvideo", "-pix_fmt", "bgra", "pipe:1",
         ];
-        var chunks = await ProcessRunner.RunForChunksAsync(tools.Ffmpeg, args, FrameBytes(size), count, token, FfmpegTimeouts.FrameRange);
+        var chunks = await ProcessRunner.RunForChunksAsync(tools.Ffmpeg, args, FrameBytes(size), count, token, Limits.FrameRange);
         return chunks.Select(bytes => new RawFrame(bytes, size.Width, size.Height)).ToList();
     }
 
@@ -47,7 +49,7 @@ public sealed class FrameExtractor(FfmpegTools tools)
             "-v", "error", "-ss", Seconds(time), ..FfmpegInput.LocalFilesOnly, "-i", path, "-frames:v", "1", "-an",
             "-vf", $"scale={width}:-2", "-c:v", "mjpeg", "-q:v", "5", "-f", "image2pipe", "pipe:1",
         ];
-        return ProcessRunner.RunForBytesAsync(tools.Ffmpeg, args, token, FfmpegTimeouts.Thumbnail);
+        return ProcessRunner.RunForBytesAsync(tools.Ffmpeg, args, token, Limits.Thumbnail);
     }
 
     /// <summary>預覽解析度：長邊不超過 maxLongSide，取偶數。</summary>

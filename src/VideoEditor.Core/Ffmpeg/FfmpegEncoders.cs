@@ -6,7 +6,7 @@ namespace VideoEditor.Core.Ffmpeg;
 /// 這份 FFmpeg 內含哪些編碼器。FFmpeg 的組建各不相同，缺少 libx264／libx265 的並不少見；
 /// 不先檢查的話要到匯出途中才失敗，使用者看到的是 FFmpeg 的原始錯誤訊息。
 /// </summary>
-public sealed class FfmpegEncoders(FfmpegTools tools)
+public sealed class FfmpegEncoders(FfmpegTools tools, FfmpegTimeouts? timeouts = null)
 {
     private Task<IReadOnlySet<string>>? _available;
 
@@ -18,7 +18,7 @@ public sealed class FfmpegEncoders(FfmpegTools tools)
     }
 
     private async Task<IReadOnlySet<string>> QueryAsync() =>
-        Parse(Encoding.UTF8.GetString(await ProcessRunner.RunForBytesAsync(tools.Ffmpeg, ["-hide_banner", "-encoders"], timeout: FfmpegTimeouts.EncoderList)));
+        Parse(Encoding.UTF8.GetString(await ProcessRunner.RunForBytesAsync(tools.Ffmpeg, ["-hide_banner", "-encoders"], timeout: (timeouts ?? FfmpegTimeouts.Default).EncoderList)));
 
     /// <summary>解析 <c>ffmpeg -encoders</c> 的輸出：分隔線之後每行是「旗標 名稱 說明」。</summary>
     public static IReadOnlySet<string> Parse(string output)
