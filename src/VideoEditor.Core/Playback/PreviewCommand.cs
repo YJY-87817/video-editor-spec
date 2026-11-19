@@ -22,7 +22,7 @@ public enum PreviewCommand
     NextEditPoint,
 }
 
-/// <summary>按下快捷鍵時同時按著的修飾鍵。數值與 WPF 的 <c>ModifierKeys</c> 相同，App 端可直接轉型。</summary>
+/// <summary>按下快捷鍵時同時按著的修飾鍵。核心不依賴 WPF，由 App 端把 <c>ModifierKeys</c> 逐一對應過來。</summary>
 [Flags]
 public enum KeyModifiers
 {

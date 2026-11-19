@@ -765,10 +765,8 @@ public sealed class PreviewEngine : IDisposable
         _rewindTimer.Stop();
         // 等背景佇列做完再釋放播放器。逾時代表某個 LibVLC 呼叫卡住：此時釋放播放器會與它同時進行，
         // 所以略過原生資源（程式即將結束，由作業系統回收），只清掉暫存檔。
-        var idle = false;
-        try { idle = _commands.Wait(TimeSpan.FromSeconds(2)); }
-        catch (AggregateException) { idle = true; } // 已結束（失敗的指令已在 Enqueue 內回報），沒有東西還在執行。
-        if (idle)
+        // Enqueue 會攔下每個指令的例外，佇列的 Task 不會進入 Faulted，所以這裡的 Wait 不會丟出例外。
+        if (_commands.Wait(TimeSpan.FromSeconds(2)))
         {
             _videoPlayer.Dispose();
             _musicPlayer.Dispose();
