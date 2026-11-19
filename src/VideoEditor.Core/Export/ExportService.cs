@@ -163,13 +163,13 @@ public sealed class ExportService(FfmpegTools tools)
             foreach (var job in plan.ReverseJobs)
             {
                 var before = prepared;
-                await ReverseGraph.RunAsync(tools, job, work, seconds => progress?.Report(Math.Clamp((before + seconds) / total, 0, 1)), token);
+                await ReverseGraph.RunAsync(tools, job, work, seconds => progress?.Report(Math.Clamp((before + seconds) / total, 0, 1)), token).ConfigureAwait(false);
                 prepared = before + job.Duration;
             }
             await ProcessRunner.RunWithLinesAsync(tools.Ffmpeg, args, line =>
             {
                 if (ParseProgress(line, plan.Duration) is { } value) progress?.Report((prepared + value * plan.Duration) / total);
-            }, token);
+            }, token).ConfigureAwait(false);
             finished = true;
             try
             {
@@ -184,7 +184,8 @@ public sealed class ExportService(FfmpegTools tools)
         finally
         {
             if (!finished) DeleteQuietly(temporary);
-            if (plan.ReverseJobs.Count > 0) TemporaryFiles.DeleteDirectory(work);
+            // 檔案被佔用時刪除會重試最多約 2 秒；放到背景執行，呼叫端是 UI 執行緒時才不會卡住畫面。
+            if (plan.ReverseJobs.Count > 0) await Task.Run(() => TemporaryFiles.DeleteDirectory(work)).ConfigureAwait(false);
         }
     }
 

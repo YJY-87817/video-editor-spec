@@ -194,7 +194,7 @@ public static class ReverseGraph
             await Ffmpeg.ProcessRunner.RunWithLinesAsync(tools.Ffmpeg, Resolve(step.Arguments, workDirectory), line =>
             {
                 if (ExportService.ParseProgress(line, step.Duration) is { } value) progress?.Invoke(before + value * step.Duration);
-            }, token);
+            }, token).ConfigureAwait(false);
             done = before + step.Duration;
             progress?.Invoke(done);
         }
