@@ -41,22 +41,23 @@ public sealed class FileLog(string directory, long maxBytes = 1_000_000, int kee
             }
             if (_written >= maxPerWindow)
             {
-                _dropped++;
+                // 第一筆被略過時就留下一行：之後若沒有下一次寫入，補記的統計永遠寫不出來，
+                // 讀紀錄的人會以為只發生了這麼多次。
+                if (_dropped++ == 0) Append(FormatEntry("WARN", "紀錄過於頻繁，這段時間之後的紀錄會被略過（筆數在下一個區間補記）"));
                 return;
             }
             _written++;
 
             var text = new StringBuilder();
-            if (skipped > 0) AppendEntry(text, "WARN", $"前一段時間紀錄過於頻繁，略過 {skipped} 筆");
-            AppendEntry(text, level, message);
+            if (skipped > 0) text.Append(FormatEntry("WARN", $"前一段時間紀錄過於頻繁，共略過 {skipped} 筆"));
+            text.Append(FormatEntry(level, message));
             if (exception != null) text.AppendLine(exception.ToString());
             Append(text.ToString());
         }
     }
 
-    private static void AppendEntry(StringBuilder text, string level, string message) => text
-        .Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture))
-        .Append(' ').Append(level.PadRight(5)).Append(' ').AppendLine(message);
+    private static string FormatEntry(string level, string message) =>
+        $"{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture)} {level.PadRight(5)} {message}{Environment.NewLine}";
 
     private void Append(string text)
     {

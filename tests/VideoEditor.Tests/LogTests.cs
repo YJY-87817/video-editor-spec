@@ -92,8 +92,23 @@ public sealed class LogTests : IDisposable
         Assert.Contains("重複的錯誤 0", text);
         Assert.Contains("重複的錯誤 2", text);
         Assert.DoesNotContain("重複的錯誤 3", text);
-        Assert.Contains("略過 7 筆", text);
+        Assert.Contains("共略過 7 筆", text);
         Assert.Contains("之後的錯誤", text);
+    }
+
+    [Fact]
+    public void ALogFloodLeavesAMarkerEvenIfNothingIsWrittenAfterwards()
+    {
+        long clock = 0;
+        var log = new FileLog(_directory, maxPerWindow: 3, windowMs: 1000, ticks: () => clock);
+        for (var i = 0; i < 10; i++) log.Write("ERROR", $"重複的錯誤 {i}");
+        // 之後沒有任何寫入：統計寫不出來，但讀紀錄的人仍要看得出有被略過。
+
+        var text = File.ReadAllText(Assert.Single(Files()));
+        Assert.Contains("重複的錯誤 2", text);
+        Assert.DoesNotContain("重複的錯誤 3", text);
+        Assert.Contains("之後的紀錄會被略過", text);
+        Assert.Equal(1, text.Split("之後的紀錄會被略過").Length - 1); // 每個區間只寫一次，不會自己變成洪水
     }
 
     [Fact]
