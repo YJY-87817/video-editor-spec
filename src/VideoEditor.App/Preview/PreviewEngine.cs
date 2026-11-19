@@ -26,7 +26,6 @@ public sealed class PreviewEngine : IDisposable
 {
     private const int MaxPreviewLongSide = 1280;
     private const int FrameCacheCapacity = 64;
-    private const double DefaultFrameRate = 30;
     private const long FirstFrameTimeoutMs = 1500;
     private const double VideoDriftLimitMs = 500;
     private const double MusicDriftLimitMs = 300;
@@ -248,7 +247,7 @@ public sealed class PreviewEngine : IDisposable
     {
         Stop();
         var clip = _timeline.VideoClipAt(Position);
-        var fps = clip != null && clip.Media.FrameRate.Value > 0 ? clip.Media.FrameRate.Value : DefaultFrameRate;
+        var fps = clip?.Media.EffectiveFrameRate ?? MediaInfo.DefaultFrameRate;
         if (clip == null)
         {
             Seek(Position + direction / fps);
@@ -335,7 +334,7 @@ public sealed class PreviewEngine : IDisposable
             _clock.Restart();
         }
 
-        var position = _waitingForFirstFrame ? _clockBase : _clockBase + _clock.Elapsed.TotalSeconds * PlaybackRate;
+        var position = PlaybackClock.Position(_clockBase, _clock.Elapsed.TotalSeconds, PlaybackRate, _waitingForFirstFrame);
         if (position >= Duration)
         {
             Stop();
@@ -418,7 +417,7 @@ public sealed class PreviewEngine : IDisposable
             if (clip == null || _waitingForFirstFrame) return;
             var expected = clip.ToSourceTime(position) * 1000;
             var actual = _musicPlayer.Time;
-            if (actual > 0 && Math.Abs(actual - expected) > MusicDriftLimitMs * PlaybackRate)
+            if (actual > 0 && PlaybackClock.DriftExceeded(actual, expected, MusicDriftLimitMs, PlaybackRate))
                 Enqueue(() => _musicPlayer.Time = (long)expected);
             return;
         }
@@ -443,8 +442,7 @@ public sealed class PreviewEngine : IDisposable
         var actual = _videoPlayer.Time;
         if (actual <= 0) return position;
         var expected = (position - _videoClip.Start + _playerBase) * 1000;
-        // 倍速時同樣的延遲會造成較大的來源時間差，容許值跟著放大。
-        if (Math.Abs(actual - expected) <= VideoDriftLimitMs * PlaybackRate) return position;
+        if (!PlaybackClock.DriftExceeded(actual, expected, VideoDriftLimitMs, PlaybackRate)) return position;
 
         var corrected = _videoClip.Start + actual / 1000.0 - _playerBase;
         _clockBase = corrected;
@@ -490,7 +488,7 @@ public sealed class PreviewEngine : IDisposable
     private void RewindTick()
     {
         if (!IsRewinding) return;
-        var position = _rewindBase - _rewindClock.Elapsed.TotalSeconds * RewindSpeed;
+        var position = PlaybackClock.RewindPosition(_rewindBase, _rewindClock.Elapsed.TotalSeconds, RewindSpeed);
         if (position <= 0)
         {
             StopRewind();
@@ -515,7 +513,7 @@ public sealed class PreviewEngine : IDisposable
         }
 
         var media = clip.Media;
-        var fps = media.FrameRate.Value > 0 ? media.FrameRate.Value : DefaultFrameRate;
+        var fps = media.EffectiveFrameRate;
         var frame = FrameMath.FrameIndex(clip.ToSourceTime(Position), fps);
         // 時間軸往回走時，一般片段的來源時間變小，倒放片段的來源時間變大。
         var direction = clip.Reversed ? 1 : -1;
@@ -523,22 +521,14 @@ public sealed class PreviewEngine : IDisposable
         var (first, last) = FrameRange(clip, fps);
 
         // 高倍速只解每 step 格中的一格，所以找最近的一格來顯示。
-        for (var d = 0; d < step; d++)
-        {
-            if (!_frames.TryGet((media.Path, frame - d * direction), out var cached)) continue;
-            ShowFrame(cached, media, clip.Transform);
-            break;
-        }
+        // 命中時最後一次 TryGet 取到的就是要顯示的影格，不必再查一次。
+        RawFrame? nearest = null;
+        if (RewindPlan.NearestCached(frame, direction, step, f => _frames.TryGet((media.Path, f), out nearest)) != null && nearest != null)
+            ShowFrame(nearest, media, clip.Transform);
 
         if (_rewindFetching) return;
-        for (var i = 0; i < RewindBatchFrames; i++)
-        {
-            var target = frame + i * step * direction;
-            if (target < first || target > last) return;
-            if (_frames.TryGet((media.Path, target), out _) || _missingFrames.Contains((media.Path, target))) continue;
+        if (RewindPlan.NextFetchTarget(frame, direction, step, first, last, RewindBatchFrames, f => HasFrame(media.Path, f)) is { } target)
             Observe(FetchRewindFramesAsync(media, target, direction, step, fps, first, last));
-            return;
-        }
     }
 
     private async Task FetchRewindFramesAsync(MediaInfo media, long target, int direction, int step, double fps, long first, long last)
@@ -596,8 +586,7 @@ public sealed class PreviewEngine : IDisposable
     /// <summary>片段在來源中的第一格與最後一格編號。</summary>
     private static (long First, long Last) FrameRange(TimelineClip clip, double fps)
     {
-        var first = FrameMath.FirstFrameAtOrAfter(clip.SourceIn, fps);
-        return (first, Math.Max(first, FrameMath.FirstFrameAtOrAfter(clip.SourceOut, fps) - 1));
+        return FrameMath.SourceFrameRange(clip.SourceIn, clip.SourceOut, fps);
     }
 
     private bool HasFrame(string path, long frame) => _frames.TryGet((path, frame), out _) || _missingFrames.Contains((path, frame));
@@ -616,7 +605,7 @@ public sealed class PreviewEngine : IDisposable
         }
 
         var media = clip.Media;
-        var fps = media.FrameRate.Value > 0 ? media.FrameRate.Value : DefaultFrameRate;
+        var fps = media.EffectiveFrameRate;
         var frame = FrameMath.FrameIndex(clip.ToSourceTime(Position), fps);
         var size = FrameExtractor.PreviewSize(media.DisplayWidth, media.DisplayHeight, MaxPreviewLongSide);
         var (first, last) = FrameRange(clip, fps);

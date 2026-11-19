@@ -31,7 +31,6 @@ public static class ExportPlanner
     private const long MinAudioBitRate = 192_000;
     private const long MaxAudioBitRate = 512_000;
     private const int MaxCommandLength = 30000;
-    private const double DefaultFrameRate = 30;
 
     /// <param name="reverseBufferBytes">倒放時每一小段的記憶體上限，測試時可調小以驗證分段。</param>
     public static ExportPlan Build(TimelineModel timeline, OutputSettings settings, string outputPath,
@@ -65,7 +64,7 @@ public static class ExportPlanner
         // 空白以輸出的影格為單位。黑畫面只能是整數格，空白長度若照時間軸的秒數給，
         // 每段都會被進位成整數格，後面的片段一段比一段晚，配樂（照絕對時間放）也跟著與畫面錯開。
         // 所以記下已經輸出了幾格，每段空白補到「下一個片段的位置最接近的那一格」，誤差不累積，最多半格。
-        var gridRate = reference.FrameRate.Value > 0 ? reference.FrameRate.Value : DefaultFrameRate;
+        var gridRate = reference.EffectiveFrameRate;
         long GridFrame(double seconds) => (long)Math.Round(seconds * gridRate);
         long framesDone = 0;
 

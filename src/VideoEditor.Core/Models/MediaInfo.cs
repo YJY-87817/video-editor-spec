@@ -28,6 +28,12 @@ public sealed record MediaInfo
     public int Rotation { get; init; }
     public Rational FrameRate { get; init; } = new(0, 1);
     public bool IsVariableFrameRate { get; init; }
+
+    /// <summary>讀不到影格率時改用的預設值。</summary>
+    public const double DefaultFrameRate = 30;
+
+    /// <summary>換算影格用的影格率：讀得到就用素材的，讀不到（0）用 <see cref="DefaultFrameRate"/>。</summary>
+    public double EffectiveFrameRate => FrameRate.Value > 0 ? FrameRate.Value : DefaultFrameRate;
     public string VideoCodec { get; init; } = "";
     public string PixelFormat { get; init; } = "";
     public int BitDepth { get; init; } = 8;

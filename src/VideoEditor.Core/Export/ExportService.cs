@@ -15,7 +15,6 @@ public sealed class ExportService(FfmpegTools tools)
     /// </summary>
     private const double H264BitsPerPixel = 0.2;
     private const double H265BitsPerPixel = 0.15;
-    private const double DefaultFrameRate = 30;
 
     /// <summary>
     /// 匯出前檢查：素材都還在、路徑可寫入、不覆蓋來源、輸出檔能覆蓋。回傳錯誤訊息，通過時為 null。
@@ -114,7 +113,7 @@ public sealed class ExportService(FfmpegTools tools)
         if (timeline.VideoClips.Count == 0) return 0;
         var first = timeline.VideoClips[0];
         var size = Models.OutputSize.Compute(first.DisplaySize.Width, first.DisplaySize.Height, settings.Ratio);
-        var fps = first.Media.FrameRate.Value > 0 ? first.Media.FrameRate.Value : DefaultFrameRate;
+        var fps = first.Media.EffectiveFrameRate;
         var bitsPerPixel = ExportPlanner.ChooseVideoFormat(first.Media).Codec == "libx265" ? H265BitsPerPixel : H264BitsPerPixel;
         var video = (double)size.Width * size.Height * fps * bitsPerPixel / 8;
         var audio = timeline.AllClips.Any(c => c.Media.HasAudio) ? ExportPlanner.AudioBitRate(timeline) / 8.0 : 0;
