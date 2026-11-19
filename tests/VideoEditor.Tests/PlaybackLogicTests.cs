@@ -129,3 +129,98 @@ public class FrameRangeTests
         Assert.Equal(25, new MediaInfo { Path = "a.mp4", FrameRate = new Rational(25, 1) }.EffectiveFrameRate);
     }
 }
+
+public class PendingSeekTests
+{
+    [Fact]
+    public void OnlyTheFirstRequestQueuesACommand()
+    {
+        var seek = new PendingSeek();
+
+        Assert.True(seek.Request(1000));
+        Assert.False(seek.Request(1100)); // 已經有一個還沒執行的
+        Assert.False(seek.Request(1200));
+    }
+
+    [Fact]
+    public void TheCommandSeeksToTheLatestTargetNotTheOneItWasQueuedFor()
+    {
+        var seek = new PendingSeek();
+        seek.Request(1000);
+        seek.Request(1100);
+        seek.Request(1300);
+
+        Assert.Equal(1300, seek.Take()); // 執行時才取，過期的位置不會被用到
+    }
+
+    [Fact]
+    public void AfterTheCommandRunsTheNextRequestQueuesAgain()
+    {
+        var seek = new PendingSeek();
+        seek.Request(1000);
+        seek.Take();
+
+        Assert.True(seek.Request(5000));
+        Assert.Equal(5000, seek.Take());
+    }
+
+    [Fact]
+    public void TakeWithoutARequestIsHarmless()
+    {
+        var seek = new PendingSeek();
+        Assert.Equal(0, seek.Take());
+        Assert.True(seek.Request(7)); // 之後照常運作
+    }
+
+    [Fact]
+    public async Task ManyRequestsWhileTheQueueIsBusyQueueOnlyOneCommand()
+    {
+        // 模擬 LibVLC 很慢：指令佇列還沒開始處理，計時器已經連續要求了上千次。
+        var seek = new PendingSeek();
+        var queued = 0;
+        var tasks = Enumerable.Range(0, 8).Select(worker => Task.Run(() =>
+        {
+            for (var i = 0; i < 1000; i++)
+                if (seek.Request(worker * 10_000 + i)) Interlocked.Increment(ref queued);
+        }));
+        await Task.WhenAll(tasks);
+
+        Assert.Equal(1, queued);
+        Assert.InRange(seek.Take(), 0, 7 * 10_000 + 999);
+    }
+
+    [Fact]
+    public async Task NoRequestIsLostWhenTheCommandRunsConcurrently()
+    {
+        // 要求端不斷要求、執行端不斷取走：每次要求之後，一定有一個指令會（再）取走最新的目標。
+        var seek = new PendingSeek();
+        var pendingCommands = 0;   // 已排入、還沒執行的指令數
+        var maxPending = 0;
+        long lastTaken = -1;
+        const int requests = 20_000;
+        var done = false;
+
+        var executor = Task.Run(() =>
+        {
+            while (!Volatile.Read(ref done) || Volatile.Read(ref pendingCommands) > 0)
+            {
+                if (Volatile.Read(ref pendingCommands) == 0) { Thread.Yield(); continue; }
+                lastTaken = seek.Take();
+                Interlocked.Decrement(ref pendingCommands);
+            }
+        });
+        for (var i = 1; i <= requests; i++)
+        {
+            if (seek.Request(i))
+            {
+                var now = Interlocked.Increment(ref pendingCommands);
+                if (now > maxPending) maxPending = now;
+            }
+        }
+        Volatile.Write(ref done, true);
+        await executor;
+
+        Assert.Equal(requests, lastTaken); // 最後一次要求的目標一定被取走
+        Assert.True(maxPending <= 2, $"待執行的指令最多 2 個（目標競爭時可能多排一個），實際 {maxPending}");
+    }
+}
