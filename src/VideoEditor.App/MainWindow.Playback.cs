@@ -56,7 +56,7 @@ public partial class MainWindow
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
         // Ctrl／Alt／Shift／Win 組合鍵（例如 Ctrl+S）不是預覽快捷鍵。
-        if (Keyboard.Modifiers != ModifierKeys.None) return;
+        if (!PreviewKeys.ShouldHandle((KeyModifiers)Keyboard.Modifiers)) return;
         // 正在輸入文字時，按鍵歸文字框。
         if (e.OriginalSource is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.PasswordBox) return;
         if (PreviewKeys.FromKeyName(e.Key.ToString()) is not { } command) return;

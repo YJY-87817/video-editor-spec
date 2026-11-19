@@ -22,8 +22,25 @@ public enum PreviewCommand
     NextEditPoint,
 }
 
+/// <summary>按下快捷鍵時同時按著的修飾鍵。數值與 WPF 的 <c>ModifierKeys</c> 相同，App 端可直接轉型。</summary>
+[Flags]
+public enum KeyModifiers
+{
+    None = 0,
+    Alt = 1,
+    Control = 2,
+    Shift = 4,
+    Windows = 8,
+}
+
 public static class PreviewKeys
 {
+    /// <summary>
+    /// 預覽快捷鍵只在沒有按任何修飾鍵時處理。
+    /// Ctrl+S（使用者習慣的存檔）等組合鍵若被當成 S（分割片段），會改動時間軸，而本程式沒有復原。
+    /// </summary>
+    public static bool ShouldHandle(KeyModifiers modifiers) => modifiers == KeyModifiers.None;
+
     /// <summary>
     /// 快捷鍵對應的指令。keyName 是 WPF <c>Key</c> 列舉的名稱（<c>e.Key.ToString()</c>），
     /// 這樣核心不必依賴 WPF。沒有對應的按鍵回傳 null。
