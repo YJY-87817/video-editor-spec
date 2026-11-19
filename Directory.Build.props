@@ -1,0 +1,14 @@
+<Project>
+
+  <!--
+    產生並使用 packages.lock.json：套件版本與雜湊固定下來，還原時比對，避免相依套件被悄悄換掉（健檢報告 S-8）。
+    更新套件後要重新產生鎖定檔：dotnet restore 加上 force-evaluate 選項與 -p:EnableWindowsTargeting=true（Linux 才需要）。
+    CI 以 -p:RestoreLockedMode=true 還原，鎖定檔與專案檔對不上時會失敗。
+  -->
+  <PropertyGroup>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <!-- 發佈用 win-x64（README 與 CI）。明確列出，鎖定檔裡的執行階段識別碼才不會隨還原的機器而不同。 -->
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+
+</Project>

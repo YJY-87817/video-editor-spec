@@ -115,6 +115,7 @@ public class FfmpegVersionTests
 }
 
 [Collection("media")]
+[Trait("Category", "Integration")]
 public class FfmpegVersionIntegrationTests(TestMedia media)
 {
     [Fact]

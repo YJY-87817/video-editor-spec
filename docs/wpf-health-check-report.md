@@ -194,7 +194,7 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 | 覆蓋較多的類別（以測試中的引用次數估計） | `TimelineSnap` 40、`ExportPlanner` 34、`ReverseGraph` 30、`ProcessRunner` 26、`ClipFraming` 15 |
 | Logging | 有：`FileLog`／`Log` 寫到 `%LOCALAPPDATA%\VideoEditor\logs`，記錄未處理的例外、FFmpeg 失敗時的命令列與錯誤輸出、匯出的開始與結果（README 有說明） |
 | 文件 | `README`（執行、發佈、操作、設計決定、已知限制、授權）、規格書（含非目標）、`docs/project-structure.md`（專案結構導覽）、`docs/` 下 4 份規劃文件（記錄決策與實作結果） |
-| CI | Windows 建置、測試、發佈驗證；固定 FFmpeg 版本；最小權限；沒有收集覆蓋率；已啟用 Dependabot |
+| CI | Windows 建置、測試、發佈驗證；固定 FFmpeg 版本；最小權限；收集覆蓋率報告（不設門檻）；套件以鎖定模式還原、Actions 固定到 commit SHA；已啟用 Dependabot |
 
 ### 6.2 需要注意
 
@@ -213,7 +213,7 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 | 2 | A-1 | `MainWindow` 持有過多狀態、手動同步 | Medium | 已確認 | L |
 | 3 | W-2 | 播放時每個 tick 重繪整個時間軸 | Medium | 潛在，待實測 | M |
 | 4 | S-2 | 白名單只擋網路協定；LibVLC 未處理 | Low~Medium | 部分已處理，待確認 | S~M |
-| 5 | S-8 | 相依套件漏洞（待查 CVE）、無鎖定檔、Actions 未以 SHA 固定 | Low~Medium | 部分已處理，待確認 | S |
+| 5 | S-8 | 相依套件漏洞（待查 CVE） | Low~Medium | 部分已處理，待確認 | S |
 | 6 | P-3 | 影格 LOH 配置、快取上限 | Low~Medium | 潛在，待實測 | M |
 | 7 | P-4 | 其餘 Core 類別沒有 `ConfigureAwait(false)` | Low | 已確認（部分已處理） | S |
 | 8 | P-6 | 每個片段的輸入參數仍受命令列長度限制（約 260 到 450 個） | Low~Medium | 已確認（部分已處理） | L |
@@ -336,8 +336,8 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 
 #### S-8　相依套件與供應鏈
 - **Low~Medium／部分已處理**
-- **已處理**：已啟用 Dependabot（NuGet 與 GitHub Actions，每週）。
-- **仍待處理**：`LibVLCSharp 3.10.2` 與 `VideoLAN.LibVLC.Windows 3.0.24` 是否有已知漏洞待查（LibVLC 是原生解碼器，攻擊面較大）；沒有 `packages.lock.json`；CI 的 Actions 以版本標籤（`@v7`、`@v6`）而非 commit SHA 引用；FFmpeg 透過 Chocolatey 固定版本安裝。
+- **已處理**：已啟用 Dependabot（NuGet 與 GitHub Actions，每週）；三個專案都有 `packages.lock.json`，CI 以鎖定模式還原；CI 的 Actions 固定到 commit SHA（註解標明版本，Dependabot 會一併更新）。
+- **仍待處理**：`LibVLCSharp 3.10.2` 與 `VideoLAN.LibVLC.Windows 3.0.24` 是否有已知漏洞待查（LibVLC 是原生解碼器，攻擊面較大）；FFmpeg 透過 Chocolatey 固定版本安裝，沒有雜湊驗證。
 
 ### 8.6 測試與維護性（T）
 
@@ -348,7 +348,7 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 - **仍待處理**：`MainWindow` 的狀態與視窗事件接線、逐格擷取的實際執行（狀態機的規則已抽出）、波形與倒放預覽的 UI 協調。
 
 #### T-5　CI 沒有覆蓋率與靜態分析
-- **Low／已確認**：`dotnet test` 沒有 `--collect`（雖已引用 `coverlet.collector`）；沒有 `.editorconfig`、格式檢查、`TreatWarningsAsErrors`。
+- **Low／已確認（部分已處理）**：CI 已收集覆蓋率（報告上傳為 artifact，摘要寫進工作摘要，不設門檻），並新增了只含縮排與檔尾換行的 `.editorconfig`。**不做**（已決定）：`TreatWarningsAsErrors`、格式檢查（既有檔案的行尾空白與編碼不一致，會一次改動太多檔案）。
 
 ---
 

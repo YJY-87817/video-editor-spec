@@ -1,0 +1,16 @@
+# 編輯器共用設定。只放縮排與檔尾換行這類基本規則，不含會讓建置出警告的分析規則。
+# 行尾空白不處理：既有檔案裡有一些，自動清掉會讓每次存檔都多出無關的差異。
+# 換行字元不在這裡指定：Windows 的 git 可能把檔案轉成 CRLF，由 git 決定。
+# 檔案編碼也不指定：既有檔案有的帶 BOM、有的不帶，統一改動會讓每個檔案都出現差異。
+root = true
+
+[*]
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+
+[*.{csproj,props,targets,slnx,xml,config}]
+indent_size = 2
+
+[*.{yml,yaml,json}]
+indent_size = 2
