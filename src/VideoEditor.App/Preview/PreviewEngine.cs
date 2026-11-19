@@ -54,6 +54,8 @@ public sealed class PreviewEngine : IDisposable
 
     // LibVLC 的 Play/Stop 可能阻塞，全部排進單一背景佇列，依序執行。
     private Task _commands = Task.CompletedTask;
+    // 配樂偏離時的跳轉：最多只有一個待執行，目標取執行當下最新的。
+    private readonly PendingSeek _musicSeek = new();
 
     private TimelineModel _timeline = new();
     private WriteableBitmap? _bitmap;
@@ -417,8 +419,10 @@ public sealed class PreviewEngine : IDisposable
             if (clip == null || _waitingForFirstFrame) return;
             var expected = clip.ToSourceTime(position) * 1000;
             var actual = _musicPlayer.Time;
-            if (actual > 0 && PlaybackClock.DriftExceeded(actual, expected, MusicDriftLimitMs, PlaybackRate))
-                Enqueue(() => _musicPlayer.Time = (long)expected);
+            // 偏離時每個 tick 都會走到這裡；跳轉還沒執行時只更新目標，不再排新的指令（見 PendingSeek）。
+            if (actual > 0 && PlaybackClock.DriftExceeded(actual, expected, MusicDriftLimitMs, PlaybackRate)
+                && _musicSeek.Request((long)expected))
+                Enqueue(() => _musicPlayer.Time = _musicSeek.Take());
             return;
         }
 
