@@ -105,8 +105,13 @@ public static class ProcessRunner
         }
     }
 
-    /// <summary>執行並回傳標準輸出的全部位元組；兩個管線同時讀取以免死結。</summary>
-    public static Task<byte[]> RunForBytesAsync(string exe, IEnumerable<string> args, CancellationToken token = default, TimeSpan? timeout = null) =>
+    /// <summary>
+    /// 四個 Run 方法共用的生命週期：啟動程序、取消或逾時時終止、同時讀錯誤輸出（只留最後幾行）、
+    /// 讀完標準輸出後等程序結束並檢查結束代碼；任何例外都要終止子行程（using 只會釋放 Process 物件，不會結束它）。
+    /// readOutput 負責讀標準輸出，而且必須讀到結束，程序才不會因管線塞滿而卡住。
+    /// </summary>
+    private static Task<T> RunAsync<T>(string exe, IEnumerable<string> args, CancellationToken token, TimeSpan? timeout,
+        Func<Process, Task<T>> readOutput) =>
         WithTimeoutAsync(exe, timeout, token, async token =>
         {
             using var process = Start(exe, args);
@@ -114,17 +119,24 @@ public static class ProcessRunner
             try
             {
                 var error = ReadErrorTailAsync(process);
-                using var output = new MemoryStream();
-                await process.StandardOutput.BaseStream.CopyToAsync(output, CancellationToken.None).ConfigureAwait(false);
+                var result = await readOutput(process).ConfigureAwait(false);
                 await FinishAsync(process, exe, error, token).ConfigureAwait(false);
-                return output.ToArray();
+                return result;
             }
             catch
             {
-                // 任何例外都不能留下仍在跑的子行程（using 只會釋放 Process 物件，不會結束它）。
                 KillQuietly(process);
                 throw;
             }
+        });
+
+    /// <summary>執行並回傳標準輸出的全部位元組；兩個管線同時讀取以免死結。</summary>
+    public static Task<byte[]> RunForBytesAsync(string exe, IEnumerable<string> args, CancellationToken token = default, TimeSpan? timeout = null) =>
+        RunAsync(exe, args, token, timeout, async process =>
+        {
+            using var output = new MemoryStream();
+            await process.StandardOutput.BaseStream.CopyToAsync(output, CancellationToken.None).ConfigureAwait(false);
+            return output.ToArray();
         });
 
     /// <summary>
@@ -135,33 +147,21 @@ public static class ProcessRunner
         CancellationToken token = default, TimeSpan? timeout = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(chunkSize);
-        return WithTimeoutAsync(exe, timeout, token, async token =>
+        return RunAsync<IReadOnlyList<byte[]>>(exe, args, token, timeout, async process =>
         {
-            using var process = Start(exe, args);
-            using var kill = token.Register(() => KillQuietly(process));
-            try
+            var output = process.StandardOutput.BaseStream;
+            var chunks = new List<byte[]>();
+            var buffer = new byte[chunkSize];
+            while (chunks.Count < maxChunks)
             {
-                var error = ReadErrorTailAsync(process);
-                var output = process.StandardOutput.BaseStream;
-                var chunks = new List<byte[]>();
-                var buffer = new byte[chunkSize];
-                while (chunks.Count < maxChunks)
-                {
-                    if (await output.ReadAtLeastAsync(buffer, chunkSize, throwOnEndOfStream: false, CancellationToken.None).ConfigureAwait(false) < chunkSize) break;
-                    chunks.Add(buffer);
-                    // 讀滿上限時不再配置下一塊。
-                    if (chunks.Count < maxChunks) buffer = new byte[chunkSize];
-                }
-                // 讀滿上限後仍要把剩下的輸出讀完，程序才不會因管線塞滿而卡住。
-                await output.CopyToAsync(Stream.Null, CancellationToken.None).ConfigureAwait(false);
-                await FinishAsync(process, exe, error, token).ConfigureAwait(false);
-                return (IReadOnlyList<byte[]>)chunks;
+                if (await output.ReadAtLeastAsync(buffer, chunkSize, throwOnEndOfStream: false, CancellationToken.None).ConfigureAwait(false) < chunkSize) break;
+                chunks.Add(buffer);
+                // 讀滿上限時不再配置下一塊。
+                if (chunks.Count < maxChunks) buffer = new byte[chunkSize];
             }
-            catch
-            {
-                KillQuietly(process);
-                throw;
-            }
+            // 讀滿上限後仍要把剩下的輸出讀完，程序才不會因管線塞滿而卡住。
+            await output.CopyToAsync(Stream.Null, CancellationToken.None).ConfigureAwait(false);
+            return chunks;
         });
     }
 
@@ -169,41 +169,21 @@ public static class ProcessRunner
     /// 執行並把標準輸出交給 consume 邊讀邊處理（例如解出整段聲音來算波形），不必整段放進記憶體。
     /// consume 沒讀完的部分會在之後讀掉，程序才不會因管線塞滿而卡住。
     /// </summary>
-    public static async Task RunWithStreamAsync(string exe, IEnumerable<string> args, Func<Stream, Task> consume,
-        CancellationToken token = default)
-    {
-        using var process = Start(exe, args);
-        using var kill = token.Register(() => KillQuietly(process));
-        try
+    public static Task RunWithStreamAsync(string exe, IEnumerable<string> args, Func<Stream, Task> consume,
+        CancellationToken token = default) =>
+        RunAsync(exe, args, token, null, async process =>
         {
-            var error = ReadErrorTailAsync(process);
             var output = process.StandardOutput.BaseStream;
             await consume(output).ConfigureAwait(false);
             await output.CopyToAsync(Stream.Null, CancellationToken.None).ConfigureAwait(false);
-            await FinishAsync(process, exe, error, token).ConfigureAwait(false);
-        }
-        catch
-        {
-            KillQuietly(process);
-            throw;
-        }
-    }
+            return true;
+        });
 
     /// <summary>執行並逐行回報標準輸出，用於讀取 -progress 進度。onLine 可能在背景執行緒呼叫。</summary>
-    public static async Task RunWithLinesAsync(string exe, IEnumerable<string> args, Action<string> onLine, CancellationToken token = default)
-    {
-        using var process = Start(exe, args);
-        using var kill = token.Register(() => KillQuietly(process));
-        try
+    public static Task RunWithLinesAsync(string exe, IEnumerable<string> args, Action<string> onLine, CancellationToken token = default) =>
+        RunAsync(exe, args, token, null, async process =>
         {
-            var error = ReadErrorTailAsync(process);
             while (await process.StandardOutput.ReadLineAsync(CancellationToken.None).ConfigureAwait(false) is { } line) onLine(line);
-            await FinishAsync(process, exe, error, token).ConfigureAwait(false);
-        }
-        catch
-        {
-            KillQuietly(process);
-            throw;
-        }
-    }
+            return true;
+        });
 }

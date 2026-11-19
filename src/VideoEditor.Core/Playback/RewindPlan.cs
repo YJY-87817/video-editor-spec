@@ -8,15 +8,14 @@ namespace VideoEditor.Core.Playback;
 public static class RewindPlan
 {
     /// <summary>
-    /// 要顯示的影格：從 frame 起，往「剛經過」的方向最多找 step 格，回傳第一個已經在快取的；都沒有則為 null。
-    /// 高倍速只解每 step 格中的一格，所以要找最近的一格。
+    /// 要顯示的影格：從 frame 起，往「剛經過」的方向最多找 step 格，回傳第一個查得到的（lookup 回傳非 null）；都沒有則為 null。
+    /// 高倍速只解每 step 格中的一格，所以要找最近的一格。直接回傳查到的內容，呼叫端不必再查一次。
     /// </summary>
-    public static long? NearestCached(long frame, int direction, int step, Func<long, bool> isCached)
+    public static T? NearestCached<T>(long frame, int direction, int step, Func<long, T?> lookup) where T : class
     {
         for (var d = 0; d < step; d++)
         {
-            var candidate = frame - d * direction;
-            if (isCached(candidate)) return candidate;
+            if (lookup(frame - d * direction) is { } found) return found;
         }
         return null;
     }

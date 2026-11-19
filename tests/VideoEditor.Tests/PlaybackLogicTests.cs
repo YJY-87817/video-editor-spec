@@ -37,31 +37,44 @@ public class PlaybackClockTests
 
 public class RewindPlanTests
 {
+    // 快取裡有哪幾格；查得到就回傳「第 n 格」的內容，查不到為 null。
+    private static Func<long, string?> Cache(params long[] frames) => f => frames.Contains(f) ? $"frame {f}" : null;
+
     [Fact]
     public void ShowsTheExactFrameWhenCached() =>
-        Assert.Equal(100, RewindPlan.NearestCached(100, -1, 1, f => f == 100));
+        Assert.Equal("frame 100", RewindPlan.NearestCached(100, -1, 1, Cache(100)));
 
     [Fact]
     public void AtHigherSpeedsTheNearestSampledFrameIsShown()
     {
         // 往回倒（direction -1）、每 4 格解一格：剛經過的是編號較大的那幾格。
-        Assert.Equal(102, RewindPlan.NearestCached(100, -1, 4, f => f == 102));
-        Assert.Null(RewindPlan.NearestCached(100, -1, 4, f => f == 104)); // 超過 step 格就不算
-        Assert.Null(RewindPlan.NearestCached(100, -1, 4, f => f == 99)); // 還沒經過的那一側不看
+        Assert.Equal("frame 102", RewindPlan.NearestCached(100, -1, 4, Cache(102)));
+        Assert.Null(RewindPlan.NearestCached(100, -1, 4, Cache(104))); // 超過 step 格就不算
+        Assert.Null(RewindPlan.NearestCached(100, -1, 4, Cache(99))); // 還沒經過的那一側不看
     }
 
     [Fact]
     public void ReversedClipsLookTheOtherWay() =>
         // 倒放片段往回倒時，來源影格編號變大，剛經過的是編號較小的格。
-        Assert.Equal(98, RewindPlan.NearestCached(100, 1, 4, f => f == 98));
+        Assert.Equal("frame 98", RewindPlan.NearestCached(100, 1, 4, Cache(98)));
 
     [Fact]
     public void NearestWinsWhenSeveralAreCached() =>
-        Assert.Equal(101, RewindPlan.NearestCached(100, -1, 4, f => f is 101 or 103));
+        Assert.Equal("frame 101", RewindPlan.NearestCached(100, -1, 4, Cache(101, 103)));
 
     [Fact]
     public void NothingCachedMeansNothingToShow() =>
-        Assert.Null(RewindPlan.NearestCached(100, -1, 2, _ => false));
+        Assert.Null(RewindPlan.NearestCached(100, -1, 2, Cache()));
+
+    [Fact]
+    public void TheFoundContentIsReturnedWithoutALookupSecondTime()
+    {
+        var lookups = new List<long>();
+        var found = RewindPlan.NearestCached(100, -1, 4, f => { lookups.Add(f); return f == 102 ? "x" : null; });
+
+        Assert.Equal("x", found);
+        Assert.Equal([100L, 101L, 102L], lookups); // 找到就停，不再往後查
+    }
 
     [Fact]
     public void FetchStartsAtTheFirstUnknownSample()
