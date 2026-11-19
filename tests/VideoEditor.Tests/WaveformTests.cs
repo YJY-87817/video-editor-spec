@@ -2,8 +2,7 @@ using System.Buffers.Binary;
 using System.Globalization;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
-using VideoEditor.Core.Timeline;
-using TimelineModel = VideoEditor.Core.Timeline.Timeline;
+using VideoEditor.Core.Editing;
 
 namespace VideoEditor.Tests;
 
@@ -164,7 +163,7 @@ public class WaveformColumnsTests
     [Fact]
     public void ColumnsFollowSourceRangeOfTheClip()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(Media(), 0.5, 2.5);
         // 每秒 10 像素，片段在畫面 x=100 開始，長 2 秒 = 20 欄。
         var columns = WaveformColumns.Build(clip, Steps(), 100, 10, 0, 1000);
@@ -178,7 +177,7 @@ public class WaveformColumnsTests
     [Fact]
     public void ReversedClipIsMirrored()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(Media(), 0.5, 2.5);
         var forward = WaveformColumns.Build(clip, Steps(), 0, 10, 0, 1000).Select(c => c.Level).ToList();
         t.SetReversed(clip, true);
@@ -190,7 +189,7 @@ public class WaveformColumnsTests
     [Fact]
     public void OnlyVisiblePartIsBuilt()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(Media(), 0, 10);
         // 片段在畫面上從 -50 到 150，只有 44–80 看得到。
         var columns = WaveformColumns.Build(clip, Steps(), -50, 20, 44, 80);
@@ -202,7 +201,7 @@ public class WaveformColumnsTests
     [Fact]
     public void VolumeScalesAndMarksClipping()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(Media(), 0, 10);
         clip.Volume = 1.5;
         var columns = WaveformColumns.Build(clip, Steps(), 0, 10, 0, 1000);
@@ -298,6 +297,7 @@ public class WaveformCacheTests
 }
 
 [Collection("media")]
+[Trait("Category", "Integration")]
 public class WaveformExtractorTests(TestMedia media)
 {
     private async Task<string> Wav(string name, string source, params string[] options)

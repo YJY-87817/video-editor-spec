@@ -1,8 +1,7 @@
 using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
-using VideoEditor.Core.Timeline;
-using TimelineModel = VideoEditor.Core.Timeline.Timeline;
+using VideoEditor.Core.Editing;
 
 namespace VideoEditor.Tests;
 
@@ -131,7 +130,7 @@ public class TimelineTests
     [Fact]
     public void AppendPlacesClipsInOrder()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var a = t.Append(Media(), 1, 3);
         var b = t.Append(Media(), 5, 9);
         Assert.Equal(0, a.Start);
@@ -142,7 +141,7 @@ public class TimelineTests
     [Fact]
     public void MoveCannotOverlap()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var a = t.Append(Media(), 0, 2);
         var b = t.Append(Media(), 0, 2);
         t.Move(b, 1); // 與 a 重疊，應貼到 a 的右邊
@@ -157,7 +156,7 @@ public class TimelineTests
     [Fact]
     public void MoveKeepsListSortedAndAllowsReordering()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var a = t.Append(Media(), 0, 2);
         var b = t.Append(Media(), 0, 2);
         t.Move(a, 10);
@@ -168,7 +167,7 @@ public class TimelineTests
     [Fact]
     public void TrimStartRespectsSourceAndNeighbours()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var a = t.Append(Media(), 0, 2);
         var b = t.Append(Media(), 3, 5);
         t.TrimStart(b, 2.5);
@@ -179,13 +178,13 @@ public class TimelineTests
         Assert.Equal(a.End, b.Start, 6);
         Assert.Equal(3, b.SourceIn, 6);
         t.TrimStart(b, 100); // 受最短長度限制
-        Assert.Equal(TimelineModel.MinClipDuration, b.Duration, 6);
+        Assert.Equal(Timeline.MinClipDuration, b.Duration, 6);
     }
 
     [Fact]
     public void TrimStartCannotPassSourceBeginning()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var a = t.Append(Media(), 1, 3);
         t.Move(a, 5);
         t.TrimStart(a, 0);
@@ -196,7 +195,7 @@ public class TimelineTests
     [Fact]
     public void TrimEndRespectsSourceAndNeighbours()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var a = t.Append(Media(4), 1, 2);
         t.TrimEnd(a, 100); // 受來源長度限制
         Assert.Equal(4, a.SourceOut, 6);
@@ -212,7 +211,7 @@ public class TimelineTests
     [Fact]
     public void TrimAlignsTheCutToTheNearestSourceFrame()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var a = t.Append(Media(), 0, 2);
         t.TrimEnd(a, 1.015); // 30.45 格 → 30 格
         Assert.Equal(1.0, a.SourceOut, 9);
@@ -230,7 +229,7 @@ public class TimelineTests
     [Fact]
     public void TrimOfReversedClipAlignsTheSourceToFrames()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var a = t.Append(Media(), 2, 5);
         t.SetReversed(a, true);
         t.TrimStart(a, 0.51);  // 改 SourceOut：5 − 0.51 = 4.49 → 134.7 格 → 135 格
@@ -243,7 +242,7 @@ public class TimelineTests
     [Fact]
     public void AlignedTrimNeverOverlapsTheNeighbour()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var a = t.Append(Media(), 0, 2);
         var b = t.Append(Media(), 3, 5);
         t.Move(b, 2.49);
@@ -263,7 +262,7 @@ public class TimelineTests
         var fps = media.FrameRate.Value;
         for (var target = 0.0; target < 1; target += 0.0137)
         {
-            var t = new TimelineModel();
+            var t = new Timeline();
             var clip = t.Append(media, 30 / fps, 90 / fps); // 以 I／O 標記加入時，入出點已對齊影格
             t.TrimStart(clip, target);
             Assert.Equal(FrameMath.FrameIndex(clip.SourceIn, fps), FrameMath.FirstFrameAtOrAfter(clip.SourceIn, fps));
@@ -274,7 +273,7 @@ public class TimelineTests
     [Fact]
     public void TrimWithoutFrameRateKeepsTheExactPosition()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var a = t.Append(Media() with { FrameRate = new Rational(0, 1) }, 0, 2);
         t.TrimEnd(a, 1.015);
         Assert.Equal(1.015, a.SourceOut, 9);
@@ -283,7 +282,7 @@ public class TimelineTests
     [Fact]
     public void SwapKeepsGapAndOuterClips()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var a = t.Append(Media(), 0, 1);
         var b = t.Append(Media(), 0, 3);
         var c = t.Append(Media(), 0, 1);
@@ -300,7 +299,7 @@ public class TimelineTests
     [Fact]
     public void ClipAtFindsAndMapsTime()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var a = t.Append(Media(), 2, 4);
         Assert.Equal(a, t.VideoClipAt(1));
         Assert.Equal(3, a.ToSourceTime(1), 6);
@@ -310,7 +309,7 @@ public class TimelineTests
     [Fact]
     public void AudioOnlyMediaGoesToMusicTrack()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var music = new MediaInfo { Path = "m.mp3", Duration = 5, HasAudio = true };
         Assert.Equal(TrackKind.Music, t.Append(music, 0, 5).Track);
         Assert.Throws<ArgumentException>(() => t.Append(music, 0, 5, TrackKind.Video));
@@ -455,7 +454,7 @@ public class ProbeParseTests
             """;
         var info = MediaProbe.Parse(json, "short.m4a");
         Assert.Equal(0.1, info.Duration);
-        Assert.Equal(TrackKind.Music, new TimelineModel().Append(info, 0, info.Duration).Track);
+        Assert.Equal(TrackKind.Music, new Timeline().Append(info, 0, info.Duration).Track);
     }
 
     [Fact]
@@ -565,7 +564,7 @@ public class DiskEstimateTests
     public void HighlyCompressedSourceIsEstimatedFromTheOutputResolution()
     {
         // 2 Mbps 的 1080p HEVC：只看來源位元率是 22 MB，CRF 18 重新編碼實際會大好幾倍。
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(Media(2_000_000), 0, 60);
         var fromSource = ExportService.EstimateBytes(t);
         var estimate = ExportService.EstimateBytes(t, Settings);
@@ -577,7 +576,7 @@ public class DiskEstimateTests
     [Fact]
     public void HighBitRateSourceKeepsTheSourceBasedEstimate()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(Media(50_000_000), 0, 60);
         Assert.Equal(ExportService.EstimateBytes(t), ExportService.EstimateBytes(t, Settings));
     }
@@ -585,7 +584,7 @@ public class DiskEstimateTests
     [Fact]
     public void EstimateFollowsTheOutputSizeNotTheSourceSize()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(Media(2_000_000), 0, 60);
         // 16:9 的來源輸出成 1:1 是 1920×1920，像素比原尺寸多，估算也跟著變大。
         var square = ExportService.EstimateBytes(t, new OutputSettings(AspectRatio.R1x1, FitMode.Fill));
@@ -595,7 +594,7 @@ public class DiskEstimateTests
     [Fact]
     public void LowDiskSpaceIsAWarningThatSaysItIsAnEstimate()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(Media(8_000_000), 0, 60);
         var estimate = ExportService.EstimateBytes(t, Settings);
 
@@ -613,7 +612,7 @@ public class DiskEstimateTests
     [Fact]
     public void MusicOnlyTimelineUsesTheSourceEstimate()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(new MediaInfo { Path = "m.m4a", Duration = 10, HasAudio = true, BitRate = 128000 }, 0, 10);
         Assert.Equal(ExportService.EstimateBytes(t), ExportService.EstimateBytes(t, Settings));
     }
@@ -635,7 +634,7 @@ public class ExportPlannerTests
     public void OutputPathIsKeptApartFromTheArguments()
     {
         // ExportService 匯出時要把輸出路徑換成暫存檔；兩者分開存放，才不必靠「最後一個參數是輸出路徑」的默契。
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(Media(), 0, 2);
         var plan = ExportPlanner.Build(t, new OutputSettings(AspectRatio.R16x9, FitMode.Fill), "o.mp4");
         Assert.Equal("o.mp4", plan.OutputPath);
@@ -647,7 +646,7 @@ public class ExportPlannerTests
     public void EveryInputIsLimitedToLocalFiles()
     {
         // 偽裝成影片的播放清單不能讓 FFmpeg 對外連線（S-2）。
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(Media(), 0, 2);
         t.Append(Media(), 3, 5);
         ReverseGraphTests.AssertEveryInputIsLocalOnly(ExportPlanner.Build(t, new OutputSettings(AspectRatio.R16x9, FitMode.Fill), "o.mp4").Arguments);
@@ -656,7 +655,7 @@ public class ExportPlannerTests
     [Fact]
     public void Uses8BitH264AndCrf18ByDefault()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(Media(), 0, 2);
         var plan = ExportPlanner.Build(t, new OutputSettings(AspectRatio.R16x9, FitMode.Fill), "o.mp4");
         Assert.Equal("libx264", plan.VideoCodec);
@@ -680,7 +679,7 @@ public class ExportPlannerTests
     [InlineData(1536000, 512000)]
     public void AudioBitRateIsNotBelowSourceUpToLimit(long source, long expected)
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(Media(audioBitRate: source), 0, 2);
         Assert.Equal(expected, ExportPlanner.AudioBitRate(t));
     }
@@ -689,7 +688,7 @@ public class ExportPlannerTests
     public void GapLengthsFollowTheFrameGridWithoutAccumulatingError()
     {
         // 兩段 0.515 秒（15.45 格）的空白。每段各自進位成 16 格的話，後面的片段會一段比一段晚。
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(Media(), 0, 1);
         t.Move(t.Append(Media(), 1, 2), 1.515);
         t.Move(t.Append(Media(), 2, 3), 3.03);
@@ -706,7 +705,7 @@ public class ExportPlannerTests
     [Fact]
     public void GapShorterThanHalfAFrameIsDropped()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(Media(), 0, 1);
         t.Move(t.Append(Media(), 1, 2), 1.01); // 0.3 格
         var plan = ExportPlanner.Build(t, new OutputSettings(AspectRatio.Original, FitMode.Fill), "o.mp4");
@@ -716,7 +715,7 @@ public class ExportPlannerTests
     [Fact]
     public void GapsBecomeBlackAndSilence()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(Media(), 0, 1);
         var b = t.Append(Media(), 0, 1);
         t.Move(b, 3);
@@ -730,7 +729,7 @@ public class ExportPlannerTests
     [Fact]
     public void DifferentRatesAreConformedAndWarned()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(Media(), 0, 1);
         t.Append(Media() with { Path = "b.mp4", FrameRate = new Rational(25, 1) }, 0, 1);
         var plan = ExportPlanner.Build(t, new OutputSettings(AspectRatio.R16x9, FitMode.Pad), "o.mp4");
@@ -741,7 +740,7 @@ public class ExportPlannerTests
     [Fact]
     public void EmptyTimelineCannotExport() =>
         Assert.Throws<InvalidOperationException>(() =>
-            ExportPlanner.Build(new TimelineModel(), new OutputSettings(AspectRatio.R16x9, FitMode.Pad), "o.mp4"));
+            ExportPlanner.Build(new Timeline(), new OutputSettings(AspectRatio.R16x9, FitMode.Pad), "o.mp4"));
 
     [Theory]
     [InlineData("out_time_us=5000000", 10, 0.5)]

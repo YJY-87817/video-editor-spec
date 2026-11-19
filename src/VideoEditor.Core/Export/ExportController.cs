@@ -1,9 +1,9 @@
 using System.Diagnostics;
 using System.IO;
+using VideoEditor.Core.Editing;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Logging;
 using VideoEditor.Core.Models;
-using TimelineModel = VideoEditor.Core.Timeline.Timeline;
 
 namespace VideoEditor.Core.Export;
 
@@ -63,7 +63,7 @@ public sealed class ExportController(FfmpegTools tools, IExportView view, int do
         return _ended;
     }
 
-    public async Task RunAsync(TimelineModel timeline, OutputSettings settings, string output)
+    public async Task RunAsync(Timeline timeline, OutputSettings settings, string output)
     {
         var problem = ExportService.Preflight(timeline, output);
         if (problem != null)
@@ -148,7 +148,7 @@ public sealed class ExportController(FfmpegTools tools, IExportView view, int do
             view.ShowStatus("匯出失敗。");
             view.ShowError($"無法啟動 ffmpeg，可能被防毒軟體擋下或檔案已被移除：{error.Message}");
         }
-        catch (Exception error) when (error is FfmpegException or IOException or UnauthorizedAccessException)
+        catch (Exception error) when (ExpectedErrors.IsFileOrProcess(error))
         {
             // FfmpegException 的命令列與錯誤輸出已由 ProcessRunner 記錄，這裡不再重複堆疊。
             Log.Error("匯出失敗", error is FfmpegException ? null : error);
@@ -181,7 +181,7 @@ public sealed class ExportController(FfmpegTools tools, IExportView view, int do
             var commands = plan.ReverseJobs.SelectMany(job => job.Steps).Select(step => step.Arguments).Append(plan.Arguments);
             return FfmpegEncoders.MissingMessage(FfmpegEncoders.Required(commands), await _listEncoders());
         }
-        catch (Exception e) when (e is FfmpegException or System.ComponentModel.Win32Exception or IOException)
+        catch (Exception e) when (ExpectedErrors.IsFileOrProcess(e))
         {
             return null;
         }

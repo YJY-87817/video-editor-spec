@@ -1,7 +1,8 @@
 using System.Globalization;
 using System.Text;
+using VideoEditor.Core.Editing;
 using VideoEditor.Core.Ffmpeg;
-using TimelineModel = VideoEditor.Core.Timeline.Timeline;
+using VideoEditor.Core.Logging;
 
 namespace VideoEditor.Core.Export;
 
@@ -27,33 +28,80 @@ public sealed class ExportService(FfmpegTools tools, int graphFileThreshold = Ex
     /// 匯出前檢查：素材都還在、路徑可寫入、不覆蓋來源、輸出檔能覆蓋。回傳錯誤訊息，通過時為 null。
     /// 磁碟空間不在這裡擋，見 <see cref="SpaceWarning"/>。
     /// </summary>
-    public static string? Preflight(TimelineModel timeline, string outputPath)
+    public static string? Preflight(Timeline timeline, string outputPath)
     {
-        var fullPath = Path.GetFullPath(outputPath);
+        // 路徑格式不合法（含不允許的字元、過長）時，GetFullPath 會丟 ArgumentException、NotSupportedException 或 PathTooLongException：
+        // 當成輸出位置的問題回報，不讓它變成未處理的例外。
+        string fullPath, directory;
+        try
+        {
+            fullPath = Path.GetFullPath(outputPath);
+            directory = Path.GetDirectoryName(fullPath) ?? fullPath;
+        }
+        catch (Exception e) when (e is ArgumentException or NotSupportedException or IOException)
+        {
+            return $"輸出路徑不合法：{e.Message}";
+        }
+
         // 素材在匯入後被移動、刪除，或放在已拔掉的磁碟上：先說清楚，不要等 FFmpeg 失敗才丟出它的原始錯誤。
         var missing = timeline.AllClips.Select(c => c.Media.Path).Distinct(StringComparer.OrdinalIgnoreCase)
             .Where(path => !File.Exists(path)).ToList();
         if (missing.Count > 0)
             return $"找不到素材檔案：\n{string.Join('\n', missing.Select(path => "　" + path))}\n\n請確認檔案還在原位置（外接磁碟是否已連接），或把它從時間軸移除後重新匯入。";
 
-        if (timeline.AllClips.Any(c => string.Equals(Path.GetFullPath(c.Media.Path), fullPath, StringComparison.OrdinalIgnoreCase)))
+        if (timeline.AllClips.Any(c => IsSameFile(c.Media.Path, fullPath)))
             return "輸出檔不能與來源素材相同。";
 
-        var directory = Path.GetDirectoryName(fullPath)!;
         try
         {
+            // 使用者在儲存對話方塊選好位置後才會走到這裡，所以這裡建立資料夾是順著他的選擇，不是自作主張。
             Directory.CreateDirectory(directory);
-            var probe = Path.Combine(directory, $".write-test-{Guid.NewGuid():N}");
-            File.WriteAllBytes(probe, []);
-            File.Delete(probe);
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (Exception e) when (ExpectedErrors.IsFile(e))
         {
             return $"無法寫入輸出位置：{e.Message}";
         }
 
+        var probe = Path.Combine(directory, $".write-test-{Guid.NewGuid():N}");
+        try
+        {
+            File.WriteAllBytes(probe, []);
+        }
+        catch (Exception e) when (ExpectedErrors.IsFile(e))
+        {
+            return $"無法寫入輸出位置：{e.Message}";
+        }
+        finally
+        {
+            // 能寫入就代表位置可用；探測檔刪不掉（例如被防毒軟體暫時鎖住）不該讓匯出失敗。
+            try { File.Delete(probe); }
+            catch (Exception e) when (ExpectedErrors.IsFile(e)) { Log.Warn($"無法刪除寫入探測檔：{probe}", e); }
+        }
+
         // 輸出檔已存在時先確認能覆蓋：否則要到匯出跑完、改名時才失敗，做好的影片也會被丟掉。
         return File.Exists(fullPath) ? CannotOverwrite(fullPath) : null;
+    }
+
+    /// <summary>
+    /// 兩個路徑是否指向同一個檔案：比對完整路徑，並先解開符號連結（輸出檔是連到來源的捷徑時也要擋下）。
+    /// 硬連結與 8.3 短檔名無法用路徑字串判斷，不在這裡處理。
+    /// </summary>
+    private static bool IsSameFile(string source, string output)
+    {
+        static string Resolve(string path)
+        {
+            var full = Path.GetFullPath(path);
+            try
+            {
+                return new FileInfo(full).ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? full;
+            }
+            catch (Exception e) when (ExpectedErrors.IsFile(e))
+            {
+                return full;
+            }
+        }
+
+        return string.Equals(Resolve(source), Resolve(output), StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -62,7 +110,7 @@ public sealed class ExportService(FfmpegTools tools, int graphFileThreshold = Ex
     /// 真的不夠時 FFmpeg 會失敗，暫存檔會清掉。
     /// </summary>
     /// <param name="freeSpace">查詢輸出位置的剩餘空間；預設用 <see cref="FreeSpace"/>，測試時可替換。</param>
-    public static string? SpaceWarning(TimelineModel timeline, string outputPath, Models.OutputSettings settings, Func<string, long?>? freeSpace = null)
+    public static string? SpaceWarning(Timeline timeline, string outputPath, Models.OutputSettings settings, Func<string, long?>? freeSpace = null)
     {
         var estimate = EstimateBytes(timeline, settings);
         // 網路路徑（\\伺服器\共用資料夾）等查不到剩餘空間的位置就略過。
@@ -107,7 +155,7 @@ public sealed class ExportService(FfmpegTools tools, int graphFileThreshold = Ex
     /// 輸出檔取兩種估法中較大的：來源位元率 × 安全係數，以及依輸出解析度與影格率算出的重新編碼大小。
     /// 只看來源位元率會低估：來源是高壓縮的 HEVC，或填滿裁切把畫面放大時，CRF 18 重新編碼可能大上好幾倍。
     /// </summary>
-    public static long EstimateBytes(TimelineModel timeline, Models.OutputSettings? settings = null)
+    public static long EstimateBytes(Timeline timeline, Models.OutputSettings? settings = null)
     {
         var fromSource = timeline.AllClips.Sum(c => c.Media.BitRate / 8.0 * c.Duration) * SizeSafetyFactor;
         var intermediate = timeline.VideoClips.Where(c => c.Reversed).Sum(c => ReverseGraph.IntermediateBytes(c.Media, c.SourceIn, c.SourceOut));
@@ -115,7 +163,7 @@ public sealed class ExportService(FfmpegTools tools, int graphFileThreshold = Ex
     }
 
     /// <summary>依輸出解析度、影格率與編碼格式估算重新編碼後的大小（含聲音）。基準與 ExportPlanner 相同：第一個影片片段。</summary>
-    private static double EncodedBytes(TimelineModel timeline, Models.OutputSettings settings)
+    private static double EncodedBytes(Timeline timeline, Models.OutputSettings settings)
     {
         if (timeline.VideoClips.Count == 0) return 0;
         var first = timeline.VideoClips[0];
@@ -197,7 +245,7 @@ public sealed class ExportService(FfmpegTools tools, int graphFileThreshold = Ex
             {
                 File.Move(temporary, outputPath, overwrite: true);
             }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            catch (Exception e) when (ExpectedErrors.IsFile(e))
             {
                 throw new ExportRenameException(temporary, outputPath, e);
             }
@@ -218,7 +266,7 @@ public sealed class ExportService(FfmpegTools tools, int graphFileThreshold = Ex
             if (File.Exists(path)) File.Delete(path);
         }
         // 刪不掉（例如防毒軟體還在掃描）時不要蓋掉原本的錯誤；暫存檔名明顯，使用者可以自己刪。
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        catch (Exception e) when (ExpectedErrors.IsFile(e)) { }
     }
 
     public static double? ParseProgress(string line, double duration)

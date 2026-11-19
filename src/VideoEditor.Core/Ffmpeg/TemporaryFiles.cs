@@ -28,7 +28,7 @@ public static class TemporaryFiles
                 delete();
                 return true;
             }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            catch (Exception e) when (ExpectedErrors.IsFile(e))
             {
                 if (attempt >= DeleteAttempts) return false;
                 Thread.Sleep(DeleteRetryDelayMs);

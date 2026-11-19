@@ -10,9 +10,8 @@ using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Logging;
 using VideoEditor.Core.Models;
 using VideoEditor.Core.Playback;
-using VideoEditor.Core.Timeline;
+using VideoEditor.Core.Editing;
 using MediaPlayer = LibVLCSharp.Shared.MediaPlayer;
-using TimelineModel = VideoEditor.Core.Timeline.Timeline;
 
 namespace VideoEditor.App.Preview;
 
@@ -57,7 +56,7 @@ public sealed class PreviewEngine : IDisposable
     // 配樂偏離時的跳轉：最多只有一個待執行，目標取執行當下最新的。
     private readonly PendingSeek _musicSeek = new();
 
-    private TimelineModel _timeline = new();
+    private Timeline _timeline = new();
     private WriteableBitmap? _bitmap;
     private MediaInfo? _surfaceMedia;
     private FrameTransform _surfaceTransform;
@@ -73,12 +72,8 @@ public sealed class PreviewEngine : IDisposable
     private readonly record struct FrameRequest(MediaInfo Media, FrameTransform Transform, Size2 Size, double Fps, long Frame, long Request,
         (long Start, int Count)? Batch = null, bool Show = true);
 
-    private FrameRequest? _pendingFrame;
-    // 正在背景預先解碼時可用來中止它，讓要立刻顯示的畫面先解。
-    private CancellationTokenSource? _prefetchCancel;
-    private long _latestRequest;
-    private long _shownRequest;
-    private bool _extracting;
+    // 請求的排隊、插隊與是否顯示的規則在 Core 的 FrameRequestQueue（有單元測試），這裡只負責實際擷取與顯示。
+    private readonly FrameRequestQueue<FrameRequest> _frameQueue = new();
 
     // 播放器時間 = 時間軸位置 - 片段起點 + _playerBase。一般片段為 SourceIn，倒放預覽檔為 0。
     private double _playerBase;
@@ -127,7 +122,7 @@ public sealed class PreviewEngine : IDisposable
     public event Action<string>? Error;
     public event Action<string>? Status;
 
-    public void Load(TimelineModel timeline, double position = 0)
+    public void Load(Timeline timeline, double position = 0)
     {
         Stop();
         _timeline = timeline;
@@ -228,7 +223,7 @@ public sealed class PreviewEngine : IDisposable
     /// 時間軸編輯後呼叫：預先產生每個倒放片段的預覽檔，播放到該片段時就不必等待；
     /// 範圍已經改掉（修剪、刪除、取消倒放）的舊預覽檔則停止產生並刪除。
     /// </summary>
-    public void SyncReverse(TimelineModel timeline) =>
+    public void SyncReverse(Timeline timeline) =>
         _proxies.Sync(timeline.VideoClips.Where(clip => clip.Reversed).Select(clip => new ReversePreviewRequest(
             clip.Media, clip.SourceIn, clip.SourceOut,
             FrameExtractor.PreviewSize(clip.Media.DisplayWidth, clip.Media.DisplayHeight, ReverseProxyLongSide))).ToList());
@@ -559,7 +554,7 @@ public sealed class PreviewEngine : IDisposable
             // 來源結尾附近可能解不出影格，記下來，之後不再重試。
             if (frames.Count == 0) _missingFrames.Add((media.Path, target));
         }
-        catch (Exception e) when (e is FfmpegException or System.ComponentModel.Win32Exception)
+        catch (Exception e) when (ExpectedErrors.IsProcess(e))
         {
             StopRewind();
             Error?.Invoke($"無法解出倒帶影格：{e.Message}");
@@ -596,12 +591,11 @@ public sealed class PreviewEngine : IDisposable
     /// <param name="sourceStep">逐格移動時為來源影格的移動方向（+1／-1），否則為 0。</param>
     private void ShowFrameAtPosition(int sourceStep = 0)
     {
-        var request = ++_latestRequest;
+        var request = _frameQueue.NextRequestId();
         var clip = _timeline.VideoClipAt(Position);
         if (clip == null)
         {
-            _pendingFrame = null;
-            _shownRequest = request;
+            _frameQueue.Drop(request);
             ShowBlack();
             return;
         }
@@ -613,8 +607,7 @@ public sealed class PreviewEngine : IDisposable
         var (first, last) = FrameRange(clip, fps);
         if (_frames.TryGet((media.Path, frame), out var cached))
         {
-            _pendingFrame = null;
-            _shownRequest = request;
+            _frameQueue.Drop(request);
             ShowFrame(cached, media, clip.Transform);
             if (sourceStep != 0) PrefetchStepFrames(media, frame, sourceStep, fps, size, first, last);
             return;
@@ -622,20 +615,19 @@ public sealed class PreviewEngine : IDisposable
 
         // 逐格移動時，連同同方向接下來的幾格一起解，下一步就直接從快取顯示。
         var batch = sourceStep == 0 ? null : FrameBatch.Toward(frame, sourceStep, first, last, StepBatchFrames);
-        _pendingFrame = new FrameRequest(media, clip.Transform, size, fps, frame, request, batch);
-        // 背景正在預先解下一批時中止它：一次只跑一個 FFmpeg，不中止的話要等那一批解完才輪到這一格。
-        _prefetchCancel?.Cancel();
-        if (!_extracting) Observe(ExtractPendingFramesAsync());
+        // 背景正在預先解下一批時會被中止：一次只跑一個 FFmpeg，不中止的話要等那一批解完才輪到這一格。
+        if (_frameQueue.Submit(new FrameRequest(media, clip.Transform, size, fps, frame, request, batch)))
+            Observe(ExtractPendingFramesAsync());
     }
 
     /// <summary>逐格移動中，快取快用完時先在背景解下一批；正在解別的影格時不插隊。</summary>
     private void PrefetchStepFrames(MediaInfo media, long frame, int sourceStep, double fps, Size2 size, long first, long last)
     {
-        if (_extracting || _pendingFrame != null) return;
+        if (_frameQueue.Running || _frameQueue.HasPending) return;
         if (FrameBatch.FirstMissing(frame, sourceStep, first, last, StepPrefetchLead, f => HasFrame(media.Path, f)) is not { } missing) return;
-        _pendingFrame = new FrameRequest(media, FrameTransform.Identity, size, fps, missing, 0,
-            FrameBatch.Toward(missing, sourceStep, first, last, StepBatchFrames), Show: false);
-        Observe(ExtractPendingFramesAsync());
+        if (_frameQueue.TrySubmitPrefetch(new FrameRequest(media, FrameTransform.Identity, size, fps, missing, 0,
+                FrameBatch.Toward(missing, sourceStep, first, last, StepBatchFrames), Show: false)))
+            Observe(ExtractPendingFramesAsync());
     }
 
     /// <summary>
@@ -649,12 +641,11 @@ public sealed class PreviewEngine : IDisposable
     /// <summary>一次只跑一個 FFmpeg，並只保留最新的請求，拖曳時才不會排隊落後。</summary>
     private async Task ExtractPendingFramesAsync()
     {
-        _extracting = true;
+        _frameQueue.StartRun();
         try
         {
-            while (_pendingFrame is { } request)
+            while (_frameQueue.TryTake(out var request))
             {
-                _pendingFrame = null;
                 var key = (request.Media.Path, request.Frame);
                 // 前一批（例如逐格預先解碼）可能已經解出這一格。
                 RawFrame? frame;
@@ -662,20 +653,19 @@ public sealed class PreviewEngine : IDisposable
                 else
                 {
                     // 只有背景預先解碼可以被中止；要顯示的畫面一定解完。
-                    using var cancel = request.Show ? null : new CancellationTokenSource();
-                    _prefetchCancel = cancel;
+                    var token = _frameQueue.BeginExtract(interruptible: !request.Show);
                     try
                     {
-                        frame = await ExtractRequestAsync(request, cancel?.Token ?? CancellationToken.None);
+                        frame = await ExtractRequestAsync(request, token);
                     }
                     catch (OperationCanceledException)
                     {
                         continue; // 被要顯示的畫面插隊，這一批之後需要時再解
                     }
-                    catch (Exception e) when (e is FfmpegException or System.ComponentModel.Win32Exception)
+                    catch (Exception e) when (ExpectedErrors.IsProcess(e))
                     {
                         // 這一格解不出來：回報後繼續處理期間排進來的請求。
-                        // 在這裡結束迴圈的話，排進來的請求會留在 _pendingFrame 沒人處理，畫面要等下次移動播放頭才更新。
+                        // 在這裡結束迴圈的話，排進來的請求會留在佇列裡沒人處理，畫面要等下次移動播放頭才更新。
                         Error?.Invoke($"無法解出預覽影格：{e.Message}");
                         // 記下背景預先解碼失敗的那一格，否則逐格移動時會一再重試同一批。
                         if (!request.Show) _missingFrames.Add(key);
@@ -683,7 +673,7 @@ public sealed class PreviewEngine : IDisposable
                     }
                     finally
                     {
-                        _prefetchCancel = null;
+                        _frameQueue.EndExtract();
                     }
                 }
                 if (frame == null)
@@ -692,14 +682,14 @@ public sealed class PreviewEngine : IDisposable
                     continue;
                 }
                 // 拖曳中也顯示解好的影格，畫面才會跟著動；但不可蓋掉較新的畫面（如空白處的黑畫面）。
-                if (!request.Show || IsPlaying || IsRewinding || request.Request < _shownRequest) continue;
-                _shownRequest = request.Request;
+                if (!_frameQueue.ShouldShow(request.Request, request.Show, IsPlaying, IsRewinding)) continue;
+                _frameQueue.MarkShown(request.Request);
                 ShowFrame(frame, request.Media, request.Transform);
             }
         }
         finally
         {
-            _extracting = false;
+            _frameQueue.EndRun();
         }
     }
 

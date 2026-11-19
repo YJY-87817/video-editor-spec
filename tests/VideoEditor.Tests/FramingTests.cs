@@ -1,8 +1,7 @@
 using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
-using VideoEditor.Core.Timeline;
-using TimelineModel = VideoEditor.Core.Timeline.Timeline;
+using VideoEditor.Core.Editing;
 
 namespace VideoEditor.Tests;
 
@@ -134,7 +133,7 @@ public class ClipFramingTimelineTests
     [Fact]
     public void ChangingTheDirectionResetsTheFraming()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(Media(), 0, 2);
         var framing = new ClipFraming(2, 0.25, 0.5);
         t.SetFraming(clip, framing);
@@ -148,7 +147,7 @@ public class ClipFramingTimelineTests
     [Fact]
     public void MusicClipsHaveNoFraming()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var music = t.Append(new MediaInfo { Path = "m.mp3", Duration = 5, HasAudio = true }, 0, 5);
         Assert.Throws<ArgumentException>(() => t.SetFraming(music, ClipFraming.Default));
     }
@@ -156,7 +155,7 @@ public class ClipFramingTimelineTests
     [Fact]
     public void ExportCropsOnlyFramedClipsInFillMode()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.SetFraming(t.Append(Media(), 0, 1), new ClipFraming(2, 0.25, 0.5));
         t.Append(Media(), 1, 2);
 
@@ -172,7 +171,7 @@ public class ClipFramingTimelineTests
     [Fact]
     public void ZoomedFramingWarnsAboutQualityOnlyWhenItUpscales()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(Media(), 0, 1);
         t.SetFraming(t.Append(Media(), 1, 2), new ClipFraming(2, 0.25, 0.5));
         t.SetFraming(t.Append(Media(), 2, 3), new ClipFraming(1, 0.3, 0.5)); // 只移動、沒放大
@@ -200,7 +199,7 @@ public class ClipFramingTimelineTests
     [Fact]
     public void FramingIsAppliedAfterRotation()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(Media(), 0, 1);
         t.SetTransform(clip, new FrameTransform(90));
         // 轉成直式 1080×1920 後，選上半部的正方形。
@@ -211,6 +210,7 @@ public class ClipFramingTimelineTests
 }
 
 [Collection("media")]
+[Trait("Category", "Integration")]
 public class ClipFramingIntegrationTests(TestMedia media)
 {
     private async Task<byte[]> Frame(string path, string filter) => await ProcessRunner.RunForBytesAsync(media.Tools.Ffmpeg,
@@ -222,7 +222,7 @@ public class ClipFramingIntegrationTests(TestMedia media)
     public async Task ExportKeepsTheChosenPartOfThePicture()
     {
         var source = await media.Probe(media.Landscape);
-        var t = new TimelineModel();
+        var t = new Timeline();
         // 1920×1080 → 1:1，放大 2 倍、框中心在左邊四分之一處：取來源 (210, 270) 起的 540×540。
         t.SetFraming(t.Append(source, 0, 1), new ClipFraming(2, 0.25, 0.5));
         var result = await media.Export(t, new OutputSettings(AspectRatio.R1x1, FitMode.Fill, Crf: 0), "framing.mp4");

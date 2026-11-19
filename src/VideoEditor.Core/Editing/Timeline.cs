@@ -1,6 +1,6 @@
 using VideoEditor.Core.Models;
 
-namespace VideoEditor.Core.Timeline;
+namespace VideoEditor.Core.Editing;
 
 public enum TrackKind
 {

@@ -1,6 +1,6 @@
 using VideoEditor.Core.Models;
 
-namespace VideoEditor.Core.Timeline;
+namespace VideoEditor.Core.Editing;
 
 /// <summary>時間軸上一欄波形：從 X 開始、寬 Width 像素，Level 是半高的比例（0–1），Clipped 表示這裡會破音。</summary>
 public readonly record struct WaveformColumn(double X, double Width, double Level, bool Clipped);

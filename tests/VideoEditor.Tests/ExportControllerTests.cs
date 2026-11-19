@@ -1,12 +1,13 @@
+using VideoEditor.Core.Editing;
 using System.Collections.Concurrent;
 using VideoEditor.Core.Export;
 using VideoEditor.Core.Models;
-using TimelineModel = VideoEditor.Core.Timeline.Timeline;
 
 namespace VideoEditor.Tests;
 
 /// <summary>驗證匯出流程對畫面的通知順序與結果；實際呼叫 FFmpeg。</summary>
 [Collection("media")]
+[Trait("Category", "Integration")]
 public class ExportControllerTests(TestMedia media)
 {
     private static readonly OutputSettings Default = new(AspectRatio.R16x9, FitMode.Fill);
@@ -14,7 +15,7 @@ public class ExportControllerTests(TestMedia media)
     [Fact]
     public async Task ProblemStopsBeforeAnythingStarts()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(await media.Probe(media.Landscape), 0, 1);
         var view = new FakeView();
 
@@ -30,7 +31,7 @@ public class ExportControllerTests(TestMedia media)
     {
         var copy = media.Output("vanishing.mp4");
         File.Copy(media.Landscape, copy, overwrite: true);
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(await media.Probe(copy), 0, 1);
         File.Delete(copy); // 匯入後素材被刪掉
         var view = new FakeView();
@@ -45,7 +46,7 @@ public class ExportControllerTests(TestMedia media)
     [Fact]
     public async Task MissingEncoderIsExplainedInsteadOfRunningFfmpeg()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(await media.Probe(media.Landscape), 0, 1);
         var view = new FakeView();
         var output = media.Output("no-encoder.mp4");
@@ -74,7 +75,7 @@ public class ExportControllerTests(TestMedia media)
     [InlineData(true)]
     public async Task LowDiskSpaceAsksInsteadOfBlocking(bool confirm)
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(await media.Probe(media.Landscape), 0, 1);
         var view = new FakeView { Confirm = confirm };
         var output = media.Output($"low-space-{confirm}.mp4");
@@ -92,7 +93,7 @@ public class ExportControllerTests(TestMedia media)
     {
         var missing = Path.Combine(media.Directory, "no-such-tools");
         var tools = new VideoEditor.Core.Ffmpeg.FfmpegTools(Path.Combine(missing, "ffmpeg.exe"), Path.Combine(missing, "ffprobe.exe"));
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(await media.Probe(media.Landscape), 0, 1);
         var view = new FakeView();
         var output = media.Output("no-tool.mp4");
@@ -108,7 +109,7 @@ public class ExportControllerTests(TestMedia media)
     [Fact]
     public async Task DeclinedWarningsDoNotStartTheExport()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(await media.Probe(media.Landscape), 0, 1);
         t.Append(await media.Probe(media.NoAudio), 0, 1); // 影格率不同，會提醒
         var view = new FakeView { Confirm = false };
@@ -124,7 +125,7 @@ public class ExportControllerTests(TestMedia media)
     [Fact]
     public async Task SuccessReportsProgressThenEndsAndHides()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(await media.Probe(media.Landscape), 0, 1);
         var view = new FakeView();
         var output = media.Output("controller-ok.mp4");
@@ -140,7 +141,7 @@ public class ExportControllerTests(TestMedia media)
     [Fact]
     public async Task CancelReportsStatusAndLeavesNoFile()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(await media.Probe(media.Landscape), 0, 4);
         var output = media.Output("controller-cancel.mp4");
         ExportController? controller = null;
@@ -161,7 +162,7 @@ public class ExportControllerTests(TestMedia media)
     public async Task FailureShowsStderrAndEnds()
     {
         var source = await media.Probe(media.Landscape);
-        var t = new TimelineModel();
+        var t = new Timeline();
         // 檔案存在（通過匯出前檢查）但內容不是影片，FFmpeg 會失敗。素材不存在的情況由匯出前檢查處理。
         var broken = media.Output("broken-source.mp4");
         await File.WriteAllTextAsync(broken, "這不是影片");
@@ -185,7 +186,7 @@ public class ExportControllerTests(TestMedia media)
             Path = media.Landscape, Duration = 10, HasVideo = true, HasAudio = true,
             DisplayWidth = 1920, DisplayHeight = 1080, FrameRate = new Rational(30, 1), PixelFormat = "yuv420p",
         };
-        var t = new TimelineModel();
+        var t = new Timeline();
         for (var i = 0; i < 1500; i++) t.Append(source, 0, 1);
         var view = new FakeView();
         var output = media.Output("too-many.mp4");
@@ -200,7 +201,7 @@ public class ExportControllerTests(TestMedia media)
     [Fact]
     public async Task CancelAsyncWaitsUntilTheTemporaryFileIsGone()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(await media.Probe(media.Landscape), 0, 4);
         var output = media.Output("controller-close.mp4");
         ExportController? controller = null;

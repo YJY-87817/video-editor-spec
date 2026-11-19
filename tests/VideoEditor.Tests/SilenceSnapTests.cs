@@ -1,7 +1,6 @@
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
-using VideoEditor.Core.Timeline;
-using TimelineModel = VideoEditor.Core.Timeline.Timeline;
+using VideoEditor.Core.Editing;
 
 namespace VideoEditor.Tests;
 
@@ -67,7 +66,7 @@ public class SilenceSnapTests
     [Fact]
     public void LeftEdgeSnapsBeforeSoundStarts()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(Media(), 0.5, 9);
         t.Move(clip, 10);
         // 來源 s 在時間軸上是 10 + (s - 0.5)。
@@ -77,7 +76,7 @@ public class SilenceSnapTests
     [Fact]
     public void RightEdgeSnapsAfterSoundEnds()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(Media(), 0.5, 9);
         Assert.Equal([0.6, 4.6], TimelineSnap.SilenceTargets(clip, Silences, TrimEdge.End).Select(x => Math.Round(x, 9)));
     }
@@ -85,7 +84,7 @@ public class SilenceSnapTests
     [Fact]
     public void ReversedClipUsesTimelineDirection()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(Media(), 0.5, 9);
         t.SetReversed(clip, true);
         // 倒放：來源 s 在時間軸上是 9 - s，靜音在 1–4 與 7–8 秒。
@@ -96,7 +95,7 @@ public class SilenceSnapTests
     [Fact]
     public void ShortSilenceUsesItsMiddle()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(Media(), 0, 10);
         Assert.Equal([3.05], TimelineSnap.SilenceTargets(clip, [new TimeRange(3, 3.1)], TrimEdge.Start).Select(x => Math.Round(x, 9)));
     }
@@ -105,7 +104,7 @@ public class SilenceSnapTests
     public void SilenceOutsideTheCurrentClipIsAlsoATarget()
     {
         // 片段只用來源 3–4 秒，往左拉長時仍可吸附到 1–2 秒那段靜音。
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(Media(), 3, 4);
         t.Move(clip, 5);
         Assert.Equal(3.9, TimelineSnap.SilenceTargets(clip, Silences, TrimEdge.Start)[0], 9);
@@ -136,7 +135,7 @@ public class SilenceSnapTests
     [Fact]
     public void TrimAlignedToFrameStaysInsideTheSilence()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(Media(), 0, 10);
         var target = TimelineSnap.Snap(4.93, null, TimelineSnap.SilenceTargets(clip, Silences, TrimEdge.End), 0.2);
         Assert.Equal(SnapKind.Silence, target.Kind);
@@ -154,7 +153,7 @@ public class SilenceSnapTests
     [Fact]
     public void BlockedByNeighbourIsNotSnapped()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(Media(), 0, 4);
         var next = t.Append(Media(), 0, 1);
         t.Move(next, 4.5);
@@ -167,6 +166,7 @@ public class SilenceSnapTests
 }
 
 [Collection("media")]
+[Trait("Category", "Integration")]
 public class SilenceSnapIntegrationTests(TestMedia media)
 {
     [Fact]
@@ -183,7 +183,7 @@ public class SilenceSnapIntegrationTests(TestMedia media)
         var silences = SilenceDetector.Find(data);
         Assert.Equal(2, silences.Count);
 
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(info, 0, info.Duration);
         var start = TimelineSnap.SilenceTargets(clip, silences, TrimEdge.Start);
         var end = TimelineSnap.SilenceTargets(clip, silences, TrimEdge.End);

@@ -1,8 +1,7 @@
 using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
-using VideoEditor.Core.Timeline;
-using TimelineModel = VideoEditor.Core.Timeline.Timeline;
+using VideoEditor.Core.Editing;
 
 namespace VideoEditor.Tests;
 
@@ -42,7 +41,7 @@ public class FrameTransformTests
     [Fact]
     public void MusicClipsCannotBeTransformed()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var music = t.Append(new MediaInfo { Path = "m.m4a", Duration = 5, HasAudio = true }, 0, 5);
         Assert.Throws<ArgumentException>(() => t.SetTransform(music, new FrameTransform(90)));
     }
@@ -55,7 +54,7 @@ public class FrameTransformTests
             Path = "a.mp4", Duration = 10, HasVideo = true, DisplayWidth = 1920, DisplayHeight = 1080,
             FrameRate = new Rational(30, 1), PixelFormat = "yuv420p", SampleAspect = new Rational(4, 3),
         };
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(media, 0, 2);
         t.SetTransform(clip, new FrameTransform(90));
         var plan = ExportPlanner.Build(t, new OutputSettings(AspectRatio.Original, FitMode.Fill), "o.mp4");
@@ -79,7 +78,7 @@ public class FrameTransformTests
             Path = "a.mp4", Duration = 10, HasVideo = true, DisplayWidth = 1920, DisplayHeight = 1080,
             FrameRate = new Rational(30, 1), PixelFormat = "yuv420p",
         };
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(media, 0, 1);
         t.SetTransform(t.Append(media, 1, 2), new FrameTransform(270));
         Assert.Contains(ExportPlanner.Build(t, new OutputSettings(AspectRatio.Original, FitMode.Pad), "o.mp4").Warnings,
@@ -88,6 +87,7 @@ public class FrameTransformTests
 }
 
 [Collection("media")]
+[Trait("Category", "Integration")]
 public class TransformIntegrationTests(TestMedia media)
 {
     private async Task<byte[]> Frame(string path, string filter) => await ProcessRunner.RunForBytesAsync(media.Tools.Ffmpeg,
@@ -102,7 +102,7 @@ public class TransformIntegrationTests(TestMedia media)
     public async Task ExportedFrameIsRotatedAndMirrored(int rotation, bool h, bool v, string equivalent, int width, int height)
     {
         var source = await media.Probe(media.Landscape);
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.SetTransform(t.Append(source, 0, 1), new FrameTransform(rotation, h, v));
         var result = await media.Export(t, new OutputSettings(AspectRatio.Original, FitMode.Fill, Crf: 0), $"transform-{rotation}-{h}-{v}.mp4");
 
@@ -117,7 +117,7 @@ public class TransformIntegrationTests(TestMedia media)
     public async Task ReversedClipCanAlsoBeRotated()
     {
         var source = await media.Probe(media.Landscape);
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(source, 0, 1);
         t.SetReversed(clip, true);
         t.SetTransform(clip, new FrameTransform(270));

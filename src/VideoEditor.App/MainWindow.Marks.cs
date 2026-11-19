@@ -14,8 +14,7 @@ using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
 using VideoEditor.Core.Playback;
-using VideoEditor.Core.Timeline;
-using TimelineModel = VideoEditor.Core.Timeline.Timeline;
+using VideoEditor.Core.Editing;
 
 namespace VideoEditor.App;
 
@@ -72,7 +71,7 @@ public partial class MainWindow
             StatusText.Text = result.Error ?? "";
             return;
         }
-        Timeline.Select(result.Clip);
+        TimelineView.Select(result.Clip);
         UpdateMarks();
         OnClipsChanged();
     }

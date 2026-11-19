@@ -144,7 +144,7 @@ public sealed class ReversePreviewCache(FfmpegTools tools, string? directory = n
                 Directory.Delete(folder, true);
                 removed++;
             }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+            catch (Exception e) when (ExpectedErrors.IsFile(e)) { }
         }
         return removed;
     }

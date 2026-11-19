@@ -1,6 +1,6 @@
 using VideoEditor.Core.Models;
 
-namespace VideoEditor.Core.Timeline;
+namespace VideoEditor.Core.Editing;
 
 /// <summary>素材上標記的入點與出點。沒有標記時，入點是素材開頭、出點是素材結尾。</summary>
 public sealed class InOutPoints

@@ -13,8 +13,7 @@ using VideoEditor.App.Preview;
 using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
-using VideoEditor.Core.Timeline;
-using TimelineModel = VideoEditor.Core.Timeline.Timeline;
+using VideoEditor.Core.Editing;
 
 namespace VideoEditor.App;
 
@@ -25,7 +24,7 @@ public partial class MainWindow
     private void OnClipsChanged()
     {
         RefreshClipList();
-        Timeline.InvalidateVisual();
+        TimelineView.InvalidateVisual();
         UpdateTimelineScrollBar();
         UpdateOutputInfo();
         UpdatePreviewLayout();
@@ -36,34 +35,34 @@ public partial class MainWindow
 
     private void RefreshClipList()
     {
-        _updatingClipList = true;
         var rows = _timeline.VideoClips.Select((clip, index) => new ClipRow(clip, index + 1)).ToList();
+        using var _ = _clipListGuard.Enter();
         ClipList.ItemsSource = rows;
-        ClipList.SelectedItem = rows.FirstOrDefault(r => r.Clip == Timeline.SelectedClip);
-        _updatingClipList = false;
+        ClipList.SelectedItem = rows.FirstOrDefault(r => r.Clip == TimelineView.SelectedClip);
     }
 
     private void OnClipListSelected(object sender, SelectionChangedEventArgs e)
     {
-        if (!_updatingClipList && ClipList.SelectedItem is ClipRow row) Timeline.Select(row.Clip);
+        if (!_clipListGuard.Active && ClipList.SelectedItem is ClipRow row) TimelineView.Select(row.Clip);
     }
 
     private void OnTimelineSelectionChanged(TimelineClip? clip)
     {
-        _updatingVolume = true;
-        VolumeSlider.IsEnabled = clip is { Media.HasAudio: true };
-        VolumeSlider.Value = (clip?.Volume ?? 1) * 100;
-        VolumeText.Text = clip == null ? "—" : $"{VolumeSlider.Value:0}%";
-        _updatingVolume = false;
+        using (_volumeGuard.Enter())
+        {
+            VolumeSlider.IsEnabled = clip is { Media.HasAudio: true };
+            VolumeSlider.Value = (clip?.Volume ?? 1) * 100;
+            VolumeText.Text = clip == null ? "—" : $"{VolumeSlider.Value:0}%";
+        }
 
-        _updatingClipList = true;
-        ClipList.SelectedItem = (ClipList.ItemsSource as IEnumerable<ClipRow>)?.FirstOrDefault(r => r.Clip == clip);
-        _updatingClipList = false;
+        using (_clipListGuard.Enter())
+            ClipList.SelectedItem = (ClipList.ItemsSource as IEnumerable<ClipRow>)?.FirstOrDefault(r => r.Clip == clip);
 
-        _updatingReverse = true;
-        ReverseCheck.IsEnabled = clip is { Track: TrackKind.Video };
-        ReverseCheck.IsChecked = clip?.Reversed == true;
-        _updatingReverse = false;
+        using (_reverseGuard.Enter())
+        {
+            ReverseCheck.IsEnabled = clip is { Track: TrackKind.Video };
+            ReverseCheck.IsChecked = clip?.Reversed == true;
+        }
         UpdateTransformControls(clip);
         UpdateFramingControls(clip);
     }
@@ -84,8 +83,8 @@ public partial class MainWindow
 
     private void ChangeTransform(Func<FrameTransform, FrameTransform> change)
     {
-        if (Timeline.SelectedClip is not { Track: TrackKind.Video } clip) return;
-        var followUp = _editor.ChangeTransform(clip, change, IsTimelinePreview, Timeline.Playhead);
+        if (TimelineView.SelectedClip is not { Track: TrackKind.Video } clip) return;
+        var followUp = _editor.ChangeTransform(clip, change, IsTimelinePreview, TimelineView.Playhead);
         UpdateTransformControls(clip);
         // 方向改變時畫面位置會回到預設。
         UpdateFramingControls(clip);
@@ -94,7 +93,7 @@ public partial class MainWindow
         switch (followUp)
         {
             case PreviewFollowUp.ShowClipInTimeline:
-                Timeline.Playhead = clip.Start;
+                TimelineView.Playhead = clip.Start;
                 SwitchToTimelinePreview();
                 break;
             case PreviewFollowUp.SeekToClip:
@@ -105,7 +104,7 @@ public partial class MainWindow
 
     private void OnReverseChanged(object sender, RoutedEventArgs e)
     {
-        if (_updatingReverse || Timeline.SelectedClip is not { Track: TrackKind.Video } clip) return;
+        if (_reverseGuard.Active || TimelineView.SelectedClip is not { Track: TrackKind.Video } clip) return;
         _engine?.Pause();
         _timeline.SetReversed(clip, ReverseCheck.IsChecked == true);
         OnClipsChanged();
@@ -113,10 +112,10 @@ public partial class MainWindow
 
     private void OnVolumeChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        if (_updatingVolume || Timeline.SelectedClip is not { } clip) return;
+        if (_volumeGuard.Active || TimelineView.SelectedClip is not { } clip) return;
         clip.Volume = TimelineEditor.VolumeFromPercent(e.NewValue);
         VolumeText.Text = $"{e.NewValue:0}%";
-        Timeline.InvalidateVisual();
+        TimelineView.InvalidateVisual();
     }
 
     private void OnMoveUp(object sender, RoutedEventArgs e) => SwapSelected(-1);
@@ -124,26 +123,26 @@ public partial class MainWindow
 
     private void SwapSelected(int direction)
     {
-        if (Timeline.SelectedClip is { } clip && _timeline.Swap(clip, direction)) OnClipsChanged();
+        if (TimelineView.SelectedClip is { } clip && _timeline.Swap(clip, direction)) OnClipsChanged();
     }
 
     private void OnDeleteClip(object sender, RoutedEventArgs e) => DeleteSelectedClip();
 
     private void DeleteSelectedClip()
     {
-        if (Timeline.SelectedClip is not { } clip) return;
+        if (TimelineView.SelectedClip is not { } clip) return;
         _timeline.Remove(clip);
-        Timeline.Select(null);
+        TimelineView.Select(null);
         OnClipsChanged();
     }
 
-    private void OnZoomIn(object sender, RoutedEventArgs e) => Timeline.SetZoom(Timeline.PixelsPerSecond * ZoomStep);
-    private void OnZoomOut(object sender, RoutedEventArgs e) => Timeline.SetZoom(Timeline.PixelsPerSecond / ZoomStep);
-    private void OnZoomFit(object sender, RoutedEventArgs e) => Timeline.ZoomToFit();
+    private void OnZoomIn(object sender, RoutedEventArgs e) => TimelineView.SetZoom(TimelineView.PixelsPerSecond * ZoomStep);
+    private void OnZoomOut(object sender, RoutedEventArgs e) => TimelineView.SetZoom(TimelineView.PixelsPerSecond / ZoomStep);
+    private void OnZoomFit(object sender, RoutedEventArgs e) => TimelineView.ZoomToFit();
 
-    private void OnSilenceSnapClick(object sender, RoutedEventArgs e) => Timeline.SnapToSilence = SilenceSnapCheck.IsChecked == true;
+    private void OnSilenceSnapClick(object sender, RoutedEventArgs e) => TimelineView.SnapToSilence = SilenceSnapCheck.IsChecked == true;
 
-    private void OnClipSnapClick(object sender, RoutedEventArgs e) => Timeline.SnapToClips = ClipSnapCheck.IsChecked == true;
+    private void OnClipSnapClick(object sender, RoutedEventArgs e) => TimelineView.SnapToClips = ClipSnapCheck.IsChecked == true;
 
     // ---- 分割與跳到剪輯點 ----
 
@@ -152,14 +151,14 @@ public partial class MainWindow
     /// <summary>在播放頭分割選取的片段，成功後選取右段。不能分割時在狀態列說明原因。</summary>
     private void SplitSelectedClip()
     {
-        var result = _editor.Split(Timeline.SelectedClip, Timeline.Playhead, IsTimelinePreview);
+        var result = _editor.Split(TimelineView.SelectedClip, TimelineView.Playhead, IsTimelinePreview);
         if (result.Clip == null)
         {
             StatusText.Text = result.Error ?? "";
             return;
         }
         _engine?.Pause();
-        Timeline.Select(result.Clip);
+        TimelineView.Select(result.Clip);
         OnClipsChanged();
     }
 
@@ -175,7 +174,7 @@ public partial class MainWindow
         if (IsTimelinePreview)
         {
             points = EditPoints.Timeline(_timeline);
-            position = Timeline.Playhead;
+            position = TimelineView.Playhead;
         }
         else
         {
@@ -184,19 +183,19 @@ public partial class MainWindow
             position = _engine.Position;
         }
         if ((forward ? EditPoints.Next(points, position) : EditPoints.Previous(points, position)) is not { } target) return;
-        if (IsTimelinePreview) Timeline.Playhead = target;
+        if (IsTimelinePreview) TimelineView.Playhead = target;
         _engine.Seek(target);
     }
 
-    private void OnTimelineScroll(object sender, ScrollEventArgs e) => Timeline.SetScrollOffset(e.NewValue);
+    private void OnTimelineScroll(object sender, ScrollEventArgs e) => TimelineView.SetScrollOffset(e.NewValue);
 
     private void UpdateTimelineScrollBar()
     {
         TimelineScroll.Minimum = 0;
-        TimelineScroll.Maximum = Math.Max(0, Timeline.ContentWidth - Timeline.ViewportWidth);
-        TimelineScroll.ViewportSize = Timeline.ViewportWidth;
+        TimelineScroll.Maximum = Math.Max(0, TimelineView.ContentWidth - TimelineView.ViewportWidth);
+        TimelineScroll.ViewportSize = TimelineView.ViewportWidth;
         TimelineScroll.SmallChange = 40;
-        TimelineScroll.LargeChange = Timeline.ViewportWidth * 0.8;
-        TimelineScroll.Value = Timeline.ScrollOffset;
+        TimelineScroll.LargeChange = TimelineView.ViewportWidth * 0.8;
+        TimelineScroll.Value = TimelineView.ScrollOffset;
     }
 }

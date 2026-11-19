@@ -1,13 +1,13 @@
 using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
-using VideoEditor.Core.Timeline;
-using TimelineModel = VideoEditor.Core.Timeline.Timeline;
+using VideoEditor.Core.Editing;
 
 namespace VideoEditor.Tests;
 
 /// <summary>實際呼叫 FFmpeg，並用 ffprobe 驗證輸出結果。</summary>
 [Collection("media")]
+[Trait("Category", "Integration")]
 public class ExportIntegrationTests(TestMedia media)
 {
     private static readonly OutputSettings Default = new(AspectRatio.R16x9, FitMode.Fill);
@@ -54,7 +54,7 @@ public class ExportIntegrationTests(TestMedia media)
     [Fact]
     public async Task SingleClipCutIsAccurate()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(await media.Probe(media.Landscape), 1, 2.5);
         var result = await media.Export(t, Default, "single.mp4");
         Assert.Equal(45, await media.CountFrames(result.Path));
@@ -67,7 +67,7 @@ public class ExportIntegrationTests(TestMedia media)
     [Fact]
     public async Task CutStartsAtTheExactFrame()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(await media.Probe(media.Landscape), 1, 1.5);
         var result = await media.Export(t, new OutputSettings(AspectRatio.R16x9, FitMode.Fill, Crf: 0), "cut.mp4");
 
@@ -85,7 +85,7 @@ public class ExportIntegrationTests(TestMedia media)
     public async Task MultipleSegmentsFromSameFileAreJoined()
     {
         var source = await media.Probe(media.Landscape);
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(source, 0, 1);
         t.Append(source, 2, 3);
         t.Append(source, 1, 1.5);
@@ -97,7 +97,7 @@ public class ExportIntegrationTests(TestMedia media)
     public async Task TrimmedJoinHasNoSilenceAndKeepsTimelineLength()
     {
         var source = await media.Probe(media.Landscape);
-        var t = new TimelineModel();
+        var t = new Timeline();
         var a = t.Append(source, 0, 2);
         var b = t.Append(source, 2, 3);
         t.TrimEnd(a, 1.015); // 拖曳邊緣：30.45 格
@@ -114,7 +114,7 @@ public class ExportIntegrationTests(TestMedia media)
     public async Task UnalignedGapsDoNotDelayLaterClips()
     {
         var source = await media.Probe(media.Landscape);
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(source, 0, 1);
         var b = t.Append(source, 1, 2);
         t.Move(b, 1.515);
@@ -135,7 +135,7 @@ public class ExportIntegrationTests(TestMedia media)
     {
         // 畫面 2 秒、聲音 2.05 秒：沒標入出點整段加入，後面再接一段。
         var odd = await media.Probe(media.MakeClip("longer-audio.mp4", "testsrc2=s=1920x1080:r=30:d=2", "sine=f=440:d=2.05", "-pix_fmt", "yuv420p"));
-        var t = new TimelineModel();
+        var t = new Timeline();
         var editor = new TimelineEditor(t);
         Assert.NotNull(editor.Add(odd, new InOutPoints()).Clip);
         t.Append(await media.Probe(media.Landscape), 0, 1);
@@ -155,7 +155,7 @@ public class ExportIntegrationTests(TestMedia media)
     [Fact]
     public async Task MixedSourcesAreConformedToFirstClip()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(await media.Probe(media.Landscape), 0, 1);
         t.Append(await media.Probe(media.NoAudio), 0, 1);
         t.Append(await media.Probe(media.Portrait), 0, 1);
@@ -170,7 +170,7 @@ public class ExportIntegrationTests(TestMedia media)
     [Fact]
     public async Task NoAudioSourceStaysSilentOutput()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(await media.Probe(media.NoAudio), 0, 1);
         var result = await media.Export(t, Default, "noaudio-out.mp4");
         Assert.False(result.HasAudio);
@@ -188,7 +188,7 @@ public class ExportIntegrationTests(TestMedia media)
     [MemberData(nameof(RatioCases))]
     public async Task RatiosAndModesProduceExpectedOutput(int rw, int rh, FitMode mode, int w, int h)
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(await media.Probe(media.Landscape), 0, 0.5);
         var result = await media.Export(t, new OutputSettings(new AspectRatio(rw, rh), mode), $"ratio-{rw}x{rh}-{mode}.mp4");
         Assert.Equal((w, h), (result.DisplayWidth, result.DisplayHeight));
@@ -205,7 +205,7 @@ public class ExportIntegrationTests(TestMedia media)
     [Fact]
     public async Task RotatedSourceExportsUpright()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(await media.Probe(media.Rotated), 0, 0.5);
         var result = await media.Export(t, new OutputSettings(AspectRatio.R9x16, FitMode.Fill), "rotated-out.mp4");
         Assert.Equal((1080, 1920), (result.DisplayWidth, result.DisplayHeight));
@@ -215,12 +215,12 @@ public class ExportIntegrationTests(TestMedia media)
     [Fact]
     public async Task OriginalKeepsEachReferenceSize()
     {
-        var landscape = new TimelineModel();
+        var landscape = new Timeline();
         landscape.Append(await media.Probe(media.Landscape), 0, 0.5);
         var wide = await media.Export(landscape, new OutputSettings(AspectRatio.Original, FitMode.Fill), "original-wide.mp4");
         Assert.Equal((1920, 1080), (wide.DisplayWidth, wide.DisplayHeight));
 
-        var rotated = new TimelineModel();
+        var rotated = new Timeline();
         rotated.Append(await media.Probe(media.Rotated), 0, 0.5);
         var tall = await media.Export(rotated, new OutputSettings(AspectRatio.Original, FitMode.Fill), "original-tall.mp4");
         Assert.Equal((1080, 1920), (tall.DisplayWidth, tall.DisplayHeight));
@@ -229,7 +229,7 @@ public class ExportIntegrationTests(TestMedia media)
     [Fact]
     public async Task OriginalFitsOtherClipsToFirstClip()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(await media.Probe(media.Portrait), 0, 0.5);
         t.Append(await media.Probe(media.Landscape), 0, 0.5);
         var result = await media.Export(t, new OutputSettings(AspectRatio.Original, FitMode.Pad), "original-mixed.mp4");
@@ -244,7 +244,7 @@ public class ExportIntegrationTests(TestMedia media)
     {
         var source = await media.Probe(media.MakeSolid($"full-{color}.mp4", color, "yuvj420p"));
         Assert.Equal("pc", source.ColorRange);
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(source, 0, 0.5);
         var result = await media.Export(t, Default, $"full-{color}-out.mp4");
 
@@ -256,7 +256,7 @@ public class ExportIntegrationTests(TestMedia media)
     [Fact]
     public async Task LimitedRangeClipIsConvertedWhenTheOutputIsFullRange()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(await media.Probe(media.MakeSolid("mixed-full.mp4", "black", "yuvj420p")), 0, 0.5);
         t.Append(await media.Probe(media.MakeSolid("mixed-limited.mp4", "white", "yuv420p")), 0, 0.5);
         var result = await media.Export(t, Default, "mixed-range-out.mp4");
@@ -269,7 +269,7 @@ public class ExportIntegrationTests(TestMedia media)
     [Fact]
     public async Task HdrSourceKeepsBitDepthAndColor()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(await media.Probe(media.Hdr), 0, 0.5);
         var result = await media.Export(t, Default, "hdr-out.mp4");
         Assert.Equal("hevc", result.VideoCodec);
@@ -283,7 +283,7 @@ public class ExportIntegrationTests(TestMedia media)
     public async Task ClipVolumeIsAppliedAsLinearGain()
     {
         var source = await media.Probe(media.Landscape);
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(source, 0, 2);
         t.Append(source, 0, 2).Volume = 0.5;
         var result = await media.Export(t, Default, "volume.mp4");
@@ -295,7 +295,7 @@ public class ExportIntegrationTests(TestMedia media)
     [Fact]
     public async Task MusicIsMixedAtItsPositionAndGapsAreSilent()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         var clip = t.Append(await media.Probe(media.Landscape), 0, 1);
         clip.Volume = 0;
         var music = t.Append(await media.Probe(media.Music), 0, 3);
@@ -311,7 +311,7 @@ public class ExportIntegrationTests(TestMedia media)
     [Fact]
     public async Task CancelLeavesNoFiles()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(await media.Probe(media.Landscape), 0, 4);
         var output = media.Output("cancel.mp4");
         var plan = ExportPlanner.Build(t, Default, output);
@@ -327,7 +327,7 @@ public class ExportIntegrationTests(TestMedia media)
     public async Task FailedExportReportsStderr()
     {
         var source = await media.Probe(media.Landscape);
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(source with { Path = media.Output("missing.mp4") }, 0, 1);
         var output = media.Output("failed.mp4");
         var plan = ExportPlanner.Build(t, Default, output);
@@ -338,7 +338,7 @@ public class ExportIntegrationTests(TestMedia media)
     [Fact]
     public async Task PreflightRejectsOverwritingSource()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(await media.Probe(media.Landscape), 0, 1);
         Assert.NotNull(ExportService.Preflight(t, media.Landscape));
         Assert.Null(ExportService.Preflight(t, media.Output("ok.mp4")));
@@ -351,7 +351,7 @@ public class ExportIntegrationTests(TestMedia media)
         var output = media.Output("keep.mp4");
         var bystander = media.Output("keep.part.mp4");
         await File.WriteAllTextAsync(bystander, "使用者自己的檔案");
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(await media.Probe(media.Landscape), 0, 0.5);
 
         await new ExportService(media.Tools).ExportAsync(ExportPlanner.Build(t, Default, output), null);
@@ -374,7 +374,7 @@ public class ExportIntegrationTests(TestMedia media)
     [Fact]
     public async Task FinishedVideoIsKeptWhenTheOutputCannotBeReplaced()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(await media.Probe(media.Landscape), 0, 0.5);
         var output = media.Output("locked-at-end.mp4");
 
@@ -400,7 +400,7 @@ public class ExportIntegrationTests(TestMedia media)
     [Fact]
     public async Task PreflightRejectsOutputOpenedByAnotherProgram()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(await media.Probe(media.Landscape), 0, 1);
         var output = media.Output("open-in-player.mp4");
 
@@ -415,7 +415,7 @@ public class ExportIntegrationTests(TestMedia media)
     [Fact]
     public async Task PreflightRejectsReadOnlyOutput()
     {
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(await media.Probe(media.Landscape), 0, 1);
         var output = media.Output("read-only.mp4");
         await File.WriteAllBytesAsync(output, [0]);

@@ -16,6 +16,14 @@ dotnet run --project src/VideoEditor.App
 dotnet test
 ```
 
+多數測試會用 FFmpeg 當場產生短片再實際匯出，標了 `Category=Integration`。沒有 FFmpeg 時，只跑不需要它的測試：
+
+```bash
+dotnet test --filter "Category!=Integration"
+```
+
+程式啟動時會把實際使用的 `ffmpeg.exe` 路徑寫進紀錄。PATH 裡的相對路徑項目（例如 `.`）會被略過，因為它的意思取決於目前的工作目錄。
+
 GitHub Actions（`.github/workflows/ci.yml`）會在 Windows 上建置並執行測試，推送到 `main` 與每個 pull request 都會觸發。
 
 ## 產出 exe（發佈）

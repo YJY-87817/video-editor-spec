@@ -4,7 +4,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using VideoEditor.Core.Models;
-using VideoEditor.Core.Timeline;
+using VideoEditor.Core.Editing;
 
 namespace VideoEditor.App;
 
@@ -91,14 +91,14 @@ public partial class MainWindow
     {
         _timeline.SetFraming(clip, framing);
         UpdatePreviewLayout();
-        UpdateFramingControls(Timeline.SelectedClip);
-        Timeline.InvalidateVisual(); // 時間軸上的片段標示
+        UpdateFramingControls(TimelineView.SelectedClip);
+        TimelineView.InvalidateVisual(); // 時間軸上的片段標示
         if (refreshList) RefreshClipList();
     }
 
     private void OnResetFraming(object sender, RoutedEventArgs e)
     {
-        if (Timeline.SelectedClip is { Track: TrackKind.Video } clip) ApplyFraming(clip, ClipFraming.Default);
+        if (TimelineView.SelectedClip is { Track: TrackKind.Video } clip) ApplyFraming(clip, ClipFraming.Default);
     }
 
     private void OnFramingMoveStart(object sender, MouseButtonEventArgs e)
@@ -131,7 +131,7 @@ public partial class MainWindow
     {
         // 播放中拖曳，播放頭會走進別的片段；先暫停，調整的就是畫面上這一格的片段。
         _engine?.Pause();
-        Timeline.Select(clip);
+        TimelineView.Select(clip);
         _framingDrag = kind;
         _framingDragClip = clip;
         _framingDragStart = e.GetPosition(PreviewCanvas);
@@ -177,7 +177,7 @@ public partial class MainWindow
     {
         if (_framingClip is not { } clip || FramingSizes(clip) is not { } sizes) return;
         e.Handled = true;
-        Timeline.Select(clip);
+        TimelineView.Select(clip);
         ApplyFraming(clip, clip.Framing.ZoomBy(Math.Pow(WheelZoomStep, e.Delta / 120.0), sizes.Source, sizes.Output));
     }
 }

@@ -4,8 +4,7 @@ using System.Windows.Automation.Peers;
 using System.Windows.Input;
 using System.Windows.Media;
 using VideoEditor.Core.Models;
-using VideoEditor.Core.Timeline;
-using TimelineModel = VideoEditor.Core.Timeline.Timeline;
+using VideoEditor.Core.Editing;
 
 namespace VideoEditor.App.Controls;
 
@@ -40,15 +39,15 @@ public sealed class TimelineView : FrameworkElement
     /// <summary>拖曳邊緣時，把會被當成停頓的靜音範圍塗暗。</summary>
     private static readonly Brush SilenceShadeBrush = Frozen("#80000000");
     private static readonly Pen TickPen = FrozenPen(Frozen("#555555"), 1);
-    private static readonly Pen SelectedPen = FrozenPen(Frozen("#FFD24A"), 2);
+    private static readonly Pen SelectedPen = FrozenPen(Palette.Accent, 2);
     private static readonly Pen PlayheadPen = FrozenPen(Frozen("#FF4D4D"), 1.5);
     /// <summary>片段邊緣貼齊播放頭時，播放頭改用這支筆，讓人看得出已經對齊。</summary>
-    private static readonly Pen SnappedPlayheadPen = FrozenPen(Frozen("#FFD24A"), 2.5);
+    private static readonly Pen SnappedPlayheadPen = FrozenPen(Palette.Accent, 2.5);
     private static readonly Typeface Face = new("Microsoft JhengHei UI");
 
     private enum DragKind { None, Playhead, Move, TrimStart, TrimEnd }
 
-    private TimelineModel _timeline = new();
+    private Timeline _timeline = new();
     private double _playhead;
     private double _pixelsPerSecond = 40;
     private double _scrollOffset;
@@ -97,7 +96,7 @@ public sealed class TimelineView : FrameworkElement
     public double ViewportWidth => Math.Max(1, ActualWidth - HeaderWidth);
     public double ContentWidth => (_timeline.Duration + 10) * _pixelsPerSecond;
 
-    public TimelineModel Timeline
+    public Timeline Timeline
     {
         get => _timeline;
         set

@@ -1,4 +1,4 @@
-namespace VideoEditor.Core.Timeline;
+namespace VideoEditor.Core.Editing;
 
 /// <summary>滑鼠按在片段上的哪個部分。</summary>
 public enum ClipHit { Move, TrimStart, TrimEnd }

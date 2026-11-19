@@ -71,8 +71,7 @@ public sealed class ImportController(MediaProbe probe, FrameExtractor extractor,
                     // 使用者取消：不是失敗，不顯示錯誤。
                 }
                 // Win32Exception：ffprobe 無法啟動（例如被防毒軟體擋下）。也當成這個檔案匯入失敗，不中斷其他檔案。
-                catch (Exception e) when (e is FfmpegException or InvalidDataException or JsonException
-                    or Win32Exception or IOException or UnauthorizedAccessException)
+                catch (Exception e) when (ExpectedErrors.IsProbe(e))
                 {
                     // FfmpegException 的命令列與錯誤輸出已由 ProcessRunner 記錄，這裡不再重複堆疊。
                     Log.Warn($"匯入失敗：{path}", e is FfmpegException ? null : e);
@@ -127,7 +126,7 @@ public sealed class ImportController(MediaProbe probe, FrameExtractor extractor,
             var bytes = await extractor.ThumbnailAsync(info.Path, Math.Min(1, info.Duration / 10), thumbnailWidth, token);
             return bytes.Length == 0 ? null : bytes;
         }
-        catch (Exception e) when (e is FfmpegException or Win32Exception)
+        catch (Exception e) when (ExpectedErrors.IsProcess(e))
         {
             // 沒有縮圖不影響其他功能。
             return null;

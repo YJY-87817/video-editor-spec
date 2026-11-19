@@ -1,7 +1,7 @@
+using VideoEditor.Core.Editing;
 using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
-using TimelineModel = VideoEditor.Core.Timeline.Timeline;
 
 namespace VideoEditor.Tests;
 
@@ -64,7 +64,7 @@ public class FilterGraphFileRuleTests
             Path = "C:\\" + new string('x', pathLength - 7) + ".mp4", Duration = 6000, HasVideo = true, HasAudio = true,
             DisplayWidth = 1920, DisplayHeight = 1080, FrameRate = new Rational(30, 1), PixelFormat = "yuv420p", BitDepth = 8,
         };
-        var t = new TimelineModel();
+        var t = new Timeline();
         for (var i = 0; i < clips; i++) t.Append(media, i, i + 1);
 
         var plan = ExportPlanner.Build(t, new OutputSettings(AspectRatio.R16x9, FitMode.Fill), @"C:\Users\someone\Videos\out.mp4");
@@ -82,7 +82,7 @@ public class FilterGraphFileRuleTests
             Path = "a.mp4", Duration = 6000, HasVideo = true, HasAudio = true,
             DisplayWidth = 1920, DisplayHeight = 1080, FrameRate = new Rational(30, 1), PixelFormat = "yuv420p",
         };
-        var t = new TimelineModel();
+        var t = new Timeline();
         for (var i = 0; i < 2000; i++) t.Append(media, i, i + 1);
 
         var error = Assert.Throws<InvalidOperationException>(() =>
@@ -93,6 +93,7 @@ public class FilterGraphFileRuleTests
 
 /// <summary>濾鏡圖檔案的實際匯出（需要 FFmpeg）。</summary>
 [Collection("media")]
+[Trait("Category", "Integration")]
 public class FilterGraphFileExportTests(TestMedia media)
 {
     private static readonly OutputSettings Default = new(AspectRatio.R16x9, FitMode.Fill);
@@ -110,7 +111,7 @@ public class FilterGraphFileExportTests(TestMedia media)
     public async Task ForcedFileExportMatchesTheInlineExport()
     {
         var source = await media.Probe(media.Landscape);
-        var t = new TimelineModel();
+        var t = new Timeline();
         t.Append(source, 0.5, 1.5);
         t.Append(source, 2, 3);
         var directory = Path.Combine(media.Directory, "graph-file");
@@ -145,7 +146,7 @@ public class FilterGraphFileExportTests(TestMedia media)
     {
         // 120 個 0.2 秒的片段：整條命令列遠超過原本 30,000 字元的上限，會自動改用濾鏡圖檔案。
         var source = await media.Probe(media.Landscape);
-        var t = new TimelineModel();
+        var t = new Timeline();
         for (var i = 0; i < 120; i++) t.Append(source, (i % 90) / 30.0, (i % 90) / 30.0 + 0.2);
         var output = media.Output("many-clips.mp4");
         var plan = ExportPlanner.Build(t, Default, output);

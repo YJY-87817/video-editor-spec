@@ -5,11 +5,25 @@ using VideoEditor.Core.Models;
 
 namespace VideoEditor.Tests;
 
-/// <summary>整合測試共用的短片，由 FFmpeg 當場產生。</summary>
+/// <summary>
+/// 整合測試共用的短片，由 FFmpeg 當場產生。需要 ffmpeg.exe 與 ffprobe.exe（含 libx264、libx265）；
+/// 用 <c>[Collection("media")]</c> 的測試類別都標了 <c>Category=Integration</c>，沒有 FFmpeg 時可用
+/// <c>dotnet test --filter "Category!=Integration"</c> 只跑不需要它的測試（T-4）。
+/// </summary>
 public sealed class TestMedia : IDisposable
 {
     public string Directory { get; } = Path.Combine(Path.GetTempPath(), "VideoEditorTests", Guid.NewGuid().ToString("N"));
-    public FfmpegTools Tools { get; } = FfmpegLocator.Locate();
+    public FfmpegTools Tools { get; } = LocateOrExplain();
+
+    private static FfmpegTools LocateOrExplain()
+    {
+        try { return FfmpegLocator.Locate(); }
+        catch (FfmpegNotFoundException e)
+        {
+            throw new InvalidOperationException(
+                e.Message + "\n整合測試需要 FFmpeg；沒有的話請改跑：dotnet test --filter \"Category!=Integration\"", e);
+        }
+    }
 
     public string Landscape { get; }
     public string Portrait { get; }
@@ -52,7 +66,7 @@ public sealed class TestMedia : IDisposable
 
     public string Output(string name) => Path.Combine(Directory, name);
 
-    public async Task<MediaInfo> Export(VideoEditor.Core.Timeline.Timeline timeline, OutputSettings settings, string name)
+    public async Task<MediaInfo> Export(VideoEditor.Core.Editing.Timeline timeline, OutputSettings settings, string name)
     {
         var output = Output(name);
         var plan = ExportPlanner.Build(timeline, settings, output);
