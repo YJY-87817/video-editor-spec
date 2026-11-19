@@ -1,7 +1,6 @@
 using System.Text;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
-using VideoEditor.Core.Playback;
 using VideoEditor.Core.Editing;
 
 namespace VideoEditor.Tests;

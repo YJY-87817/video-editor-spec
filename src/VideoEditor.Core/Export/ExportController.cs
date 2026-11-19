@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.IO;
 using VideoEditor.Core.Editing;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Logging;

@@ -1,5 +1,4 @@
 using System.Buffers.Binary;
-using System.Globalization;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Models;
 using VideoEditor.Core.Editing;
