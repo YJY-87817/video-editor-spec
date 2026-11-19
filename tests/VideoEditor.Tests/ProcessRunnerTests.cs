@@ -95,6 +95,24 @@ public class ProcessRunnerTests(TestMedia media)
     }
 
     [Fact]
+    public async Task CallersCanOverrideTheDefaultTimeouts()
+    {
+        // 1 毫秒連啟動程序都來不及：確認傳入的時間真的被使用，而不是固定值。
+        var tight = new FfmpegTimeouts { Probe = TimeSpan.FromMilliseconds(1), Frame = TimeSpan.FromMilliseconds(1), Thumbnail = TimeSpan.FromMilliseconds(1) };
+        await Assert.ThrowsAsync<FfmpegTimeoutException>(() => new MediaProbe(media.Tools, tight).ProbeAsync(media.Landscape));
+        await Assert.ThrowsAsync<FfmpegTimeoutException>(() =>
+            new FrameExtractor(media.Tools, tight).ExtractAsync(media.Landscape, 0, new VideoEditor.Core.Models.Size2(64, 36)));
+        await Assert.ThrowsAsync<FfmpegTimeoutException>(() => new FrameExtractor(media.Tools, tight).ThumbnailAsync(media.Landscape, 0, 64));
+    }
+
+    [Fact]
+    public void DefaultTimeoutsAreGenerousForSlowDisks()
+    {
+        Assert.True(FfmpegTimeouts.Default.Probe >= TimeSpan.FromMinutes(2));
+        Assert.True(FfmpegTimeouts.Default.Frame >= TimeSpan.FromMinutes(1));
+    }
+
+    [Fact]
     public async Task TimeoutIsAnFfmpegException()
     {
         // 既有的 catch (FfmpegException) 不必改就能涵蓋逾時。

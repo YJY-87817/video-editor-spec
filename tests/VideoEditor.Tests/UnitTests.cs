@@ -352,6 +352,50 @@ public class ProbeParseTests
     }
 
     [Theory]
+    [InlineData("4294967297", "1080", "30/1", "10")] // 2^32+1：轉成 int 會繞回 1
+    [InlineData("1920", "4294967297", "30/1", "10")]
+    [InlineData("1920", "9223372036854775807", "30/1", "10")]
+    public void HugeDimensionsAreRejectedInsteadOfWrappingAround(string width, string height, string rate, string duration)
+    {
+        var json = $$$"""
+            {"streams":[{"codec_type":"video","codec_name":"h264","width":{{{width}}},"height":{{{height}}},"pix_fmt":"yuv420p",
+              "r_frame_rate":"{{{rate}}}","avg_frame_rate":"{{{rate}}}"}],"format":{"duration":"{{{duration}}}"}}
+            """;
+        Assert.Contains("超過上限", Assert.Throws<InvalidDataException>(() => MediaProbe.Parse(json, "x.mp4")).Message);
+    }
+
+    [Fact]
+    public void HugeSampleAspectRatioIsRejected()
+    {
+        const string json = """
+            {"streams":[{"codec_type":"video","codec_name":"h264","width":1920,"height":1080,"pix_fmt":"yuv420p",
+              "sample_aspect_ratio":"99999999:1","r_frame_rate":"30/1","avg_frame_rate":"30/1"}],"format":{"duration":"10"}}
+            """;
+        Assert.Contains("超過上限", Assert.Throws<InvalidDataException>(() => MediaProbe.Parse(json, "x.mp4")).Message);
+    }
+
+    [Fact]
+    public void NegativeDimensionsAreRejected()
+    {
+        const string json = """
+            {"streams":[{"codec_type":"video","codec_name":"h264","width":-1920,"height":1080,"pix_fmt":"yuv420p",
+              "r_frame_rate":"30/1","avg_frame_rate":"30/1"}],"format":{"duration":"10"}}
+            """;
+        Assert.Throws<InvalidDataException>(() => MediaProbe.Parse(json, "x.mp4"));
+    }
+
+    [Fact]
+    public void OutOfRangeAudioFieldsDoNotWrapAround()
+    {
+        const string json = """
+            {"streams":[{"codec_type":"audio","codec_name":"aac","sample_rate":"4294967297","channels":"-3"}],"format":{"duration":"10"}}
+            """;
+        var info = MediaProbe.Parse(json, "x.m4a");
+        Assert.Equal(int.MaxValue, info.AudioSampleRate);
+        Assert.Equal(0, info.AudioChannels);
+    }
+
+    [Theory]
     [InlineData("1920", "1080", "30/1", "10", "尺寸", false)]
     [InlineData("16384", "16384", "30/1", "10", "尺寸", false)] // 剛好在上限內
     [InlineData("16385", "1080", "30/1", "10", "尺寸", true)]
@@ -586,6 +630,19 @@ public class ExportPlannerTests
 
     private static string Graph(ExportPlan plan) =>
         plan.Arguments[plan.Arguments.ToList().IndexOf("-filter_complex") + 1];
+
+    [Fact]
+    public void SeventyClipsFromALongPathStillFitTheCommandLine()
+    {
+        // README 寫「約 80 個片段以內」：實測路徑 55 字元時可到 78 個，70 個必須放得下。
+        var media = Media() with { Duration = 600, Path = @"C:\Users\someone\Videos\2026\holiday-trip\clip-0001.mp4" };
+        var t = new TimelineModel();
+        for (var i = 0; i < 70; i++) t.Append(media, i, i + 1);
+
+        var plan = ExportPlanner.Build(t, new OutputSettings(AspectRatio.R16x9, FitMode.Fill), @"C:\Users\someone\Videos\out.mp4");
+
+        Assert.True(plan.Arguments.Sum(a => a.Length + 3) < 30000);
+    }
 
     [Fact]
     public void OutputPathIsKeptApartFromTheArguments()
