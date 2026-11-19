@@ -632,19 +632,6 @@ public class ExportPlannerTests
         plan.Arguments[plan.Arguments.ToList().IndexOf("-filter_complex") + 1];
 
     [Fact]
-    public void SeventyClipsFromALongPathStillFitTheCommandLine()
-    {
-        // README 寫「約 80 個片段以內」：實測路徑 55 字元時可到 78 個，70 個必須放得下。
-        var media = Media() with { Duration = 600, Path = @"C:\Users\someone\Videos\2026\holiday-trip\clip-0001.mp4" };
-        var t = new TimelineModel();
-        for (var i = 0; i < 70; i++) t.Append(media, i, i + 1);
-
-        var plan = ExportPlanner.Build(t, new OutputSettings(AspectRatio.R16x9, FitMode.Fill), @"C:\Users\someone\Videos\out.mp4");
-
-        Assert.True(plan.Arguments.Sum(a => a.Length + 3) < 30000);
-    }
-
-    [Fact]
     public void OutputPathIsKeptApartFromTheArguments()
     {
         // ExportService 匯出時要把輸出路徑換成暫存檔；兩者分開存放，才不必靠「最後一個參數是輸出路徑」的默契。

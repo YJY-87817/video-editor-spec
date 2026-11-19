@@ -160,7 +160,10 @@ public static class ExportPlanner
             args.AddRange(["-c:a", "aac", "-b:a", AudioBitRate(timeline).ToString(CultureInfo.InvariantCulture), "-ar", AudioSampleRate.ToString(CultureInfo.InvariantCulture)]);
         args.AddRange(["-t", Num(duration), "-movflags", "+faststart"]);
 
-        if (args.Sum(a => a.Length + 3) + outputPath.Length + 3 > MaxCommandLength)
+        // 濾鏡圖太長時 ExportService 會把它放進檔案（見 FilterGraphFile），所以這裡只計算濾鏡圖以外的參數：
+        // 每個片段的 -ss -t -i 路徑 才是命令列真正的上限。
+        var graphLength = args[args.IndexOf("-filter_complex") + 1].Length + 3;
+        if (FilterGraphFile.CommandLength(args) - graphLength + outputPath.Length + 3 > MaxCommandLength)
             throw new InvalidOperationException("片段數量過多，超過 Windows 命令列長度上限。");
         return new ExportPlan(args, outputPath, duration, size, codec, pixelFormat, CollectWarnings(timeline, reference, referenceSize, settings.Mode), reverseJobs);
     }

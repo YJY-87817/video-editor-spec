@@ -179,14 +179,14 @@ public class ExportControllerTests(TestMedia media)
     [Fact]
     public async Task TooManyClipsShowsAProblemInsteadOfThrowing()
     {
-        // 片段多到超過 Windows 命令列長度上限時，規劃會失敗；要以一般提示告訴使用者，不能變成未處理的例外。
+        // 片段多到連濾鏡圖檔案也救不了（每個片段的輸入參數就超過 Windows 命令列長度上限）時，規劃會失敗；要以一般提示告訴使用者，不能變成未處理的例外。
         var source = new MediaInfo
         {
             Path = media.Landscape, Duration = 10, HasVideo = true, HasAudio = true,
             DisplayWidth = 1920, DisplayHeight = 1080, FrameRate = new Rational(30, 1), PixelFormat = "yuv420p",
         };
         var t = new TimelineModel();
-        for (var i = 0; i < 300; i++) t.Append(source, 0, 1);
+        for (var i = 0; i < 1500; i++) t.Append(source, 0, 1);
         var view = new FakeView();
         var output = media.Output("too-many.mp4");
 

@@ -1,11 +1,18 @@
 using System.Globalization;
+using System.Text;
 using VideoEditor.Core.Ffmpeg;
 using TimelineModel = VideoEditor.Core.Timeline.Timeline;
 
 namespace VideoEditor.Core.Export;
 
-public sealed class ExportService(FfmpegTools tools)
+/// <param name="graphFileThreshold">
+/// 命令列超過這個長度（字元）時，把濾鏡圖放進暫存檔再交給 FFmpeg（見 <see cref="FilterGraphFile"/>）。
+/// Windows 的上限是 32,767，預設留一些餘裕；測試時可調小（0 表示一律用檔案）。
+/// </param>
+public sealed class ExportService(FfmpegTools tools, int graphFileThreshold = ExportService.DefaultGraphFileThreshold)
 {
+    public const int DefaultGraphFileThreshold = 20000;
+
     /// <summary>估算 CRF 輸出大小的安全係數；實際大小取決於畫面內容。</summary>
     private const double SizeSafetyFactor = 1.5;
 
@@ -150,15 +157,31 @@ public sealed class ExportService(FfmpegTools tools)
         var outputPath = plan.OutputPath;
         var temporary = TemporaryPath(outputPath);
         var work = WorkDirectory(temporary);
-        var args = ReverseGraph.Resolve(plan.Arguments, work).Append(temporary);
+        IReadOnlyList<string> args = ReverseGraph.Resolve(plan.Arguments, work).Append(temporary).ToList();
         var finished = false;
+        // 工作資料夾放倒放中間檔與濾鏡圖檔案，任何一個用到就要在結束時刪除。
+        var workCreated = false;
         // 進度依處理的秒數計：先是各個倒放片段，最後才是編碼。
         var total = plan.TotalWork;
         var prepared = 0.0;
 
         try
         {
-            if (plan.ReverseJobs.Count > 0) Directory.CreateDirectory(work);
+            if (plan.ReverseJobs.Count > 0)
+            {
+                Directory.CreateDirectory(work);
+                workCreated = true;
+            }
+            if (FilterGraphFile.ShouldUseFile(args, graphFileThreshold))
+            {
+                Directory.CreateDirectory(work);
+                workCreated = true;
+                var script = Path.Combine(work, "filter.txt");
+                var option = await FilterGraphFile.OptionAsync(tools).ConfigureAwait(false);
+                var (moved, graph) = FilterGraphFile.Move(args, option, script);
+                await File.WriteAllTextAsync(script, graph, new UTF8Encoding(false), token).ConfigureAwait(false);
+                args = moved;
+            }
             foreach (var job in plan.ReverseJobs)
             {
                 var before = prepared;
@@ -184,7 +207,7 @@ public sealed class ExportService(FfmpegTools tools)
         {
             if (!finished) DeleteQuietly(temporary);
             // 檔案被佔用時刪除會重試最多約 2 秒；放到背景執行，呼叫端是 UI 執行緒時才不會卡住畫面。
-            if (plan.ReverseJobs.Count > 0) await Task.Run(() => TemporaryFiles.DeleteDirectory(work)).ConfigureAwait(false);
+            if (workCreated) await Task.Run(() => TemporaryFiles.DeleteDirectory(work)).ConfigureAwait(false);
         }
     }
 
