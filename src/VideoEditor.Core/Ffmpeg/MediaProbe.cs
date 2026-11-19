@@ -8,6 +8,12 @@ namespace VideoEditor.Core.Ffmpeg;
 
 public sealed class MediaProbe(FfmpegTools tools)
 {
+    // 檔案自己宣稱的數值沒有上限，損毀或惡意的檔案可能寫出極端值，讓時間軸、倒放分段、預覽緩衝配置出天文數字。
+    // 上限遠高於實際素材（16K 影像、1000 fps 高速攝影、48 小時錄影），只擋明顯不合理的值。
+    public const int MaxDimension = 16384;
+    public const double MaxFrameRate = 1000;
+    public static readonly TimeSpan MaxDuration = TimeSpan.FromHours(48);
+
     public async Task<MediaInfo> ProbeAsync(string path, CancellationToken token = default)
     {
         string[] args = ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", "-i", path];
@@ -39,6 +45,10 @@ public sealed class MediaProbe(FfmpegTools tools)
                 : string.Create(CultureInfo.InvariantCulture,
                     $"檔案太短（{duration:0.###} 秒），可能是靜態圖片；片段至少要 {TimelineModel.MinClipDuration} 秒。"));
 
+        if (duration > MaxDuration.TotalSeconds)
+            throw new InvalidDataException(string.Create(CultureInfo.InvariantCulture,
+                $"檔案長度（{duration / 3600:0.#} 小時）超過上限 {MaxDuration.TotalHours:0} 小時，檔案可能已損毀。"));
+
         var info = new MediaInfo
         {
             Path = path,
@@ -59,8 +69,14 @@ public sealed class MediaProbe(FfmpegTools tools)
         var height = (int)Lng(video, "height");
         if (Math.Abs(rotation) % 180 == 90) (width, height) = (height, width);
 
+        if (width > MaxDimension || height > MaxDimension)
+            throw new InvalidDataException($"影像尺寸（{width}×{height}）超過上限 {MaxDimension}×{MaxDimension}，檔案可能已損毀。");
+
         var realRate = Rational.Parse(Str(video, "r_frame_rate"));
         var averageRate = Rational.Parse(Str(video, "avg_frame_rate"));
+        if (Math.Max(realRate.Value, averageRate.Value) > MaxFrameRate)
+            throw new InvalidDataException(string.Create(CultureInfo.InvariantCulture,
+                $"影格率（{Math.Max(realRate.Value, averageRate.Value):0.#} fps）超過上限 {MaxFrameRate:0} fps，檔案可能已損毀。"));
         // r_frame_rate 與平均影格率差距超過 1% 視為可變影格率。
         var isVariable = realRate.Value > 0 && averageRate.Value > 0
             && Math.Abs(realRate.Value - averageRate.Value) / realRate.Value > 0.01;

@@ -351,6 +351,32 @@ public class ProbeParseTests
         Assert.True(info.IsHdr);
     }
 
+    [Theory]
+    [InlineData("1920", "1080", "30/1", "10", "尺寸", false)]
+    [InlineData("16384", "16384", "30/1", "10", "尺寸", false)] // 剛好在上限內
+    [InlineData("16385", "1080", "30/1", "10", "尺寸", true)]
+    [InlineData("1920", "99999999", "30/1", "10", "尺寸", true)]
+    [InlineData("1920", "1080", "1000/1", "10", "影格率", false)]
+    [InlineData("1920", "1080", "9000000/1", "10", "影格率", true)]
+    [InlineData("1920", "1080", "30/1", "172800", "長度", false)] // 剛好 48 小時
+    [InlineData("1920", "1080", "30/1", "172801", "長度", true)]
+    [InlineData("1920", "1080", "30/1", "1e12", "長度", true)]
+    public void RejectsImplausibleMetadata(string width, string height, string rate, string duration, string expected, bool rejected)
+    {
+        var json = $$$"""
+            {"streams":[{"codec_type":"video","codec_name":"h264","width":{{{width}}},"height":{{{height}}},"pix_fmt":"yuv420p",
+              "r_frame_rate":"{{{rate}}}","avg_frame_rate":"{{{rate}}}"}],"format":{"duration":"{{{duration}}}"}}
+            """;
+        if (!rejected)
+        {
+            Assert.True(MediaProbe.Parse(json, "x.mp4").HasVideo);
+            return;
+        }
+        var error = Assert.Throws<InvalidDataException>(() => MediaProbe.Parse(json, "x.mp4"));
+        Assert.Contains(expected, error.Message);
+        Assert.Contains("超過上限", error.Message);
+    }
+
     [Fact]
     public void AttachedPictureIsNotVideo()
     {
