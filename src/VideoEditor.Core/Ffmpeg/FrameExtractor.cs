@@ -12,7 +12,7 @@ public sealed class FrameExtractor(FfmpegTools tools)
     {
         string[] args =
         [
-            "-v", "error", "-ss", Seconds(Math.Max(0, time)), "-i", path,
+            "-v", "error", "-ss", Seconds(Math.Max(0, time)), ..FfmpegInput.LocalFilesOnly, "-i", path,
             "-frames:v", "1", "-an", "-vf", $"scale={size.Width}:{size.Height},setsar=1",
             "-f", "rawvideo", "-pix_fmt", "bgra", "pipe:1",
         ];
@@ -30,7 +30,7 @@ public sealed class FrameExtractor(FfmpegTools tools)
         step = Math.Max(1, step);
         string[] args =
         [
-            "-v", "error", "-ss", Seconds(FrameSeekTime(firstFrame, fps)), "-i", path,
+            "-v", "error", "-ss", Seconds(FrameSeekTime(firstFrame, fps)), ..FfmpegInput.LocalFilesOnly, "-i", path,
             "-an", "-vf", $"select=not(mod(n\\,{step})),scale={size.Width}:{size.Height},setsar=1",
             "-fps_mode", "passthrough", "-frames:v", count.ToString(CultureInfo.InvariantCulture),
             "-f", "rawvideo", "-pix_fmt", "bgra", "pipe:1",
@@ -44,7 +44,7 @@ public sealed class FrameExtractor(FfmpegTools tools)
     {
         string[] args =
         [
-            "-v", "error", "-ss", Seconds(time), "-i", path, "-frames:v", "1", "-an",
+            "-v", "error", "-ss", Seconds(time), ..FfmpegInput.LocalFilesOnly, "-i", path, "-frames:v", "1", "-an",
             "-vf", $"scale={width}:-2", "-c:v", "mjpeg", "-q:v", "5", "-f", "image2pipe", "pipe:1",
         ];
         return ProcessRunner.RunForBytesAsync(tools.Ffmpeg, args, token, FfmpegTimeouts.Thumbnail);

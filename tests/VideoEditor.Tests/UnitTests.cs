@@ -600,6 +600,16 @@ public class ExportPlannerTests
     }
 
     [Fact]
+    public void EveryInputIsLimitedToLocalFiles()
+    {
+        // 偽裝成影片的播放清單不能讓 FFmpeg 對外連線（S-2）。
+        var t = new TimelineModel();
+        t.Append(Media(), 0, 2);
+        t.Append(Media(), 3, 5);
+        ReverseGraphTests.AssertEveryInputIsLocalOnly(ExportPlanner.Build(t, new OutputSettings(AspectRatio.R16x9, FitMode.Fill), "o.mp4").Arguments);
+    }
+
+    [Fact]
     public void Uses8BitH264AndCrf18ByDefault()
     {
         var t = new TimelineModel();

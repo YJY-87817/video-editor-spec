@@ -167,11 +167,24 @@ public class ReverseGraphTests
 
         // 最後的指令只讀接合清單，不再有 reverse 濾鏡（否則整段影格又會同時留在記憶體裡）。
         var args = plan.Arguments.ToList();
-        Assert.Equal(job.ListPath, args[args.IndexOf("concat") + 2]);
+        Assert.Equal(job.ListPath, args[args.IndexOf("-i") + 1]);
         Assert.DoesNotContain("reverse", args[args.IndexOf("-filter_complex") + 1]);
         Assert.Equal(1, args.Count(a => a == "-i"));
+        AssertEveryInputIsLocalOnly(args);
+        foreach (var step in job.Steps) AssertEveryInputIsLocalOnly(step.Arguments);
         Assert.Equal(1.5, plan.Duration, 6);
         Assert.Equal(3.0, plan.TotalWork, 6);
+    }
+
+    /// <summary>每個 -i 前面都要有「只允許本機檔案」的選項（S-2）。</summary>
+    internal static void AssertEveryInputIsLocalOnly(IReadOnlyList<string> args)
+    {
+        var inputs = Enumerable.Range(0, args.Count).Where(i => args[i] == "-i").ToList();
+        Assert.NotEmpty(inputs);
+        foreach (var i in inputs)
+        {
+            Assert.True(i >= 2 && args[i - 2] == "-protocol_whitelist" && args[i - 1] == "file", $"第 {i} 個參數的 -i 前沒有 -protocol_whitelist file");
+        }
     }
 
     [Fact]

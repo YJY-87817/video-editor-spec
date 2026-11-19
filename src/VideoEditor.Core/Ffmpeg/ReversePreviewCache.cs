@@ -79,7 +79,7 @@ public sealed class ReversePreviewCache(FfmpegTools tools, string? directory = n
     /// <summary>把倒放好的中間檔編碼成預覽檔的參數。</summary>
     public static IReadOnlyList<string> EncodeArguments(MediaInfo media, string list, double duration, string output)
     {
-        var args = new List<string> { "-hide_banner", "-nostats", "-v", "error", "-progress", "pipe:1", "-y", "-f", "concat", "-i", list, "-map", "0:v" };
+        var args = new List<string> { "-hide_banner", "-nostats", "-v", "error", "-progress", "pipe:1", "-y", "-f", "concat", "-protocol_whitelist", "file", "-i", list, "-map", "0:v" };
         if (media.HasAudio) args.AddRange(["-map", "0:a", "-c:a", "aac", "-b:a", "160k"]);
         // 短 GOP：播放時常從片段中間開始，定位才快。
         args.AddRange(["-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-g", "10", "-pix_fmt", "yuv420p",

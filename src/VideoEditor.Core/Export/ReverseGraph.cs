@@ -101,7 +101,7 @@ public static class ReverseGraph
             var frames = Math.Max(1, (long)Math.Round(length * fps));
             var conformed = $"{WorkToken}/{name}-cfr.nut";
             var args = new List<string>(common);
-            args.AddRange(["-ss", Num(sourceIn), "-t", Num(length), "-i", media.Path]);
+            args.AddRange(["-ss", Num(sourceIn), "-t", Num(length), ..Ffmpeg.FfmpegInput.LocalFilesOnly, "-i", media.Path]);
             // start_time=0：影格從入點起算，第一格之前的空檔以第一格補上。
             // tpad 加 trim：結尾不足的以最後一格補上、多的切掉，剛好是片段長度該有的格數，之後的分段才不會落空。
             args.AddRange(["-filter_complex",
@@ -131,12 +131,12 @@ public static class ReverseGraph
             var chunk = chunks[i];
             var file = $"{name}-{i:D5}.nut";
             var args = new List<string>(common);
-            args.AddRange(["-ss", Num(chunk.Start), "-t", Num(chunk.Length), "-i", input]);
+            args.AddRange(["-ss", Num(chunk.Start), "-t", Num(chunk.Length), ..Ffmpeg.FfmpegInput.LocalFilesOnly, "-i", input]);
             var graph = $"[0:v]setpts=PTS-STARTPTS,{inputTag}{prefilter}reverse{keepRange}[v]";
             if (withAudio)
             {
                 // 聲音取這幾格實際顯示的時間範圍；影像的定位點提前半格只是為了不漏掉第一格。
-                args.AddRange(["-ss", Num(chunk.AudioStart), "-t", Num(chunk.AudioLength), "-vn", "-i", input]);
+                args.AddRange(["-ss", Num(chunk.AudioStart), "-t", Num(chunk.AudioLength), "-vn", ..Ffmpeg.FfmpegInput.LocalFilesOnly, "-i", input]);
                 // 先補齊到這一小段的長度再倒放，聲音才不會與畫面錯開。
                 graph += $";[1:a]asetpts=PTS-STARTPTS,apad,atrim=0:{Num(chunk.AudioLength)},areverse[a]";
             }

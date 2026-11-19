@@ -99,7 +99,7 @@ public static class ExportPlanner
                 var job = ReverseGraph.Plan($"r{label}", clip.Media, clip.SourceIn, clip.SourceOut, withAudio, "", frameBytes, reverseBufferBytes);
                 reverseJobs.Add(job);
                 // 中間檔已經倒放好，這裡只是照順序讀進來。
-                args.AddRange(["-f", "concat", "-i", job.ListPath]);
+                args.AddRange(["-f", "concat", ..Ffmpeg.FfmpegInput.LocalFilesOnly, "-i", job.ListPath]);
                 videoSource = $"[{input}:v]setpts=PTS-STARTPTS,{ReverseGraph.InputFilter(clip.Media)}";
                 audioSource = $"[{input}:a]asetpts=PTS-STARTPTS,";
                 input++;
@@ -107,7 +107,7 @@ public static class ExportPlanner
             else
             {
                 // -ss/-t 放在 -i 之前：快速定位，重新編碼時切點仍然準確。
-                args.AddRange(["-ss", Num(clip.SourceIn), "-t", Num(clip.Duration), "-i", clip.Media.Path]);
+                args.AddRange(["-ss", Num(clip.SourceIn), "-t", Num(clip.Duration), ..Ffmpeg.FfmpegInput.LocalFilesOnly, "-i", clip.Media.Path]);
                 videoSource = $"[{input}:v]setpts=PTS-STARTPTS,";
                 audioSource = $"[{input}:a]asetpts=PTS-STARTPTS,";
                 input++;
@@ -141,7 +141,7 @@ public static class ExportPlanner
             var index = 0;
             foreach (var clip in timeline.MusicClips)
             {
-                args.AddRange(["-ss", Num(clip.SourceIn), "-t", Num(clip.Duration), "-i", clip.Media.Path]);
+                args.AddRange(["-ss", Num(clip.SourceIn), "-t", Num(clip.Duration), ..Ffmpeg.FfmpegInput.LocalFilesOnly, "-i", clip.Media.Path]);
                 var delay = (long)Math.Round(clip.Start * 1000);
                 graph.Add($"[{input}:a]asetpts=PTS-STARTPTS,{AudioFormat},volume={Num(clip.Volume)},adelay={delay}:all=1[m{index}]");
                 mix.Append($"[m{index}]");

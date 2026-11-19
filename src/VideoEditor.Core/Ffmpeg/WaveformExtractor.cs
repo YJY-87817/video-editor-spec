@@ -20,7 +20,7 @@ public sealed class WaveformExtractor(FfmpegTools tools)
         var channels = media.AudioChannels is 1 ? 1 : 2;
         string[] args =
         [
-            "-v", "error", "-i", media.Path, "-map", "0:a:0", "-vn", "-sn", "-dn",
+            "-v", "error", ..FfmpegInput.LocalFilesOnly, "-i", media.Path, "-map", "0:a:0", "-vn", "-sn", "-dn",
             "-af", "aresample=async=1:first_pts=0", "-ac", Int(channels), "-ar", Int(rate),
             "-f", "s16le", "-acodec", "pcm_s16le", "pipe:1",
         ];
