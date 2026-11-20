@@ -42,6 +42,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <!-- libvlc 套件只在 Platform 剛好是 x64 或 AnyCPU 時才帶入 x64 檔案；發佈設定檔用的是 "Any CPU"（有空格），
+         不明確開啟的話發佈資料夾會少掉整個 libvlc。 -->
+    <VlcWindowsX64Enabled>true</VlcWindowsX64Enabled>
     <VlcWindowsX86Enabled>false</VlcWindowsX86Enabled>
     <VlcWindowsArm64Enabled>false</VlcWindowsArm64Enabled>
     <ApplicationIcon>app.ico</ApplicationIcon>

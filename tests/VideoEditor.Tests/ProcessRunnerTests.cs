@@ -98,8 +98,9 @@ public class ProcessRunnerTests(TestMedia media)
     [Fact]
     public async Task CallersCanOverrideTheDefaultTimeouts()
     {
-        // 1 毫秒連啟動程序都來不及：確認傳入的時間真的被使用，而不是固定值。
-        var tight = new FfmpegTimeouts { Probe = TimeSpan.FromMilliseconds(1), Frame = TimeSpan.FromMilliseconds(1), Thumbnail = TimeSpan.FromMilliseconds(1) };
+        // 0 代表已經逾時，一定丟出逾時：確認傳入的時間真的被使用，而不是固定值。
+        // 不用 1 毫秒：CI 的執行緒集區忙時，計時器回呼會晚到，ffprobe 可能先跑完（曾在 CI 偶發失敗）。
+        var tight = new FfmpegTimeouts { Probe = TimeSpan.Zero, Frame = TimeSpan.Zero, Thumbnail = TimeSpan.Zero };
         await Assert.ThrowsAsync<FfmpegTimeoutException>(() => new MediaProbe(media.Tools, tight).ProbeAsync(media.Landscape));
         await Assert.ThrowsAsync<FfmpegTimeoutException>(() =>
             new FrameExtractor(media.Tools, tight).ExtractAsync(media.Landscape, 0, new VideoEditor.Core.Models.Size2(64, 36)));

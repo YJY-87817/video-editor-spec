@@ -4,6 +4,9 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- Directory.Build.props 給所有專案設了 RuntimeIdentifiers（為了 lock 檔），SDK 會因此把 Core 當成跟平台有關，
+         發佈時把 win-x64 傳下來，App 就去找 bin\...\win-x64\VideoEditor.Core.dll。Core 是純 .NET 函式庫，跟平台無關。 -->
+    <IsRidAgnostic>true</IsRidAgnostic>
   </PropertyGroup>
 
 </Project>
