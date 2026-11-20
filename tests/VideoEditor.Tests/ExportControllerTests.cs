@@ -24,6 +24,8 @@ public class ExportControllerTests(TestMedia media)
 
         Assert.Equal("Problem", string.Join(",", view.Calls));
         Assert.NotNull(view.Problem);
+        // 狀態列要換掉，不能留著上一次的「匯出完成」。
+        Assert.Equal("沒有匯出。", string.Join(",", view.Statuses));
     }
 
     [Fact]
@@ -120,6 +122,7 @@ public class ExportControllerTests(TestMedia media)
         Assert.Equal("ConfirmWarnings", string.Join(",", view.Calls));
         Assert.NotEmpty(view.Warnings);
         Assert.False(File.Exists(output));
+        Assert.Equal("已取消匯出。", string.Join(",", view.Statuses));
     }
 
     [Fact]

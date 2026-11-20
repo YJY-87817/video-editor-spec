@@ -599,7 +599,8 @@ public sealed class PreviewEngine : IDisposable
     private void ShowFrameAtPosition(int sourceStep = 0)
     {
         var request = _frameQueue.NextRequestId();
-        var clip = _timeline.VideoClipAt(Position);
+        // 停在時間軸最尾端時沒有片段，改顯示最後一段的最後一格，而不是一片黑。
+        var clip = _timeline.VideoClipForStill(Position);
         if (clip == null)
         {
             _frameQueue.Drop(request);
@@ -609,9 +610,10 @@ public sealed class PreviewEngine : IDisposable
 
         var media = clip.Media;
         var fps = media.EffectiveFrameRate;
-        var frame = FrameMath.FrameIndex(clip.ToSourceTime(Position), fps);
         var size = FrameExtractor.PreviewSize(media.DisplayWidth, media.DisplayHeight, MaxPreviewLongSide);
         var (first, last) = FrameRange(clip, fps);
+        // 片段結尾的時間對到的是片段外的下一格，夾回片段內。
+        var frame = Math.Clamp(FrameMath.FrameIndex(clip.ToSourceTime(Position), fps), first, last);
         if (_frames.TryGet((media.Path, frame), out var cached))
         {
             _frameQueue.Drop(request);
