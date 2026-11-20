@@ -35,7 +35,7 @@ public partial class MainWindow
     private TimelineClip? FramingClip()
     {
         if (!IsTimelinePreview || SelectedMode != FitMode.Fill || _engine == null || _surfaceMedia is not { HasVideo: true }) return null;
-        var clip = _timeline.VideoClipAt(_engine.Position);
+        var clip = _timeline.VideoClipForStill(_engine.Position);
         return clip != null && clip.Media == _surfaceMedia && clip.Transform == _surfaceTransform ? clip : null;
     }
 
@@ -62,6 +62,8 @@ public partial class MainWindow
         PlaceHandle(FrameHandleTopRight, frame.X + frame.Width, frame.Y, editable);
         PlaceHandle(FrameHandleBottomLeft, frame.X, frame.Y + frame.Height, editable);
         PlaceHandle(FrameHandleBottomRight, frame.X + frame.Width, frame.Y + frame.Height, editable);
+        // 播放頭走進別的片段時框跟著換，右側的說明與重設按鈕也要跟著換成那一段。
+        UpdateFramingControls(TimelineView.SelectedClip);
     }
 
     private static void PlaceHandle(Rectangle handle, double x, double y, bool visible)
@@ -77,13 +79,26 @@ public partial class MainWindow
         if (IsTimelinePreview && FramingClip() != _framingClip) UpdatePreviewLayout();
     }
 
-    private void UpdateFramingControls(TimelineClip? clip)
+    /// <summary>
+    /// 畫面位置說明與重設按鈕對應的片段：預覽上有可拖曳的框時是框對應的那一段
+    /// （播放頭可能已經走出選取的片段），否則是選取的片段。
+    /// </summary>
+    private TimelineClip? FramingTarget(TimelineClip? selected) =>
+        _framingClip ?? (selected is { Track: TrackKind.Video } ? selected : null);
+
+    private void UpdateFramingControls(TimelineClip? selected)
     {
-        var video = clip is { Track: TrackKind.Video };
-        ResetFramingButton.IsEnabled = video && !clip!.Framing.IsDefault;
-        FramingText.Text = !video ? "—"
-            : SelectedMode != FitMode.Fill ? "加黑邊時不裁切，不使用畫面位置。"
-            : $"{clip!.Framing.Label}。在剪輯預覽中拖曳黃色框移動、拖曳四角縮放，也可以用滑鼠滾輪縮放、雙擊框重設。";
+        var clip = FramingTarget(selected);
+        ResetFramingButton.IsEnabled = clip != null && !clip.Framing.IsDefault;
+        if (clip == null)
+        {
+            FramingText.Text = "—";
+            return;
+        }
+        // 與片段清單的編號相同。
+        var index = _timeline.VideoClips.TakeWhile(c => c != clip).Count() + 1;
+        FramingText.Text = SelectedMode != FitMode.Fill ? "加黑邊時不裁切，不使用畫面位置。"
+            : $"第 {index} 段：{clip.Framing.Label}。在剪輯預覽中拖曳黃色框移動、拖曳四角縮放，也可以用滑鼠滾輪縮放、雙擊框重設。";
     }
 
     /// <param name="refreshList">拖曳中每次移動都會呼叫，片段清單等放開滑鼠再更新一次就好。</param>
@@ -98,7 +113,7 @@ public partial class MainWindow
 
     private void OnResetFraming(object sender, RoutedEventArgs e)
     {
-        if (TimelineView.SelectedClip is { Track: TrackKind.Video } clip) ApplyFraming(clip, ClipFraming.Default);
+        if (FramingTarget(TimelineView.SelectedClip) is { } clip) ApplyFraming(clip, ClipFraming.Default);
     }
 
     private void OnFramingMoveStart(object sender, MouseButtonEventArgs e)

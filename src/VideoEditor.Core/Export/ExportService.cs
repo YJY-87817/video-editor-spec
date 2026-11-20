@@ -287,7 +287,9 @@ public sealed class ExportService(FfmpegTools tools, int graphFileThreshold = Ex
 
 /// <summary>影片已經做好，但無法改成輸出檔名。做好的影片保留在 <see cref="TemporaryPath"/>。</summary>
 public sealed class ExportRenameException(string temporaryPath, string outputPath, Exception inner)
-    : IOException($"影片已做好，但無法存成「{Path.GetFileName(outputPath)}」（可能正被播放器等程式開著）：{inner.Message}\n\n"
+    // 不附上系統的錯誤訊息：它常是英文（例如 Access to the path is denied），對使用者沒有幫助；
+    // 原始例外保留在 InnerException，記錄檔看得到。
+    : IOException($"影片已做好，但無法存成「{Path.GetFileName(outputPath)}」，可能正被播放器等程式開著。\n\n"
         + $"做好的影片保留在：\n{temporaryPath}\n\n請關閉開著它的程式後，自行把它改名，或重新匯出。", inner)
 {
     public string TemporaryPath { get; } = temporaryPath;

@@ -67,6 +67,8 @@ public sealed class ExportController(FfmpegTools tools, IExportView view, int do
         var problem = ExportService.Preflight(timeline, output);
         if (problem != null)
         {
+            // 狀態列可能還留著上一次的「匯出完成」，要換掉，免得看起來像這次也成功了。
+            view.ShowStatus("沒有匯出。");
             view.ShowProblem(problem);
             return;
         }
@@ -79,6 +81,7 @@ public sealed class ExportController(FfmpegTools tools, IExportView view, int do
         catch (InvalidOperationException error)
         {
             // 例如片段太多、超過 Windows 命令列長度上限：訊息本身就是給使用者看的說明。
+            view.ShowStatus("沒有匯出。");
             view.ShowProblem(error.Message);
             return;
         }
@@ -86,7 +89,11 @@ public sealed class ExportController(FfmpegTools tools, IExportView view, int do
         var warnings = ExportService.SpaceWarning(timeline, output, settings, freeSpace) is { } space
             ? plan.Warnings.Append(space).ToList()
             : plan.Warnings;
-        if (warnings.Count > 0 && !view.ConfirmWarnings(warnings)) return;
+        if (warnings.Count > 0 && !view.ConfirmWarnings(warnings))
+        {
+            view.ShowStatus("已取消匯出。");
+            return;
+        }
 
         view.PausePreview();
         var cancel = new CancellationTokenSource();

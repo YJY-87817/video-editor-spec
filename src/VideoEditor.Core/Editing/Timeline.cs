@@ -151,6 +151,18 @@ public sealed class Timeline
     public TimelineClip? VideoClipAt(double time) => ClipAt(_video, time);
     public TimelineClip? MusicClipAt(double time) => ClipAt(_music, time);
 
+    /// <summary>
+    /// 暫停時畫面要顯示的影片片段。和 <see cref="VideoClipAt"/> 相同，只是播放頭停在時間軸最尾端時
+    /// （那裡已經沒有片段）改回傳最後結束的那一段，讓預覽停在最後一格，而不是一片黑。
+    /// </summary>
+    public TimelineClip? VideoClipForStill(double time)
+    {
+        if (VideoClipAt(time) is { } clip) return clip;
+        if (_video.Count == 0 || time < Duration - Epsilon) return null;
+        var last = _video.MaxBy(c => c.End)!;
+        return last.End >= time - Epsilon ? last : null;
+    }
+
     private static TimelineClip? ClipAt(List<TimelineClip> list, double time)
     {
         foreach (var clip in list)

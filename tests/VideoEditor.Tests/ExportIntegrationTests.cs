@@ -389,6 +389,8 @@ public class ExportIntegrationTests(TestMedia media)
             // 做好的影片沒被刪掉，而且是完整可播放的檔案。
             Assert.True(File.Exists(error.TemporaryPath));
             Assert.Contains(error.TemporaryPath, error.Message);
+            // 系統的英文錯誤訊息不放進給使用者看的提示，只留在 InnerException。
+            Assert.DoesNotContain(error.InnerException!.Message, error.Message);
             Assert.True((await media.Probe(error.TemporaryPath)).Duration > 0.3);
         }
         finally

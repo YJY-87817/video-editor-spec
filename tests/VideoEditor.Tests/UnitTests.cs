@@ -307,6 +307,31 @@ public class TimelineTests
     }
 
     [Fact]
+    public void StillAtTimelineEndShowsTheLastClip()
+    {
+        var t = new Timeline();
+        var a = t.Append(Media(), 0, 2);
+        var b = t.Append(Media(), 0, 3); // a:0-2，b:2-5
+        Assert.Null(t.VideoClipAt(5));
+        Assert.Equal(b, t.VideoClipForStill(5));
+        Assert.Equal(b, t.VideoClipForStill(2));
+        Assert.Equal(a, t.VideoClipForStill(1));
+        Assert.Null(t.VideoClipForStill(6));
+        Assert.Null(new Timeline().VideoClipForStill(0));
+    }
+
+    [Fact]
+    public void StillInAGapStaysBlack()
+    {
+        var t = new Timeline();
+        var a = t.Append(Media(), 0, 1);
+        var b = t.Append(Media(), 0, 3);
+        t.Move(b, 2); // a:0-1，空白 1-2，b:2-5
+        Assert.Null(t.VideoClipForStill(1)); // a 的結尾不是時間軸結尾：空白處照樣是黑的
+        Assert.Equal(b, t.VideoClipForStill(5));
+    }
+
+    [Fact]
     public void AudioOnlyMediaGoesToMusicTrack()
     {
         var t = new Timeline();
