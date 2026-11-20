@@ -94,7 +94,10 @@ public static class ProcessRunner
     {
         if (timeout is not { } limit) return await run(token).ConfigureAwait(false);
         using var timer = CancellationTokenSource.CreateLinkedTokenSource(token);
-        timer.CancelAfter(limit);
+        // 0 或負數視為已經逾時，當場取消。CancelAfter(0) 仍要等計時器回呼在執行緒集區跑到才會生效，
+        // 集區忙的時候程序可能先跑完，結果就不一定。
+        if (limit <= TimeSpan.Zero) timer.Cancel();
+        else timer.CancelAfter(limit);
         try
         {
             return await run(timer.Token).ConfigureAwait(false);
@@ -115,6 +118,7 @@ public static class ProcessRunner
         Func<Process, Task<T>> readOutput, bool logFailure = true) =>
         WithTimeoutAsync(exe, timeout, token, async token =>
         {
+            token.ThrowIfCancellationRequested();
             using var process = Start(exe, args);
             using var kill = token.Register(() => KillQuietly(process));
             try
