@@ -25,29 +25,37 @@ public partial class MainWindow
 
     private void MarkIn()
     {
-        if (_engine == null || _selectedMedia == null || IsTimelinePreview) return;
+        if (_engine == null || _selectedMedia == null || IsTimelinePreview || RejectStillMark()) return;
         _points.SetIn(InOutPoints.Snap(_engine.Position, _selectedMedia.Info));
         UpdateMarks();
     }
 
     private void MarkOut()
     {
-        if (_engine == null || _selectedMedia == null || IsTimelinePreview) return;
+        if (_engine == null || _selectedMedia == null || IsTimelinePreview || RejectStillMark()) return;
         _points.SetOut(InOutPoints.Snap(_engine.Position, _selectedMedia.Info));
         UpdateMarks();
     }
 
+    /// <summary>圖片沒有入出點：按 I／O 時只提示，回傳 true 表示已擋下。</summary>
+    private bool RejectStillMark()
+    {
+        if (_selectedMedia?.Info.IsStill != true) return false;
+        StatusText.Text = $"圖片沒有入點與出點，加入時間軸固定 {Timeline.StillClipDuration:0} 秒，之後可拖曳兩端調整長度。";
+        return true;
+    }
+
     private void UpdateMarks()
     {
-        MarkText.Text = _selectedMedia == null || IsTimelinePreview
-            ? ""
+        MarkText.Text = _selectedMedia == null || IsTimelinePreview ? ""
+            : _selectedMedia.Info.IsStill ? $"圖片：加入時間軸為 {Timeline.StillClipDuration:0} 秒"
             : $"I {PlaybackText.Duration(_points.InPoint)}  O {PlaybackText.Duration(_points.OutPoint(_selectedMedia.Info))}";
         UpdateMarkRange();
     }
 
     private void UpdateMarkRange()
     {
-        if (_selectedMedia == null || IsTimelinePreview || _selectedMedia.Info.Duration <= 0)
+        if (_selectedMedia == null || IsTimelinePreview || _selectedMedia.Info.Duration <= 0 || _selectedMedia.Info.IsStill)
         {
             MarkRange.Visibility = Visibility.Collapsed;
             return;

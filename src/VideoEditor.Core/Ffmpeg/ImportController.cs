@@ -24,14 +24,8 @@ public interface IImportView
 }
 
 /// <summary>逐一讀取素材資訊與縮圖，並把進度與結果交給 <see cref="IImportView"/>。</summary>
-/// <param name="allowStills">
-/// 是否接受靜態圖片。圖片片段的預覽與畫面還沒完成前（見 docs/IMAGE-CLIP-PLAN.md 第五節）為 false，匯入時擋下。
-/// </param>
-public sealed class ImportController(MediaProbe probe, FrameExtractor extractor, IImportView view, int thumbnailWidth = 144,
-    bool allowStills = false)
+public sealed class ImportController(MediaProbe probe, FrameExtractor extractor, IImportView view, int thumbnailWidth = 144)
 {
-    public const string StillsNotAvailable = "圖片片段尚未開放，目前只能匯入影片與音訊。";
-
     // 執行緒：這個類別不做任何同步。ImportAsync、Cancel 都必須從 UI 執行緒呼叫，
     // await 之後的程式碼會回到呼叫時的 SynchronizationContext（所以不用 ConfigureAwait(false)，之後還要操作畫面），
     // 因此下面的計數與集合永遠只在 UI 執行緒讀寫。沒有 SynchronizationContext 的環境（測試）則必須自己確保不並行呼叫。
@@ -71,11 +65,6 @@ public sealed class ImportController(MediaProbe probe, FrameExtractor extractor,
                 {
                     Report(name, "讀取資訊", 0);
                     var info = await probe.ProbeAsync(path, token);
-                    if (info.IsStill && !allowStills)
-                    {
-                        view.ShowFailure(name, StillsNotAvailable);
-                        continue;
-                    }
                     Report(name, "產生縮圖", 0.5);
                     view.AddMedia(info, await LoadThumbnailAsync(info, token));
                 }

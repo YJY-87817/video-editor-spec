@@ -90,6 +90,13 @@ public sealed class PreviewEngine : IDisposable
     private readonly Stopwatch _rewindClock = new();
     private double _rewindBase;
     private bool _rewindFetching;
+    // 正在背景解出的圖片（路徑），避免播放或倒帶時同一張圖重複啟動 FFmpeg。
+    private readonly HashSet<string> _stillsLoading = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>圖片只有一張畫面，快取鍵固定用第 0 格。</summary>
+    private const long StillFrame = 0;
+    /// <summary>播放時先解出接下來幾張圖片（見 PrefetchUpcomingStills）。</summary>
+    private const int StillLookahead = 2;
     // 來源結尾附近解不出的影格；倒帶與逐格預先解碼暫時不再重試，過一段時間後才會再試（短暫的失敗不該永久標記）。
     private readonly MissingFrames<(string Path, long Frame)> _missingFrames = new();
 
@@ -364,6 +371,7 @@ public sealed class PreviewEngine : IDisposable
         var clip = _timeline.VideoClipAt(position);
         if (clip == _videoClip) return;
         _videoClip = clip;
+        PrefetchUpcomingStills(position);
 
         if (clip == null)
         {
@@ -372,6 +380,20 @@ public sealed class PreviewEngine : IDisposable
             return;
         }
 
+        if (clip.Media.IsStill)
+        {
+            // 圖片不交給 LibVLC：停掉影片播放器、不再接收它還在路上的影格（否則會蓋掉圖片），
+            // 顯示 FFmpeg 解出的那一張。沒有「等第一格」：時鐘照常走，配樂照常播。
+            Enqueue(() => _videoPlayer.Stop());
+            _acceptVlcFrames = false;
+            _waitingForFirstFrame = false;
+            _clockBase = position;
+            _clock.Restart();
+            ShowStill(clip);
+            return;
+        }
+
+        _acceptVlcFrames = true;
         var size = FrameExtractor.PreviewSize(clip.Media.DisplayWidth, clip.Media.DisplayHeight, MaxPreviewLongSide);
         EnsureSurface(size, clip.Media, clip.Transform);
         _clockBase = position;
@@ -444,7 +466,8 @@ public sealed class PreviewEngine : IDisposable
     /// <summary>若 LibVLC 實際進度與時鐘差太多（如解碼跟不上），以 LibVLC 為準，避免畫面與播放頭脫鉤。</summary>
     private double FollowVideoClock(double position)
     {
-        if (_videoClip == null) return position;
+        // 圖片沒有交給 LibVLC 播放，沒有進度可以對照。
+        if (_videoClip == null || _videoClip.Media.IsStill) return position;
         var actual = _videoPlayer.Time;
         if (actual <= 0) return position;
         var expected = (position - _videoClip.Start + _playerBase) * 1000;
@@ -515,6 +538,11 @@ public sealed class PreviewEngine : IDisposable
         if (clip == null)
         {
             ShowBlack();
+            return;
+        }
+        if (clip.Media.IsStill)
+        {
+            ShowStill(clip);
             return;
         }
 
@@ -612,18 +640,18 @@ public sealed class PreviewEngine : IDisposable
         var fps = media.EffectiveFrameRate;
         var size = FrameExtractor.PreviewSize(media.DisplayWidth, media.DisplayHeight, MaxPreviewLongSide);
         var (first, last) = FrameRange(clip, fps);
-        // 片段結尾的時間對到的是片段外的下一格，夾回片段內。
-        var frame = Math.Clamp(FrameMath.FrameIndex(clip.ToSourceTime(Position), fps), first, last);
+        // 片段結尾的時間對到的是片段外的下一格，夾回片段內。圖片不管位置都是同一張。
+        var frame = media.IsStill ? StillFrame : Math.Clamp(FrameMath.FrameIndex(clip.ToSourceTime(Position), fps), first, last);
         if (_frames.TryGet((media.Path, frame), out var cached))
         {
             _frameQueue.Drop(request);
             ShowFrame(cached, media, clip.Transform);
-            if (sourceStep != 0) PrefetchStepFrames(media, frame, sourceStep, fps, size, first, last);
+            if (sourceStep != 0 && !media.IsStill) PrefetchStepFrames(media, frame, sourceStep, fps, size, first, last);
             return;
         }
 
-        // 逐格移動時，連同同方向接下來的幾格一起解，下一步就直接從快取顯示。
-        var batch = sourceStep == 0 ? null : FrameBatch.Toward(frame, sourceStep, first, last, StepBatchFrames);
+        // 逐格移動時，連同同方向接下來的幾格一起解，下一步就直接從快取顯示。圖片只有一張，不用。
+        var batch = sourceStep == 0 || media.IsStill ? null : FrameBatch.Toward(frame, sourceStep, first, last, StepBatchFrames);
         // 背景正在預先解下一批時會被中止：一次只跑一個 FFmpeg，不中止的話要等那一批解完才輪到這一格。
         if (_frameQueue.Submit(new FrameRequest(media, clip.Transform, size, fps, frame, request, batch)))
             Observe(ExtractPendingFramesAsync());
@@ -706,6 +734,13 @@ public sealed class PreviewEngine : IDisposable
     private async Task<RawFrame?> ExtractRequestAsync(FrameRequest request, CancellationToken token)
     {
         var path = request.Media.Path;
+        if (request.Media.IsStill)
+        {
+            // 圖片不能加 -ss（JPEG 會解不出畫面，見 FrameExtractor）。
+            var still = await _extractor.ExtractAsync(path, 0, request.Size, token, still: true);
+            if (still != null) _frames.Add((path, StillFrame), still);
+            return still;
+        }
         if (request.Batch is { } batch)
         {
             var frames = await _extractor.ExtractRangeAsync(path, batch.Start, batch.Count, 1, request.Fps, request.Size, token);
@@ -719,6 +754,76 @@ public sealed class PreviewEngine : IDisposable
             ?? await _extractor.ExtractAsync(path, Math.Max(0, seek - 0.25), request.Size, token);
         if (frame != null) _frames.Add((path, request.Frame), frame);
         return frame;
+    }
+
+    /// <summary>
+    /// 播放或倒帶經過圖片片段時顯示那張圖：已經解好就直接顯示，否則在背景解出（見 <see cref="LoadStillAsync"/>）。
+    /// 暫停與拖曳走 <see cref="ShowFrameAtPosition"/>；那條路的影格佇列在播放與倒帶時不顯示解好的畫面，所以這裡另外處理。
+    /// </summary>
+    private void ShowStill(TimelineClip clip)
+    {
+        var media = clip.Media;
+        if (_frames.TryGet((media.Path, StillFrame), out var cached))
+        {
+            ShowFrame(cached, media, clip.Transform);
+            return;
+        }
+        if (_stillsLoading.Add(media.Path)) Observe(LoadStillAsync(media));
+    }
+
+    /// <summary>
+    /// 播放中先在背景解出接下來的圖片（最多 <see cref="StillLookahead"/> 張、一次一張），播到時就能馬上顯示，
+    /// 不會先停在上一段影片的最後一格。只看前面幾張：影格快取只有 <see cref="FrameCacheCapacity"/> 格，
+    /// 全部先解會把拖曳用的影格擠掉，照片多時也會同時開一堆 FFmpeg。
+    /// </summary>
+    private void PrefetchUpcomingStills(double position)
+    {
+        var upcoming = _timeline.VideoClips.Where(c => c.Media.IsStill && c.End > position).Select(c => c.Media)
+            .DistinctBy(m => m.Path, StringComparer.OrdinalIgnoreCase).Take(StillLookahead)
+            // 解不出來的圖片（記在 _missingFrames）不重試，否則解完一張就接著再試同一張，一直重複。
+            .Where(m => !HasFrame(m.Path, StillFrame) && !_stillsLoading.Contains(m.Path)).ToList();
+        if (upcoming.Count == 0 || _stillsLoading.Count > 0) return;
+        // 一次只解一張：解完這張後，下一次換片段（UpdateVideo）時再看下一張。
+        _stillsLoading.Add(upcoming[0].Path);
+        Observe(LoadStillAsync(upcoming[0]));
+    }
+
+    /// <summary>播放或倒帶中，畫面上應該是哪個片段；暫停時為 null（暫停時的畫面由 ShowFrameAtPosition 負責）。</summary>
+    private TimelineClip? PlayingClip() =>
+        IsPlaying ? _videoClip : IsRewinding ? _timeline.VideoClipAt(Position) : null;
+
+    /// <summary>
+    /// 在背景解出圖片並放進快取。解好時若播放或倒帶正停在用這張圖的片段上，就顯示出來：
+    /// 看的是「現在的片段用不用這張圖」，不是開始解的那個片段。同一張圖分割成兩段時，
+    /// 解好前可能已經播到第二段，而第二段因為這張圖已在解而沒有另外啟動。
+    /// </summary>
+    private async Task LoadStillAsync(MediaInfo media)
+    {
+        try
+        {
+            var size = FrameExtractor.PreviewSize(media.DisplayWidth, media.DisplayHeight, MaxPreviewLongSide);
+            var frame = await _extractor.ExtractAsync(media.Path, 0, size, still: true);
+            if (frame == null)
+            {
+                _missingFrames.Add((media.Path, StillFrame));
+                Error?.Invoke($"無法解出圖片：{media.FileName}");
+                return;
+            }
+            _frames.Add((media.Path, StillFrame), frame);
+            if (PlayingClip() is { } current && current.Media.Path == media.Path)
+                ShowFrame(frame, current.Media, current.Transform);
+        }
+        catch (Exception e) when (ExpectedErrors.IsProcess(e))
+        {
+            _missingFrames.Add((media.Path, StillFrame));
+            Error?.Invoke($"無法解出圖片：{e.Message}");
+        }
+        finally
+        {
+            _stillsLoading.Remove(media.Path);
+        }
+        // 接著解下一張（播放中才需要）。
+        if (IsPlaying) PrefetchUpcomingStills(Position);
     }
 
     private void ShowFrame(RawFrame frame, MediaInfo media, FrameTransform transform)

@@ -101,44 +101,24 @@ public class ImportControllerTests(TestMedia media)
         Assert.Equal("Hide", view.Events[^1]);
     }
 
-    [Fact]
-    public async Task StillImageIsRejectedAndTheRestStillImport()
+    [Theory]
+    [InlineData("still.png")]
+    [InlineData("still.jpg")] // JPEG 加 -ss 會解不出畫面，縮圖要不加 -ss
+    public async Task StillImageIsImportedWithAThumbnail(string name)
     {
-        // 圖片片段的預覽還沒完成前，匯入時擋下圖片，而且不能中斷同一批的其他檔案。
-        var still = await MakeStill("still.png");
+        var still = media.Output(name);
+        await ProcessRunner.RunForBytesAsync(media.Tools.Ffmpeg,
+            ["-hide_banner", "-y", "-v", "error", "-f", "lavfi", "-i", "color=c=red:s=64x64", "-frames:v", "1", still]);
         var view = new FakeView();
 
         await Create(view).ImportAsync([still, media.Landscape]);
 
-        var failure = Assert.Single(view.Failures);
-        Assert.Equal("still.png", failure.Name);
-        Assert.Equal(ImportController.StillsNotAvailable, failure.Message);
-        Assert.Equal(media.Landscape, Assert.Single(view.Added).Info.Path);
-        Assert.Equal("Hide", view.Events[^1]);
-    }
-
-    [Fact]
-    public async Task StillImageIsImportedWithAThumbnailWhenAllowed()
-    {
-        var still = await MakeStill("allowed.png");
-        var view = new FakeView();
-
-        await new ImportController(new MediaProbe(media.Tools), new FrameExtractor(media.Tools), view, allowStills: true)
-            .ImportAsync([still]);
-
-        var added = Assert.Single(view.Added);
+        Assert.Empty(view.Failures);
+        Assert.Equal(2, view.Added.Count);
+        var added = view.Added.Single(a => a.Info.Path == still);
         Assert.True(added.Info.IsStill);
         Assert.NotNull(added.Thumbnail);
         Assert.Equal(0xFF, added.Thumbnail![0]); // JPEG
-        Assert.Empty(view.Failures);
-    }
-
-    private async Task<string> MakeStill(string name)
-    {
-        var path = media.Output(name);
-        await ProcessRunner.RunForBytesAsync(media.Tools.Ffmpeg,
-            ["-hide_banner", "-y", "-v", "error", "-f", "lavfi", "-i", "color=c=red:s=64x64", "-frames:v", "1", path]);
-        return path;
     }
 
     [Fact]

@@ -9,7 +9,8 @@ public sealed class MediaItem(MediaInfo info)
 {
     public MediaInfo Info { get; } = info;
     public BitmapSource? Thumbnail { get; set; }
-    public string Summary => Info.HasVideo
-        ? $"{Info.DisplayWidth}×{Info.DisplayHeight}  {PlaybackText.Duration(Info.Duration)}"
+    public string Summary =>
+        Info.IsStill ? $"圖片  {Info.DisplayWidth}×{Info.DisplayHeight}"
+        : Info.HasVideo ? $"{Info.DisplayWidth}×{Info.DisplayHeight}  {PlaybackText.Duration(Info.Duration)}"
         : $"音訊  {PlaybackText.Duration(Info.Duration)}";
 }
