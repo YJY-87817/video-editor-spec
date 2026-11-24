@@ -274,10 +274,10 @@ public static class ExportPlanner
     }
 
     /// <summary>
-    /// 圖片的透明部分鋪黑：預乘透明度後，完全透明的像素就是黑色，半透明的變暗，再丟掉透明度。
+    /// 圖片的透明部分鋪黑（見 <see cref="Ffmpeg.FfmpegInput.StillFlatten"/>，預覽與縮圖用同一個）。
     /// 之後的縮放、裁切、加黑邊都在 RGB 上做，最後由 <see cref="StillFormatFilter"/> 轉成 YUV。
     /// </summary>
-    private const string StillFlatten = "format=rgba,premultiply=inplace=1,format=rgb24,";
+    private const string StillFlatten = Ffmpeg.FfmpegInput.StillFlatten + ",";
 
     /// <summary>
     /// 圖片（RGB）轉成輸出的 YUV：明確指定與基準相同的轉換矩陣與範圍。不指定時 FFmpeg 用 BT.601，

@@ -160,6 +160,41 @@ public class StillImageProbeTests(TestMedia media)
         Assert.True((await media.Probe(path)).IsStill);
     }
 
+    [Fact]
+    public async Task TransparentPartsOfThePreviewFrameAreBlack()
+    {
+        // 左半完全透明（底下藏著紅色），右半不透明的紅色：預覽要和匯出一樣，透明處是黑色。
+        var path = await MakeImage("hidden-red.png", HalfTransparentRed);
+
+        var frame = await new FrameExtractor(media.Tools).ExtractAsync(path, 0, new Size2(64, 48), still: true);
+
+        Assert.NotNull(frame);
+        Assert.Equal<byte>([0, 0, 0, 255], Pixel(frame.Bgra, 64, 8, 24));    // BGRA：黑、不透明
+        var red = Pixel(frame.Bgra, 64, 56, 24); // BGRA：紅、不透明（預乘後 255 可能捨入成 254）
+        Assert.True(red is [0, 0, >= 250, 255], $"不透明處應為紅色，實際 {string.Join(',', red)}");
+    }
+
+    [Fact]
+    public async Task TransparentPartsOfTheThumbnailAreBlack()
+    {
+        var path = await MakeImage("hidden-red-thumb.png", HalfTransparentRed);
+
+        var jpeg = await new FrameExtractor(media.Tools).ThumbnailAsync(path, 0, 64, still: true);
+
+        var thumb = media.Output("hidden-red-thumb.jpg");
+        await File.WriteAllBytesAsync(thumb, jpeg);
+        var rgb = await ProcessRunner.RunForBytesAsync(media.Tools.Ffmpeg,
+            ["-v", "error", "-i", thumb, "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"]);
+        var left = rgb.AsSpan((24 * 64 + 8) * 3, 3).ToArray();
+        var right = rgb.AsSpan((24 * 64 + 56) * 3, 3).ToArray();
+        Assert.True(left.All(v => v < 16), $"透明處應為黑色，實際 {string.Join(',', left)}");
+        Assert.True(right[0] > 230 && right[1] < 30 && right[2] < 30, $"不透明處應為紅色，實際 {string.Join(',', right)}");
+    }
+
+    private const string HalfTransparentRed = "color=c=red:s=64x48,format=rgba,geq=r=255:g=0:b=0:a='if(lt(X\\,32)\\,0\\,255)'";
+
+    private static byte[] Pixel(byte[] bgra, int width, int x, int y) => bgra.AsSpan((y * width + x) * 4, 4).ToArray();
+
     [Theory]
     [InlineData(1, 320, 240)]
     [InlineData(2, 320, 240)]
