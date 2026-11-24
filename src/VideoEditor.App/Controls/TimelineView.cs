@@ -72,6 +72,8 @@ public sealed class TimelineView : FrameworkElement
 
     public event Action<double>? PlayheadDragged;
     public event Action<TimelineClip?>? SelectionChanged;
+    /// <summary>滑鼠按在片段上（選取、移動或修剪）時觸發，在 <see cref="EditStarted"/> 之後、拖曳狀態設好之後。</summary>
+    public event Action? ClipPressed;
     /// <summary>開始拖曳片段前觸發，讓預覽先停下來。</summary>
     public event Action? EditStarted;
     public event Action? ClipsChanged;
@@ -392,6 +394,8 @@ public sealed class TimelineView : FrameworkElement
             _dragGrabOffset = XToTime(p.X) - clip.Start;
             if (kind is DragKind.TrimStart or DragKind.TrimEnd) PrepareSilenceSnap(clip, kind == DragKind.TrimStart ? TrimEdge.Start : TrimEdge.End);
             _dragClipEdges = TimelineSnap.ClipEdgeTargets(_timeline, clip);
+            // 拖曳狀態都設好了才通知：收到的一方會切換預覽模式、重新排版，不該看到設到一半的狀態。
+            ClipPressed?.Invoke();
         }
         CaptureMouse();
         e.Handled = true;

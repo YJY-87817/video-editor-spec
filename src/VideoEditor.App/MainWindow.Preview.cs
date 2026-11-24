@@ -64,7 +64,32 @@ public partial class MainWindow
         UpdatePreviewLayout();
     }
 
+    // 切換只在模式不同時才真的發生（RadioButton 已選取時再設 true 不會觸發 Checked），
+    // 所以已經在對的模式時不會重新載入預覽、播放頭也不會被重設。
     private void SwitchToTimelinePreview() => TimelineMode.IsChecked = true;
+
+    private void SwitchToSourcePreview()
+    {
+        if (_selectedMedia != null) SourceMode.IsChecked = true;
+    }
+
+    /// <summary>
+    /// 點素材清單裡的影片：切到匯入影片預覽。點另一支影片時 <see cref="OnMediaSelected"/> 已經切過去了，
+    /// 這裡補上點已經選取的那一支（清單選取沒變，不會觸發 SelectionChanged）的情況。點到空白處或捲軸不切換。
+    /// </summary>
+    private void OnMediaListClicked(object sender, MouseButtonEventArgs e)
+    {
+        if (IsOnListItem(MediaList, e)) SwitchToSourcePreview();
+    }
+
+    /// <summary>點右側片段清單裡的片段：切到剪輯預覽，播放頭不動。用方向鍵移動選取不切換。</summary>
+    private void OnClipListClicked(object sender, MouseButtonEventArgs e)
+    {
+        if (IsOnListItem(ClipList, e)) SwitchToTimelinePreview();
+    }
+
+    private static bool IsOnListItem(ItemsControl list, MouseButtonEventArgs e) =>
+        e.OriginalSource is DependencyObject source && ItemsControl.ContainerFromElement(list, source) != null;
 
     private void OnSurfaceChanged(WriteableBitmap? bitmap, MediaInfo? media, FrameTransform transform)
     {

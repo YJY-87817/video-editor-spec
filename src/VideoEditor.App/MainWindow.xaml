@@ -64,7 +64,7 @@
             <Button x:Name="ImportButton" AutomationProperties.AutomationId="ImportButton" DockPanel.Dock="Top" Margin="0,0,0,6" Content="匯入素材…（或拖放到視窗）" Click="OnImportClick" />
             <TextBlock x:Name="MediaDetails" DockPanel.Dock="Bottom" Margin="0,8,0,0" TextWrapping="Wrap" FontSize="12" LineHeight="18"
                        AutomationProperties.AutomationId="MediaDetails" />
-            <ListBox x:Name="MediaList" AutomationProperties.AutomationId="MediaList" SelectionChanged="OnMediaSelected" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+            <ListBox x:Name="MediaList" AutomationProperties.AutomationId="MediaList" SelectionChanged="OnMediaSelected" PreviewMouseLeftButtonUp="OnMediaListClicked" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                      HorizontalContentAlignment="Stretch">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
@@ -151,7 +151,7 @@
                 <TextBlock x:Name="OutputInfo" AutomationProperties.AutomationId="OutputInfo" Margin="0,8,0,0" FontSize="12" Foreground="#B0B0B0" TextWrapping="Wrap" />
 
                 <TextBlock Style="{StaticResource SectionTitle}" Text="片段清單（影片軌）" />
-                <ListBox x:Name="ClipList" AutomationProperties.AutomationId="ClipList" Height="170" SelectionChanged="OnClipListSelected" DisplayMemberPath="Label" />
+                <ListBox x:Name="ClipList" AutomationProperties.AutomationId="ClipList" Height="170" SelectionChanged="OnClipListSelected" PreviewMouseLeftButtonUp="OnClipListClicked" DisplayMemberPath="Label" />
                 <WrapPanel Margin="0,6,0,0">
                     <Button Content="上移" AutomationProperties.AutomationId="MoveUpButton" Click="OnMoveUp" />
                     <Button Content="下移" AutomationProperties.AutomationId="MoveDownButton" Click="OnMoveDown" />

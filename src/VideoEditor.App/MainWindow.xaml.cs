@@ -49,6 +49,7 @@ public partial class MainWindow : Window, IExportView, IImportView
         TimelineView.Timeline = _timeline;
         TimelineView.PlayheadDragged += OnTimelinePlayheadDragged;
         TimelineView.SelectionChanged += OnTimelineSelectionChanged;
+        TimelineView.ClipPressed += SwitchToTimelinePreview;
         TimelineView.EditStarted += () => _engine?.Pause();
         TimelineView.ClipsChanged += OnClipsChanged;
         TimelineView.ViewChanged += UpdateTimelineScrollBar;
