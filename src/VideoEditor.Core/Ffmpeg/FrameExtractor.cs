@@ -16,7 +16,7 @@ public sealed class FrameExtractor(FfmpegTools tools, FfmpegTimeouts? timeouts =
         string[] args =
         [
             "-v", "error", ..SeekTo(time, still), ..FfmpegInput.LocalFilesOnly, "-i", path,
-            "-frames:v", "1", "-an", "-vf", $"scale={size.Width}:{size.Height},setsar=1",
+            "-frames:v", "1", "-an", "-vf", $"{Flatten(still)}scale={size.Width}:{size.Height},setsar=1",
             "-f", "rawvideo", "-pix_fmt", "bgra", "pipe:1",
         ];
         var chunks = await ProcessRunner.RunForChunksAsync(tools.Ffmpeg, args, FrameBytes(size), 1, token, Limits.Frame);
@@ -49,7 +49,7 @@ public sealed class FrameExtractor(FfmpegTools tools, FfmpegTimeouts? timeouts =
         string[] args =
         [
             "-v", "error", ..SeekTo(time, still), ..FfmpegInput.LocalFilesOnly, "-i", path, "-frames:v", "1", "-an",
-            "-vf", $"scale={width}:-2", "-c:v", "mjpeg", "-q:v", "5", "-f", "image2pipe", "pipe:1",
+            "-vf", $"{Flatten(still)}scale={width}:-2", "-c:v", "mjpeg", "-q:v", "5", "-f", "image2pipe", "pipe:1",
         ];
         return ProcessRunner.RunForBytesAsync(tools.Ffmpeg, args, token, Limits.Thumbnail);
     }
@@ -59,6 +59,12 @@ public sealed class FrameExtractor(FfmpegTools tools, FfmpegTimeouts? timeouts =
     /// 影片照舊加 -ss，即使是 0：來源的時間戳不一定從 0 開始，不加的話可能解出 0 秒以前的畫面。
     /// </summary>
     private static string[] SeekTo(double time, bool still) => still ? [] : ["-ss", Seconds(Math.Max(0, time))];
+
+    /// <summary>
+    /// 圖片的透明部分鋪黑，和匯出相同（<see cref="FfmpegInput.StillFlatten"/>）。
+    /// 不鋪的話，預覽的 BGRA 透明度被忽略、JPEG 縮圖丟掉透明度，透明處原本藏著的顏色會露出來，和匯出結果不同。
+    /// </summary>
+    private static string Flatten(bool still) => still ? FfmpegInput.StillFlatten + "," : "";
 
     /// <summary>預覽解析度：長邊不超過 maxLongSide，取偶數。</summary>
     public static Size2 PreviewSize(int width, int height, int maxLongSide)
