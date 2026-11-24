@@ -164,19 +164,19 @@ public sealed class ExportService(FfmpegTools tools, int graphFileThreshold = Ex
     /// </summary>
     public static long EstimateBytes(Timeline timeline, Models.OutputSettings? settings = null)
     {
-        var fromSource = timeline.AllClips.Sum(c => c.Media.BitRate / 8.0 * c.Duration) * SizeSafetyFactor;
+        // 圖片的「位元率」是檔案大小除以 ffprobe 讀到的極短長度，不代表影片的大小，不算。
+        var fromSource = timeline.AllClips.Where(c => !c.Media.IsStill).Sum(c => c.Media.BitRate / 8.0 * c.Duration) * SizeSafetyFactor;
         var intermediate = timeline.VideoClips.Where(c => c.Reversed).Sum(c => ReverseGraph.IntermediateBytes(c.Media, c.SourceIn, c.SourceOut));
         return (long)Math.Max(fromSource, settings == null ? 0 : EncodedBytes(timeline, settings)) + intermediate;
     }
 
-    /// <summary>依輸出解析度、影格率與編碼格式估算重新編碼後的大小（含聲音）。基準與 ExportPlanner 相同：第一個影片片段。</summary>
+    /// <summary>依輸出解析度、影格率與編碼格式估算重新編碼後的大小（含聲音）。基準與 ExportPlanner 相同（見 <see cref="ExportPlanner.Reference"/>）。</summary>
     private static double EncodedBytes(Timeline timeline, Models.OutputSettings settings)
     {
-        if (timeline.VideoClips.Count == 0) return 0;
-        var first = timeline.VideoClips[0];
-        var size = Models.OutputSize.Compute(first.DisplaySize.Width, first.DisplaySize.Height, settings.Ratio);
-        var fps = first.Media.EffectiveFrameRate;
-        var bitsPerPixel = ExportPlanner.ChooseVideoFormat(first.Media).Codec == "libx265" ? H265BitsPerPixel : H264BitsPerPixel;
+        if (ExportPlanner.Reference(timeline) is not { } reference) return 0;
+        var size = Models.OutputSize.Compute(reference.Size.Width, reference.Size.Height, settings.Ratio);
+        var fps = reference.Media.EffectiveFrameRate;
+        var bitsPerPixel = ExportPlanner.ChooseVideoFormat(reference.Media).Codec == "libx265" ? H265BitsPerPixel : H264BitsPerPixel;
         var video = (double)size.Width * size.Height * fps * bitsPerPixel / 8;
         var audio = timeline.AllClips.Any(c => c.Media.HasAudio) ? ExportPlanner.AudioBitRate(timeline) / 8.0 : 0;
         return (video + audio) * timeline.Duration;

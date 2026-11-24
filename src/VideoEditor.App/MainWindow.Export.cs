@@ -7,6 +7,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using Microsoft.Win32;
+using VideoEditor.Core.Editing;
 using VideoEditor.Core.Export;
 using VideoEditor.Core.Logging;
 using VideoEditor.Core.Models;
@@ -27,17 +28,25 @@ public partial class MainWindow
 
     private void UpdateOutputInfo()
     {
-        var first = _timeline.VideoClips.FirstOrDefault();
-        var reference = first?.Media ?? (_selectedMedia?.Info is { HasVideo: true } s ? s : null);
+        // 與匯出相同的基準（見 ExportPlanner.Reference）；時間軸還是空的時，以選取的素材預估。
+        var reference = ExportPlanner.Reference(_timeline)
+            ?? (_selectedMedia?.Info is { HasVideo: true } s ? SelectedMediaReference(s) : null);
         if (reference == null)
         {
             OutputInfo.Text = "輸出解析度：—";
             return;
         }
-        var referenceSize = first?.DisplaySize ?? new Size2(reference.DisplayWidth, reference.DisplayHeight);
-        var size = OutputSize.Compute(referenceSize.Width, referenceSize.Height, SelectedRatio);
-        var (codec, _) = ExportPlanner.ChooseVideoFormat(reference);
+        var size = OutputSize.Compute(reference.Size.Width, reference.Size.Height, SelectedRatio);
+        var (codec, _) = ExportPlanner.ChooseVideoFormat(reference.Media);
         OutputInfo.Text = $"輸出解析度：{size.Width}×{size.Height}\n編碼：{(codec == "libx265" ? "H.265" : "H.264")}，CRF 18";
+    }
+
+    /// <summary>只有選取的素材、時間軸還是空的時，把它當成時間軸上唯一的片段來預估輸出（規則與 ExportPlanner.Reference 相同）。</summary>
+    private static ExportReference? SelectedMediaReference(MediaInfo media)
+    {
+        var timeline = new Timeline();
+        timeline.Append(media, 0, media.IsStill ? Timeline.StillClipDuration : media.Duration);
+        return ExportPlanner.Reference(timeline);
     }
 
     private async void OnExportClick(object sender, RoutedEventArgs e)
