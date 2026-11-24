@@ -10,11 +10,12 @@ public sealed class FrameExtractor(FfmpegTools tools, FfmpegTimeouts? timeouts =
     private FfmpegTimeouts Limits => timeouts ?? FfmpegTimeouts.Default;
 
     /// <summary>解出指定時間的影格（BGRA）；超出影片結尾時回傳 null。</summary>
-    public async Task<RawFrame?> ExtractAsync(string path, double time, Size2 size, CancellationToken token = default)
+    /// <param name="still">靜態圖片：不管 time，直接解出那一張（見 <see cref="SeekTo"/>）。</param>
+    public async Task<RawFrame?> ExtractAsync(string path, double time, Size2 size, CancellationToken token = default, bool still = false)
     {
         string[] args =
         [
-            "-v", "error", "-ss", Seconds(Math.Max(0, time)), ..FfmpegInput.LocalFilesOnly, "-i", path,
+            "-v", "error", ..SeekTo(time, still), ..FfmpegInput.LocalFilesOnly, "-i", path,
             "-frames:v", "1", "-an", "-vf", $"scale={size.Width}:{size.Height},setsar=1",
             "-f", "rawvideo", "-pix_fmt", "bgra", "pipe:1",
         ];
@@ -42,15 +43,22 @@ public sealed class FrameExtractor(FfmpegTools tools, FfmpegTimeouts? timeouts =
     }
 
     /// <summary>解出 JPEG 縮圖。</summary>
-    public Task<byte[]> ThumbnailAsync(string path, double time, int width, CancellationToken token = default)
+    /// <param name="still">靜態圖片：不管 time，直接解出那一張（見 <see cref="SeekTo"/>）。</param>
+    public Task<byte[]> ThumbnailAsync(string path, double time, int width, CancellationToken token = default, bool still = false)
     {
         string[] args =
         [
-            "-v", "error", "-ss", Seconds(time), ..FfmpegInput.LocalFilesOnly, "-i", path, "-frames:v", "1", "-an",
+            "-v", "error", ..SeekTo(time, still), ..FfmpegInput.LocalFilesOnly, "-i", path, "-frames:v", "1", "-an",
             "-vf", $"scale={width}:-2", "-c:v", "mjpeg", "-q:v", "5", "-f", "image2pipe", "pipe:1",
         ];
         return ProcessRunner.RunForBytesAsync(tools.Ffmpeg, args, token, Limits.Thumbnail);
     }
+
+    /// <summary>
+    /// 輸入前的定位參數。圖片不定位：FFmpeg 6.1 對 JPEG（image2）加上 -ss 0 會解不出任何畫面。
+    /// 影片照舊加 -ss，即使是 0：來源的時間戳不一定從 0 開始，不加的話可能解出 0 秒以前的畫面。
+    /// </summary>
+    private static string[] SeekTo(double time, bool still) => still ? [] : ["-ss", Seconds(Math.Max(0, time))];
 
     /// <summary>預覽解析度：長邊不超過 maxLongSide，取偶數。</summary>
     public static Size2 PreviewSize(int width, int height, int maxLongSide)

@@ -23,6 +23,11 @@ public sealed record MediaInfo
     public long BitRate { get; init; }
 
     public bool HasVideo { get; init; }
+    /// <summary>
+    /// 靜態圖片（JPG、PNG 等）。圖片的 HasVideo 為 true、沒有音訊、沒有影格率（FrameRate 為 0/1），
+    /// Duration 是 <see cref="Editing.Timeline.MaxStillDuration"/>：圖片放多久都可以，時間軸不必另外處理「來源長度」。
+    /// </summary>
+    public bool IsStill { get; init; }
     public int DisplayWidth { get; init; }
     public int DisplayHeight { get; init; }
     public int Rotation { get; init; }

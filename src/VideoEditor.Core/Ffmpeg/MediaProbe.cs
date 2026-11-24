@@ -14,14 +14,74 @@ public sealed class MediaProbe(FfmpegTools tools, FfmpegTimeouts? timeouts = nul
     public const double MaxFrameRate = 1000;
     public static readonly TimeSpan MaxDuration = TimeSpan.FromHours(48);
 
+    /// <summary>
+    /// 視為靜態圖片的影像編碼；容器還要是單張圖片（見 <see cref="IsStillImage"/>）。
+    /// 動態 GIF（容器 gif）、APNG（容器 apng）不在其中，照影片處理。
+    /// </summary>
+    private static readonly HashSet<string> StillCodecs = new(StringComparer.Ordinal) { "mjpeg", "png", "bmp", "webp", "tiff" };
+
     public async Task<MediaInfo> ProbeAsync(string path, CancellationToken token = default)
     {
         string[] args = ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", ..FfmpegInput.LocalFilesOnly, "-i", path];
-        var json = await ProcessRunner.RunForBytesAsync(tools.Ffprobe, args, token, (timeouts ?? FfmpegTimeouts.Default).Probe);
-        return Parse(Encoding.UTF8.GetString(json), path);
+        var json = Encoding.UTF8.GetString(await ProcessRunner.RunForBytesAsync(tools.Ffprobe, args, token, (timeouts ?? FfmpegTimeouts.Default).Probe));
+        if (!IsStillImage(json)) return Parse(json, path);
+        // 動態 WebP 在 ffprobe 看來和單張 WebP 一樣（webp_pipe），只能看檔頭分辨。照影片處理（長度讀不到，會被擋下）。
+        if (IsAnimatedWebp(ReadHeader(path, 21))) return Parse(json, path, allowStill: false);
+
+        // 圖片的 EXIF 方向（手機直拍照片）不在串流資訊裡，只出現在解出的影格上（FFmpeg 解碼時會自動轉正），
+        // 所以圖片要再讀一次第一格的資訊。影片不需要，不多花這一次。
+        string[] withFrame = [.. args[..^2], "-show_frames", "-read_intervals", "%+#1", .. args[^2..]];
+        json = Encoding.UTF8.GetString(await ProcessRunner.RunForBytesAsync(tools.Ffprobe, withFrame, token, (timeouts ?? FfmpegTimeouts.Default).Probe));
+        return Parse(json, path);
     }
 
-    public static MediaInfo Parse(string json, string path)
+    /// <summary>ffprobe 的結果是否為單張靜態圖片：容器是 image2 或 *_pipe（如 png_pipe），影像編碼是圖片格式。</summary>
+    public static bool IsStillImage(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        var format = root.TryGetProperty("format", out var f) ? f : default;
+        var streams = root.TryGetProperty("streams", out var s) && s.ValueKind == JsonValueKind.Array ? s.EnumerateArray().ToList() : [];
+        var video = streams.FirstOrDefault(x => Str(x, "codec_type") == "video" && !IsAttachedPicture(x));
+        return IsStillImage(format, video);
+    }
+
+    private static bool IsStillImage(JsonElement format, JsonElement video)
+    {
+        if (video.ValueKind != JsonValueKind.Object) return false;
+        var container = Str(format, "format_name") ?? "";
+        return (container == "image2" || container.EndsWith("_pipe", StringComparison.Ordinal))
+            && StillCodecs.Contains(Str(video, "codec_name") ?? "");
+    }
+
+    /// <summary>
+    /// WebP 檔頭是否標示為動畫：RIFF....WEBP 之後是延伸格式 VP8X，旗標（第 20 個位元組）的 0x02 是動畫。
+    /// 不是 WebP 或檔頭太短時為 false。
+    /// </summary>
+    public static bool IsAnimatedWebp(ReadOnlySpan<byte> header) =>
+        header.Length >= 21
+        && header[..4].SequenceEqual("RIFF"u8) && header[8..12].SequenceEqual("WEBP"u8) && header[12..16].SequenceEqual("VP8X"u8)
+        && (header[20] & 0x02) != 0;
+
+    /// <summary>讀檔案開頭的 count 個位元組；讀不到（檔案被移走、沒有權限）時回傳空的，交給 ffprobe 的結果判斷。</summary>
+    private static byte[] ReadHeader(string path, int count)
+    {
+        try
+        {
+            using var stream = File.OpenRead(path);
+            var buffer = new byte[count];
+            return buffer[..stream.ReadAtLeast(buffer, count, throwOnEndOfStream: false)];
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return [];
+        }
+    }
+
+    public static MediaInfo Parse(string json, string path) => Parse(json, path, allowStill: true);
+
+    /// <param name="allowStill">false 時即使看起來是單張圖片也照影片處理（動態 WebP）。</param>
+    private static MediaInfo Parse(string json, string path, bool allowStill)
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
@@ -35,10 +95,12 @@ public sealed class MediaProbe(FfmpegTools tools, FfmpegTimeouts? timeouts = nul
         var hasAudio = audio.ValueKind == JsonValueKind.Object;
         if (!hasVideo && !hasAudio) throw new InvalidDataException("檔案中沒有可用的影像或音訊。");
 
-        var duration = Dbl(format, "duration");
+        var isStill = allowStill && IsStillImage(format, video);
+        var duration = isStill ? Timeline.MaxStillDuration : Dbl(format, "duration");
         if (duration <= 0 && hasVideo) duration = Dbl(video, "duration");
         if (duration <= 0 && hasAudio) duration = Dbl(audio, "duration");
-        // 靜態圖片（ffprobe 讀成約 0.04 秒的影像）、極短或讀不到長度的檔案無法放上時間軸，匯入時就擋下。
+        // 極短或讀不到長度的影片、音訊無法放上時間軸，匯入時就擋下。靜態圖片的長度在上面已經換成 MaxStillDuration，不會走到這裡；
+        // 但 ffprobe 認不出是圖片的單格影像（例如沒有容器名稱）仍會在這裡因為太短被擋下。
         if (duration < Timeline.MinClipDuration)
             throw new InvalidDataException(duration <= 0
                 ? "無法讀取檔案長度，可能是靜態圖片或檔案已損毀。"
@@ -62,7 +124,8 @@ public sealed class MediaProbe(FfmpegTools tools, FfmpegTimeouts? timeouts = nul
         };
         if (!hasVideo) return info;
 
-        var rotation = ReadRotation(video);
+        // 圖片的旋轉（EXIF 方向）在第一格的資訊裡（見 ProbeAsync）；影片在串流資訊裡。
+        var rotation = isStill ? ReadFrameRotation(root) : ReadRotation(video);
         var sar = Rational.Parse(Str(video, "sample_aspect_ratio")?.Replace(':', '/'));
         if (sar.Num <= 0 || sar.Den <= 0) sar = new Rational(1, 1);
         // 先用 double 檢查再轉成 int：超出範圍的值轉型時會繞回小數字或負數，繞過上限。
@@ -77,8 +140,9 @@ public sealed class MediaProbe(FfmpegTools tools, FfmpegTimeouts? timeouts = nul
         var width = (int)Math.Round(rawWidth);
         var height = (int)rawHeight;
 
-        var realRate = Rational.Parse(Str(video, "r_frame_rate"));
-        var averageRate = Rational.Parse(Str(video, "avg_frame_rate"));
+        // 圖片的 r_frame_rate 是 ffprobe 的預設值 25/1，不是真的影格率，不採用。
+        var realRate = isStill ? new Rational(0, 1) : Rational.Parse(Str(video, "r_frame_rate"));
+        var averageRate = isStill ? new Rational(0, 1) : Rational.Parse(Str(video, "avg_frame_rate"));
         if (Math.Max(realRate.Value, averageRate.Value) > MaxFrameRate)
             throw new InvalidDataException(string.Create(CultureInfo.InvariantCulture,
                 $"影格率（{Math.Max(realRate.Value, averageRate.Value):0.#} fps）超過上限 {MaxFrameRate:0} fps，檔案可能已損毀。"));
@@ -90,6 +154,7 @@ public sealed class MediaProbe(FfmpegTools tools, FfmpegTimeouts? timeouts = nul
         return info with
         {
             HasVideo = true,
+            IsStill = isStill,
             DisplayWidth = width,
             DisplayHeight = height,
             Rotation = rotation,
@@ -138,6 +203,15 @@ public sealed class MediaProbe(FfmpegTools tools, FfmpegTimeouts? timeouts = nul
         if (video.TryGetProperty("tags", out var tags)
             && int.TryParse(Str(tags, "rotate"), CultureInfo.InvariantCulture, out var rotate))
             return rotate;
+        return 0;
+    }
+
+    /// <summary>第一個影像影格上的旋轉角度（ffprobe -show_frames）；沒有影格資訊或沒有旋轉時為 0。</summary>
+    private static int ReadFrameRotation(JsonElement root)
+    {
+        if (!root.TryGetProperty("frames", out var frames) || frames.ValueKind != JsonValueKind.Array) return 0;
+        foreach (var frame in frames.EnumerateArray())
+            if (Str(frame, "media_type") == "video") return ReadRotation(frame);
         return 0;
     }
 
