@@ -52,7 +52,9 @@ public partial class MainWindow
             return;
         }
         _sourcePreview = new Timeline();
-        _sourcePreview.Append(_selectedMedia.Info, 0, _selectedMedia.Info.Duration);
+        // 圖片的 Duration 是 1 小時（見 MediaInfo.IsStill），預覽只放加入時間軸時的長度。
+        var info = _selectedMedia.Info;
+        _sourcePreview.Append(info, 0, info.IsStill ? Timeline.StillClipDuration : info.Duration);
         _engine.Load(_sourcePreview);
     }
 

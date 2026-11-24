@@ -26,6 +26,8 @@ public sealed class TimelineView : FrameworkElement
     private static readonly Brush RowBrush = Frozen("#232323");
     private static readonly Brush HeaderBrush = Frozen("#2B2B2B");
     private static readonly Brush VideoClipBrush = Frozen("#2F6DB5");
+    /// <summary>圖片片段：和影片片段同色系但偏青，一眼分得出來。</summary>
+    private static readonly Brush StillClipBrush = Frozen("#2A8C9E");
     private static readonly Brush AudioClipBrush = Frozen("#2E8B6E");
     private static readonly Brush MusicClipBrush = Frozen("#8A6BBE");
     private static readonly Brush SilentClipBrush = Frozen("#3A3A3A");
@@ -180,7 +182,7 @@ public sealed class TimelineView : FrameworkElement
         DrawRuler(dc, width);
         foreach (var clip in _timeline.VideoClips)
         {
-            DrawClip(dc, clip, VideoRowY, VideoRowHeight, VideoClipBrush, ClipLabel(clip));
+            DrawClip(dc, clip, VideoRowY, VideoRowHeight, clip.Media.IsStill ? StillClipBrush : VideoClipBrush, ClipLabel(clip));
             var hasAudio = clip.Media.HasAudio;
             DrawClip(dc, clip, OriginalAudioRowY, AudioRowHeight, hasAudio ? AudioClipBrush : SilentClipBrush,
                 hasAudio ? VolumeLabel(clip) : "無音訊", audio: hasAudio);
@@ -196,7 +198,7 @@ public sealed class TimelineView : FrameworkElement
 
     private static string ClipLabel(TimelineClip clip)
     {
-        var label = clip.Reversed ? $"⟲ 倒放  {clip.Media.FileName}" : clip.Media.FileName;
+        var label = clip.Reversed ? $"⟲ 倒放  {clip.Media.FileName}" : clip.Media.IsStill ? $"圖片  {clip.Media.FileName}" : clip.Media.FileName;
         if (!clip.Transform.IsIdentity) label = $"{label}  {clip.Transform.Label}";
         return clip.Framing.IsDefault ? label : $"{label}  {clip.Framing.ShortLabel}";
     }

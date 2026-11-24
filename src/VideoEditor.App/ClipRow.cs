@@ -7,7 +7,7 @@ namespace VideoEditor.App;
 public sealed record ClipRow(TimelineClip Clip, int Number)
 {
     public string Label => string.Concat(
-        $"{Number}. {Clip.Media.FileName}  {PlaybackText.Duration(Clip.Duration)}",
+        $"{Number}. {(Clip.Media.IsStill ? "圖片 " : "")}{Clip.Media.FileName}  {PlaybackText.Duration(Clip.Duration)}",
         Clip.Reversed ? "  ⟲ 倒放" : "",
         Clip.Transform.IsIdentity ? "" : "  " + Clip.Transform.Label,
         Clip.Framing.IsDefault ? "" : "  " + Clip.Framing.ShortLabel);

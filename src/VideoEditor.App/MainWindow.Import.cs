@@ -6,6 +6,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Microsoft.Win32;
+using VideoEditor.Core.Editing;
 using VideoEditor.Core.Export;
 using VideoEditor.Core.Ffmpeg;
 using VideoEditor.Core.Logging;
@@ -43,7 +44,9 @@ public partial class MainWindow
         var dialog = new OpenFileDialog
         {
             Multiselect = true,
-            Filter = "影音檔|*.mp4;*.mov;*.m4v;*.mkv;*.avi;*.webm;*.mts;*.m2ts;*.mp3;*.m4a;*.wav;*.aac;*.flac|所有檔案|*.*",
+            Filter = "影音與圖片|*.mp4;*.mov;*.m4v;*.mkv;*.avi;*.webm;*.mts;*.m2ts;*.mp3;*.m4a;*.wav;*.aac;*.flac;*.jpg;*.jpeg;*.png;*.bmp;*.webp;*.tif;*.tiff"
+                + "|影音檔|*.mp4;*.mov;*.m4v;*.mkv;*.avi;*.webm;*.mts;*.m2ts;*.mp3;*.m4a;*.wav;*.aac;*.flac"
+                + "|圖片|*.jpg;*.jpeg;*.png;*.bmp;*.webp;*.tif;*.tiff|所有檔案|*.*",
         };
         if (dialog.ShowDialog(this) == true) RunImport(dialog.FileNames);
     }
@@ -105,6 +108,9 @@ public partial class MainWindow
 
     private static string DescribeMedia(MediaInfo m)
     {
+        if (m.IsStill)
+            return string.Join('\n', m.FileName, $"圖片：{m.DisplayWidth}×{m.DisplayHeight}（{m.AspectLabel}）",
+                $"格式：{m.VideoCodec}", $"加入時間軸為 {Timeline.StillClipDuration:0} 秒，之後可拖曳兩端調整長度");
         var lines = new List<string> { m.FileName, $"長度：{PlaybackText.Duration(m.Duration)}" };
         if (m.BitRate > 0) lines.Add($"位元率：{m.BitRate / 1000.0:0} kb/s");
         if (m.HasVideo)
