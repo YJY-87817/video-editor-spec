@@ -60,7 +60,8 @@ public partial class MainWindow
 
         using (_reverseGuard.Enter())
         {
-            ReverseCheck.IsEnabled = clip is { Track: TrackKind.Video };
+            // 圖片片段不能倒放（Timeline.SetReversed 會拒絕）。
+            ReverseCheck.IsEnabled = clip is { Track: TrackKind.Video, Media.IsStill: false };
             ReverseCheck.IsChecked = clip?.Reversed == true;
         }
         UpdateTransformControls(clip);
