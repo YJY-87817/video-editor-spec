@@ -169,7 +169,7 @@ public partial class MainWindow
     /// <summary>決定輸出尺寸的畫面：時間軸模式是第一個影片片段（含旋轉），素材模式是目前的素材。</summary>
     private Size2? OutputReferenceSize()
     {
-        if (IsTimelinePreview) return _timeline.VideoClips.FirstOrDefault()?.DisplaySize;
-        return _selectedMedia?.Info is { HasVideo: true } info ? new Size2(info.DisplayWidth, info.DisplayHeight) : null;
+        if (IsTimelinePreview) return ExportPlanner.Reference(_timeline)?.Size;
+        return _selectedMedia?.Info is { HasVideo: true } info ? SelectedMediaReference(info)?.Size : null;
     }
 }
