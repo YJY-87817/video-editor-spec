@@ -83,6 +83,8 @@ public sealed class TimelineClip(MediaInfo media, TrackKind track, double source
 public sealed class Timeline
 {
     public const double MinClipDuration = 0.1;
+    /// <summary>圖片片段最長的長度（防呆，避免拉出極長的片段），也是圖片素材的 <see cref="MediaInfo.Duration"/>。</summary>
+    public const double MaxStillDuration = 3600;
     private const double Epsilon = 1e-6;
 
     private readonly List<TimelineClip> _video = [];

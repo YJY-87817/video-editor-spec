@@ -458,7 +458,7 @@ public class ProbeParseTests
     }
 
     [Theory]
-    [InlineData("\"0.040000\"", "太短")] // ffprobe 讀靜態圖片的結果
+    [InlineData("\"0.040000\"", "太短")] // 單格影像，但沒有容器名稱，認不出是圖片（圖片見 StillImageParseTests）
     [InlineData("\"0.05\"", "太短")]
     [InlineData("\"N/A\"", "無法讀取檔案長度")]
     public void RejectsFilesTooShortForTheTimeline(string duration, string expected)
