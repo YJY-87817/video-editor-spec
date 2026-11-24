@@ -85,6 +85,8 @@ public sealed class Timeline
     public const double MinClipDuration = 0.1;
     /// <summary>圖片片段最長的長度（防呆，避免拉出極長的片段），也是圖片素材的 <see cref="MediaInfo.Duration"/>。</summary>
     public const double MaxStillDuration = 3600;
+    /// <summary>圖片加到時間軸時的長度。</summary>
+    public const double StillClipDuration = 5;
     private const double Epsilon = 1e-6;
 
     private readonly List<TimelineClip> _video = [];
@@ -115,6 +117,9 @@ public sealed class Timeline
         if (kind == TrackKind.Music && !media.HasAudio) throw new ArgumentException("此素材沒有音訊，無法放到音訊軌。");
         if (sourceOut - sourceIn < MinClipDuration) throw new ArgumentException("片段太短。");
         if (sourceIn < 0 || sourceOut > media.Duration + Epsilon) throw new ArgumentOutOfRangeException(nameof(sourceOut));
+
+        // 圖片沒有來源範圍：SourceIn 固定為 0，長度記在 SourceOut（TrimStart、Split 都依賴這一點）。
+        if (media.IsStill) (sourceIn, sourceOut) = (0, sourceOut - sourceIn);
 
         var list = ListOf(kind);
         var start = list.Count == 0 ? 0 : list[^1].End;
@@ -147,6 +152,7 @@ public sealed class Timeline
     public void SetReversed(TimelineClip clip, bool reversed)
     {
         if (clip.Track != TrackKind.Video) throw new ArgumentException("只有影片軌的片段可以倒放。");
+        if (clip.Media.IsStill) throw new ArgumentException("圖片片段不能倒放。");
         clip.Reversed = reversed;
     }
 
@@ -197,7 +203,10 @@ public sealed class Timeline
         if (leftLength < MinClipDuration - Epsilon || rightLength < MinClipDuration - Epsilon)
             throw new ArgumentException($"分割後的片段會短於 {MinClipDuration} 秒。");
 
-        var right = clip.Reversed
+        // 圖片片段的 SourceIn 永遠是 0，長度就是 SourceOut（見 TrimStart），右段也一樣。
+        var right = clip.Media.IsStill
+            ? new TimelineClip(clip.Media, clip.Track, 0, rightLength, clip.Start + leftLength)
+            : clip.Reversed
             ? new TimelineClip(clip.Media, clip.Track, clip.SourceIn, cut, clip.Start + leftLength)
             : new TimelineClip(clip.Media, clip.Track, cut, clip.SourceOut, clip.Start + leftLength);
         clip.CopySettingsTo(right);
@@ -237,6 +246,18 @@ public sealed class Timeline
     {
         var previousEnd = ListOf(clip.Track).Where(c => c != clip && c.End <= clip.Start + Epsilon)
             .Select(c => c.End).DefaultIfEmpty(0).Max();
+        if (clip.Media.IsStill)
+        {
+            // 圖片沒有來源範圍：左緣可以往左拉到左鄰、往右拉到最短長度，總長不超過 MaxStillDuration。
+            // SourceIn 固定為 0，長度記在 SourceOut，右緣不動。
+            var stillEnd = clip.End;
+            var stillEarliest = Math.Max(previousEnd, stillEnd - MaxStillDuration);
+            var stillStart = Math.Clamp(targetStart, stillEarliest, Math.Max(stillEarliest, stillEnd - MinClipDuration));
+            clip.Start = stillStart;
+            clip.SourceIn = 0;
+            clip.SourceOut = stillEnd - stillStart;
+            return;
+        }
         var available = clip.Reversed ? clip.Media.Duration - clip.SourceOut : clip.SourceIn;
         var earliest = Math.Max(previousEnd, clip.Start - available);
         var latest = Math.Max(earliest, clip.End - MinClipDuration);

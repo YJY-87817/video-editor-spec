@@ -24,12 +24,14 @@ public sealed record SplitResult(TimelineClip? Clip, string? Error);
 /// <summary>時間軸上的編輯動作與它們的規則，不碰任何畫面元件。</summary>
 public sealed class TimelineEditor(Timeline timeline)
 {
-    /// <summary>把素材依入出點接到時間軸尾端。成功後清掉入出點。</summary>
+    /// <summary>把素材依入出點接到時間軸尾端。圖片沒有入出點，一律加 <see cref="Timeline.StillClipDuration"/> 秒。成功後清掉入出點。</summary>
     public AddResult Add(MediaInfo media, InOutPoints points)
     {
         try
         {
-            var clip = timeline.Append(media, points.InPoint, points.OutPoint(media));
+            var clip = media.IsStill
+                ? timeline.Append(media, 0, Timeline.StillClipDuration)
+                : timeline.Append(media, points.InPoint, points.OutPoint(media));
             points.Clear();
             return new AddResult(clip, null);
         }

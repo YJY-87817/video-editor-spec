@@ -129,6 +129,16 @@
 
 驗證：新增 44 個測試（`StillImageTests.cs` 與 `ImportControllerTests` 兩個），包含五種格式、透明 PNG、八種 EXIF 方向的實際檔案、動態 GIF 與動態 WebP。全部測試中只有已知的 3 個 Linux 權限測試失敗。
 
+### 階段 3 結果（2026-11-24）
+
+照第四節第 2 點完成：`Timeline.StillClipDuration`（5 秒）；`TimelineEditor.Add` 加入圖片時忽略入出點；`Append` 把圖片的 `SourceIn` 固定為 0；`TrimStart` 對圖片另外處理（左緣可往左拉長，長度記在 `SourceOut`）；`TrimEnd` 因為圖片的 `Duration` 是 1 小時，原本的規則就適用；`Split` 的右段 `SourceIn` 也歸 0；`SetReversed` 拒絕圖片。
+
+Code review 發現、已先處理：片段面板的倒放勾選框對圖片停用（否則階段 5 開放後勾選會因為 `SetReversed` 丟出例外而當掉）。
+
+**留給階段 5**：匯入影片預覽目前以 `Append(info, 0, info.Duration)` 建立預覽用的時間軸，圖片會變成 1 小時；要改成照第二節「沒有播放與進度條可拖」的規則。
+
+驗證：新增 11 個測試（`StillClipTests.cs`）：加入 5 秒、接在最後、兩緣拉長與縮短、不對齊影格、受相鄰片段限制、最短與最長、分割、不能倒放、旋轉與畫面位置、`SourceIn` 固定為 0、不能放在配樂軌。
+
 ## 六、風險與待確認
 
 - ~~**EXIF 鏡像方向**（2、4、5、7）~~：階段 2 實測 FFmpeg 會正確處理，已解除。
