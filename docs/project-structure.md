@@ -63,4 +63,5 @@ dotnet test --filter "Category!=Integration"     # 只跑不需要 FFmpeg 的測
 - `FIX-PLAN.md`：早期的修正清單與各階段結果
 - `EDITING-TOOLS-PLAN.md`：分割、跳到剪輯點、貼齊等編輯工具
 - `SILENCE-SNAP-PLAN.md`：靜音吸附
+- `IMAGE-CLIP-PLAN.md`：圖片片段、點素材或時間軸自動切換預覽（規劃中）
 - `WAVEFORM-PLAN.md`：波形顯示
