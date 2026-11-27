@@ -76,16 +76,18 @@ public partial class MainWindow
         TransformText.Text = clip is { Track: TrackKind.Video } ? clip.Transform.Label : "—";
     }
 
-    private void OnRotateLeft(object sender, RoutedEventArgs e) => ChangeTransform(t => t.Rotate(-90));
-    private void OnRotateRight(object sender, RoutedEventArgs e) => ChangeTransform(t => t.Rotate(90));
-    private void OnFlipHorizontal(object sender, RoutedEventArgs e) => ChangeTransform(t => t.ToggleHorizontal());
-    private void OnFlipVertical(object sender, RoutedEventArgs e) => ChangeTransform(t => t.ToggleVertical());
-    private void OnResetTransform(object sender, RoutedEventArgs e) => ChangeTransform(_ => FrameTransform.Identity);
+    private void OnRotateLeft(object sender, RoutedEventArgs e) => ChangeTransform("左轉 90°", t => t.Rotate(-90));
+    private void OnRotateRight(object sender, RoutedEventArgs e) => ChangeTransform("右轉 90°", t => t.Rotate(90));
+    private void OnFlipHorizontal(object sender, RoutedEventArgs e) => ChangeTransform("水平鏡像", t => t.ToggleHorizontal());
+    private void OnFlipVertical(object sender, RoutedEventArgs e) => ChangeTransform("垂直鏡像", t => t.ToggleVertical());
+    private void OnResetTransform(object sender, RoutedEventArgs e) => ChangeTransform("重設旋轉與鏡像", _ => FrameTransform.Identity);
 
-    private void ChangeTransform(Func<FrameTransform, FrameTransform> change)
+    private void ChangeTransform(string label, Func<FrameTransform, FrameTransform> change)
     {
         if (TimelineView.SelectedClip is not { Track: TrackKind.Video } clip) return;
+        var before = _history.Capture();
         var followUp = _editor.ChangeTransform(clip, change, IsTimelinePreview, TimelineView.Playhead);
+        _history.Commit(before, label);
         UpdateTransformControls(clip);
         // 方向改變時畫面位置會回到預設。
         UpdateFramingControls(clip);
@@ -107,14 +109,20 @@ public partial class MainWindow
     {
         if (_reverseGuard.Active || TimelineView.SelectedClip is not { Track: TrackKind.Video } clip) return;
         _engine?.Pause();
-        _timeline.SetReversed(clip, ReverseCheck.IsChecked == true);
+        var before = _history.Capture();
+        var reversed = ReverseCheck.IsChecked == true;
+        _timeline.SetReversed(clip, reversed);
+        _history.Commit(before, reversed ? "倒放" : "取消倒放");
         OnClipsChanged();
     }
 
     private void OnVolumeChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (_volumeGuard.Active || TimelineView.SelectedClip is not { } clip) return;
+        var before = _history.Capture();
         clip.Volume = TimelineEditor.VolumeFromPercent(e.NewValue);
+        // 拖曳滑桿時每一點移動都會進來，同一個片段連續調整併成一步。
+        _history.Commit(before, "調整音量", $"volume:{clip.Id}");
         VolumeText.Text = $"{e.NewValue:0}%";
         TimelineView.InvalidateVisual();
     }
@@ -124,7 +132,11 @@ public partial class MainWindow
 
     private void SwapSelected(int direction)
     {
-        if (TimelineView.SelectedClip is { } clip && _timeline.Swap(clip, direction)) OnClipsChanged();
+        if (TimelineView.SelectedClip is not { } clip) return;
+        var before = _history.Capture();
+        if (!_timeline.Swap(clip, direction)) return;
+        _history.Commit(before, "調整順序");
+        OnClipsChanged();
     }
 
     private void OnDeleteClip(object sender, RoutedEventArgs e) => DeleteSelectedClip();
@@ -132,7 +144,9 @@ public partial class MainWindow
     private void DeleteSelectedClip()
     {
         if (TimelineView.SelectedClip is not { } clip) return;
+        var before = _history.Capture();
         _timeline.Remove(clip);
+        _history.Commit(before, "刪除片段");
         TimelineView.Select(null);
         OnClipsChanged();
     }
@@ -152,7 +166,9 @@ public partial class MainWindow
     /// <summary>在播放頭分割選取的片段，成功後選取右段。不能分割時在狀態列說明原因。</summary>
     private void SplitSelectedClip()
     {
+        var before = _history.Capture();
         var result = _editor.Split(TimelineView.SelectedClip, TimelineView.Playhead, IsTimelinePreview);
+        _history.Commit(before, "分割片段");
         if (result.Clip == null)
         {
             ShowStatus(result.Error ?? "", StatusKind.Warning);

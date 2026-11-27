@@ -38,7 +38,7 @@ public sealed class TimelineClip(MediaInfo media, TrackKind track, double source
     /// <summary>填滿裁切時取用畫面的哪一部分。只用於影片軌。</summary>
     public ClipFraming Framing { get; internal set; } = ClipFraming.Default;
 
-    /// <summary>把音量、倒放、旋轉鏡像與畫面位置複製到另一個片段（分割時用）。新增這類屬性時要加在這裡。</summary>
+    /// <summary>把音量、倒放、旋轉鏡像與畫面位置複製到另一個片段（分割時用）。新增這類屬性時要加在這裡，也要加到 <see cref="ClipState"/>（復原用）。</summary>
     internal void CopySettingsTo(TimelineClip other)
     {
         other.Volume = Volume;
@@ -129,6 +129,29 @@ public sealed class Timeline
     }
 
     public void Remove(TimelineClip clip) => ListOf(clip.Track).Remove(clip);
+
+    /// <summary>記下兩軌目前有哪些片段、順序與各自的狀態，給復原用（<see cref="TimelineHistory"/>）。</summary>
+    public TimelineSnapshot Capture() => new([.. _video.Select(ClipState.Of)], [.. _music.Select(ClipState.Of)]);
+
+    /// <summary>
+    /// 回到 <see cref="Capture"/> 當時的樣子。片段用的是同一個 <see cref="TimelineClip"/> 物件（不是複製），
+    /// 所以選取、波形與倒放預覽這些以片段物件或素材為鍵的狀態都還對得上。
+    /// </summary>
+    public void Restore(TimelineSnapshot snapshot)
+    {
+        Fill(_video, snapshot.Video);
+        Fill(_music, snapshot.Music);
+
+        static void Fill(List<TimelineClip> list, IReadOnlyList<ClipState> states)
+        {
+            list.Clear();
+            foreach (var state in states)
+            {
+                state.ApplyTo();
+                list.Add(state.Clip);
+            }
+        }
+    }
 
     /// <summary>
     /// 設定旋轉與鏡像。位置與長度不變。方向改變時畫面位置回到預設：

@@ -23,6 +23,7 @@ public partial class MainWindow : Window, IExportView, IImportView
 
     private readonly Timeline _timeline = new();
     private readonly TimelineEditor _editor;
+    private readonly TimelineHistory _history;
     private readonly ObservableCollection<MediaItem> _media = [];
     private readonly FfmpegTools? _tools;
     private readonly ImportController? _import;
@@ -42,7 +43,10 @@ public partial class MainWindow : Window, IExportView, IImportView
     public MainWindow()
     {
         _editor = new TimelineEditor(_timeline);
+        _history = new TimelineHistory(_timeline);
         InitializeComponent();
+        _history.Changed += UpdateHistoryButtons;
+        UpdateHistoryButtons();
         UpdateModeIndicator();
         VolumeSlider.Value = 100;
         MediaList.ItemsSource = _media;
@@ -50,7 +54,8 @@ public partial class MainWindow : Window, IExportView, IImportView
         TimelineView.PlayheadDragged += OnTimelinePlayheadDragged;
         TimelineView.SelectionChanged += OnTimelineSelectionChanged;
         TimelineView.ClipPressed += SwitchToTimelinePreview;
-        TimelineView.EditStarted += () => _engine?.Pause();
+        TimelineView.EditStarted += OnTimelineEditStarted;
+        TimelineView.EditCompleted += OnTimelineEditCompleted;
         TimelineView.ClipsChanged += OnClipsChanged;
         TimelineView.ViewChanged += UpdateTimelineScrollBar;
         ProgressPanel.CancelExportRequested += () => _export?.Cancel();

@@ -78,6 +78,12 @@ public sealed class TimelineView : FrameworkElement
     public event Action? ClipPressed;
     /// <summary>開始拖曳片段前觸發，讓預覽先停下來。</summary>
     public event Action? EditStarted;
+
+    /// <summary>拖曳片段（移動或修剪）放開滑鼠時觸發，帶操作名稱（給復原紀錄），在 <see cref="ClipsChanged"/> 之前。</summary>
+    public event Action<string>? EditCompleted;
+
+    /// <summary>正在拖曳播放頭或片段。</summary>
+    public bool IsDragging => _drag != DragKind.None;
     public event Action? ClipsChanged;
     /// <summary>捲動或縮放改變。</summary>
     public event Action? ViewChanged;
@@ -455,14 +461,23 @@ public sealed class TimelineView : FrameworkElement
 
     private void EndDrag()
     {
-        var wasEditing = _drag is DragKind.Move or DragKind.TrimStart or DragKind.TrimEnd;
+        var editLabel = _drag switch
+        {
+            DragKind.Move => "移動片段",
+            DragKind.TrimStart or DragKind.TrimEnd => "修剪片段",
+            _ => null,
+        };
         _drag = DragKind.None;
         _dragClip = null;
         _snapKind = SnapKind.None;
         _dragSilences = null;
         _dragSilenceTargets = [];
         _dragClipEdges = [];
-        if (wasEditing) ClipsChanged?.Invoke();
+        if (editLabel != null)
+        {
+            EditCompleted?.Invoke(editLabel);
+            ClipsChanged?.Invoke();
+        }
         ViewChanged?.Invoke();
         InvalidateVisual();
     }

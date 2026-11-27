@@ -201,6 +201,8 @@
         <DockPanel Grid.Row="2" Grid.ColumnSpan="3" Margin="8,0,8,8">
             <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
                 <TextBlock Text="時間軸" Style="{StaticResource SectionTitle}" Margin="0,0,12,0" VerticalAlignment="Center" />
+                <Button x:Name="UndoButton" Content="↶ 復原" AutomationProperties.AutomationId="UndoButton" AutomationProperties.Name="復原" Click="OnUndoClick" />
+                <Button x:Name="RedoButton" Content="↷ 重做" AutomationProperties.AutomationId="RedoButton" AutomationProperties.Name="重做" Margin="0,0,16,0" Click="OnRedoClick" />
                 <Button Content="－" AutomationProperties.AutomationId="ZoomOutButton" Click="OnZoomOut" />
                 <Button Content="＋" AutomationProperties.AutomationId="ZoomInButton" Click="OnZoomIn" />
                 <Button Content="顯示全部" AutomationProperties.AutomationId="ZoomFitButton" Click="OnZoomFit" />

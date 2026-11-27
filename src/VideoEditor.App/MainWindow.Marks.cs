@@ -71,12 +71,14 @@ public partial class MainWindow
     private void OnAddToTimeline(object sender, RoutedEventArgs e)
     {
         if (_selectedMedia == null) return;
+        var before = _history.Capture();
         var result = _editor.Add(_selectedMedia.Info, _points);
         if (result.Clip == null)
         {
             ShowStatus(result.Error ?? "", StatusKind.Warning);
             return;
         }
+        _history.Commit(before, "加入片段");
         TimelineView.Select(result.Clip);
         UpdateMarks();
         OnClipsChanged();

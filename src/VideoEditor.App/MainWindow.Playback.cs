@@ -81,6 +81,7 @@ public partial class MainWindow
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (HandleHistoryKey(e)) return;
         // Ctrl／Alt／Shift／Win 組合鍵（例如 Ctrl+S）不是預覽快捷鍵。
         if (!PreviewKeys.ShouldHandle(CurrentModifiers())) return;
         // 正在輸入文字時，按鍵歸文字框。
