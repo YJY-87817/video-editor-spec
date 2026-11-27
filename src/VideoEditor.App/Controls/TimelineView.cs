@@ -188,6 +188,8 @@ public sealed partial class TimelineView : FrameworkElement
     protected override void OnRender(DrawingContext dc)
     {
         dc.DrawRectangle(Background, null, new Rect(0, 0, ActualWidth, ActualHeight));
+        // 時間軸變了（修改、刪除、復原）時，開著的片段提示跟著更新；不在繪製中途改另一棵視覺樹。
+        if (_clipToolTip.IsOpen) Dispatcher.BeginInvoke(RefreshClipToolTip, System.Windows.Threading.DispatcherPriority.Background);
         Thumbnails?.BeginRender();
         var width = ActualWidth;
 
@@ -452,27 +454,16 @@ public sealed partial class TimelineView : FrameworkElement
         return (null, DragKind.None);
     }
 
-    /// <summary>
-    /// 滑鼠停在片段上時的提示（檔名、位置、長度、來源範圍、改過的設定）。內容每次移動都重算，
-    /// 片段剛被修改過也是最新的；文字沒變就不換，提示才不會一直閃。
-    /// </summary>
-    private void UpdateClipToolTip(TimelineClip? clip)
-    {
-        var text = clip == null ? null : ClipDescription.Describe(clip, RulerFps, (seconds, fps) => VideoEditor.Core.Playback.Timecode.Display(seconds, fps, RulerDisplay));
-        if (text == (ToolTip as System.Windows.Controls.ToolTip)?.Content as string) return;
-        ToolTip = text == null ? null : new System.Windows.Controls.ToolTip { Content = text };
-    }
-
     protected override void OnMouseLeave(MouseEventArgs e)
     {
         base.OnMouseLeave(e);
-        if (_drag == DragKind.None) ToolTip = null;
+        HideClipToolTip();
     }
 
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
         // 拖曳時提示會擋住畫面。
-        ToolTip = null;
+        HideClipToolTip();
         Focus();
         var p = e.GetPosition(this);
         var (clip, kind) = HitTest(p);
@@ -558,6 +549,7 @@ public sealed partial class TimelineView : FrameworkElement
     protected override void OnMouseRightButtonDown(MouseButtonEventArgs e)
     {
         base.OnMouseRightButtonDown(e);
+        HideClipToolTip();
         if (_drag != DragKind.None) return;
         Focus();
         var p = e.GetPosition(this);

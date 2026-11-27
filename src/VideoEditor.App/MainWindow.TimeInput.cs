@@ -59,7 +59,7 @@ public partial class MainWindow
     /// <summary>Ctrl+G：跳到指定時間。正在輸入文字時歸文字框。回傳 true 表示已處理。</summary>
     private bool HandleGoToKey(KeyEventArgs e)
     {
-        if (e.Key != Key.G || Keyboard.Modifiers != ModifierKeys.Control || e.OriginalSource is System.Windows.Controls.Primitives.TextBoxBase) return false;
+        if (ShortcutKey(e) != Key.G || Keyboard.Modifiers != ModifierKeys.Control || e.OriginalSource is System.Windows.Controls.Primitives.TextBoxBase) return false;
         OpenTimeInput(TimeTarget.Position, TimeText);
         e.Handled = true;
         return true;

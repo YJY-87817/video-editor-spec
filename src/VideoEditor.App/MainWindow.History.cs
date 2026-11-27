@@ -35,9 +35,10 @@ public partial class MainWindow
     {
         if (e.OriginalSource is System.Windows.Controls.Primitives.TextBoxBase) return false;
         var modifiers = Keyboard.Modifiers;
+        var key = ShortcutKey(e);
         bool redo;
-        if (e.Key == Key.Z && modifiers == ModifierKeys.Control) redo = false;
-        else if ((e.Key == Key.Y && modifiers == ModifierKeys.Control) || (e.Key == Key.Z && modifiers == (ModifierKeys.Control | ModifierKeys.Shift))) redo = true;
+        if (key == Key.Z && modifiers == ModifierKeys.Control) redo = false;
+        else if ((key == Key.Y && modifiers == ModifierKeys.Control) || (key == Key.Z && modifiers == (ModifierKeys.Control | ModifierKeys.Shift))) redo = true;
         else return false;
         StepHistory(redo);
         e.Handled = true;

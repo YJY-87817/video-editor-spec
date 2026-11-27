@@ -82,10 +82,22 @@ public partial class MainWindow
         _ => null,
     };
 
+    /// <summary>
+    /// 快捷鍵實際按的是哪個鍵。按著 Alt 時 WPF 給的是 <see cref="Key.System"/>，真正的按鍵在 SystemKey；
+    /// 中文輸入法（例如注音的「中」模式）開著時字母鍵是 <see cref="Key.ImeProcessed"/>，真正的按鍵在 ImeProcessedKey。
+    /// 不換回來的話，用中文輸入法的人按 E、I、O、J、K、L、S 都沒反應。
+    /// </summary>
+    private static Key ShortcutKey(KeyEventArgs e) => e.Key switch
+    {
+        Key.System => e.SystemKey,
+        Key.ImeProcessed => e.ImeProcessedKey,
+        _ => e.Key,
+    };
+
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (HandleFileKey(e) || HandleHistoryKey(e) || HandleGoToKey(e) || HandleEditKey(e)) return;
-        if (e.Key == Key.F1 && Keyboard.Modifiers == ModifierKeys.None)
+        if (ShortcutKey(e) == Key.F1 && Keyboard.Modifiers == ModifierKeys.None)
         {
             ShowShortcuts();
             e.Handled = true;
@@ -95,7 +107,7 @@ public partial class MainWindow
         if (!PreviewKeys.ShouldHandle(CurrentModifiers())) return;
         // 正在輸入文字時，按鍵歸文字框。
         if (e.OriginalSource is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.PasswordBox) return;
-        if (ToPreviewKey(e.Key) is not { } key) return;
+        if (ToPreviewKey(ShortcutKey(e)) is not { } key) return;
         var command = PreviewKeys.FromKey(key);
         // 清單與捲軸自己用換頁鍵與 Home／End 捲動、跳到頭尾，不搶。
         if (command is PreviewCommand.PreviousEditPoint or PreviewCommand.NextEditPoint or PreviewCommand.GoToStart or PreviewCommand.GoToEnd
