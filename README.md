@@ -50,7 +50,7 @@ dotnet publish src/VideoEditor.App -c Release -r win-x64 --self-contained true -
 | K | 暫停 |
 | ← / → | 前一格／後一格 |
 | I / O | 設定入點／出點（素材模式） |
-| Delete | 刪除選取的片段 |
+| Delete | 刪除選取的片段；焦點在素材清單時，從清單移除選取的素材（也可按右鍵選「從清單移除」） |
 | S | 在時間軸播放頭分割選取的片段（時間軸預覽） |
 | Page Up / Page Down | 跳到上一個／下一個剪輯點 |
 | Ctrl + 滾輪 | 縮放時間軸 |

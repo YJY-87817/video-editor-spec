@@ -66,6 +66,11 @@
                        AutomationProperties.AutomationId="MediaDetails" />
             <ListBox x:Name="MediaList" AutomationProperties.AutomationId="MediaList" SelectionChanged="OnMediaSelected" PreviewMouseLeftButtonUp="OnMediaListClicked" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                      HorizontalContentAlignment="Stretch">
+                <ListBox.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="從清單移除" InputGestureText="Delete" AutomationProperties.AutomationId="RemoveMediaMenuItem" Click="OnRemoveMediaClick" />
+                    </ContextMenu>
+                </ListBox.ContextMenu>
                 <ListBox.ItemTemplate>
                     <DataTemplate>
                         <StackPanel Orientation="Horizontal" Margin="2">
