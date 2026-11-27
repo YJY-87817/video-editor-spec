@@ -214,3 +214,9 @@
 - **插入到播放頭**（#12）：播放列加按鈕、Shift+E，走拖曳插入的同一條路（`OnMediaDropped`），所以入出點、復原、狀態列訊息都相同。沒有選素材時說明。
 - **Alt+←／→**：Core `TimelineNavigation.Adjacent`；在選取片段所在的軌道移動（沒選取時看影片軌），播放頭移到那段開頭並切到剪輯預覽。
 - **測試**：新增 21 個（自動捲動速度、刪除並補齊三種情況與復原、鄰近片段四種情況、新按鍵對應）。單元測試 705 個全部通過。
+
+### 階段 4（2026-11-27 完成，畫面需在 Windows 上確認）
+
+- **片段的滑鼠提示**（#7）：Core 新增 `Editing/ClipDescription.cs`。和規劃不同：時間的格式化由呼叫端傳入（`Func<double, double, string>`），因為架構規則不允許 Editing 依賴 Playback（`Timecode` 在 Playback）。`TimelineView` 在滑鼠移動時重算提示文字，文字沒變就不換（提示才不會閃）；按下滑鼠、離開時間軸時拿掉。時間格式與時間尺相同。
+- **素材使用標記**（#11）：`MediaItem` 實作 `INotifyPropertyChanged`，新增 `UsageCount`、`IsUsed`、`UsageText`、`UsageToolTip`。`OnClipsChanged` 時重算（一次分組，不是每個素材掃一次時間軸）。縮圖右下角藍色小標記「N 段」，滑鼠提示說明。健檢報告 W-7 更新。
+- **測試**：新增 `ClipDescriptionTests` 4 個（一般影片、改過設定的片段、配樂、圖片）。單元測試 709 個全部通過。

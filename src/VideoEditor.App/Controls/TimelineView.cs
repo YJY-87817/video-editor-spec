@@ -407,8 +407,27 @@ public sealed partial class TimelineView : FrameworkElement
         return (null, DragKind.None);
     }
 
+    /// <summary>
+    /// 滑鼠停在片段上時的提示（檔名、位置、長度、來源範圍、改過的設定）。內容每次移動都重算，
+    /// 片段剛被修改過也是最新的；文字沒變就不換，提示才不會一直閃。
+    /// </summary>
+    private void UpdateClipToolTip(TimelineClip? clip)
+    {
+        var text = clip == null ? null : ClipDescription.Describe(clip, RulerFps, (seconds, fps) => VideoEditor.Core.Playback.Timecode.Display(seconds, fps, RulerDisplay));
+        if (text == (ToolTip as System.Windows.Controls.ToolTip)?.Content as string) return;
+        ToolTip = text == null ? null : new System.Windows.Controls.ToolTip { Content = text };
+    }
+
+    protected override void OnMouseLeave(MouseEventArgs e)
+    {
+        base.OnMouseLeave(e);
+        if (_drag == DragKind.None) ToolTip = null;
+    }
+
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
+        // 拖曳時提示會擋住畫面。
+        ToolTip = null;
         Focus();
         var p = e.GetPosition(this);
         var (clip, kind) = HitTest(p);
@@ -443,7 +462,8 @@ public sealed partial class TimelineView : FrameworkElement
         var p = e.GetPosition(this);
         if (_drag == DragKind.None)
         {
-            var (_, kind) = HitTest(p);
+            var (hovered, kind) = HitTest(p);
+            UpdateClipToolTip(p.X < HeaderWidth ? null : hovered);
             // 邊緣可以修剪、片段中間可以抓起來移動、時間尺可以點選時間。
             Cursor = p.X < HeaderWidth ? Cursors.Arrow
                 : kind switch

@@ -22,6 +22,7 @@
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="#E0E0E0" />
         </Style>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
         <!-- 按鈕、勾選框、輸入框、清單、右鍵選單、滑鼠提示的共用樣式在 App.xaml -->
         <!-- 可以點一下輸入時間的文字（目前時間、入點、出點）：滑鼠移上去加底線 -->
         <Style x:Key="EditableTime" TargetType="TextBlock">
@@ -128,7 +129,14 @@
                     <DataTemplate>
                         <!-- 左欄變寬時文字跟著變寬 -->
                         <DockPanel Margin="2">
-                            <Image Source="{Binding Thumbnail}" Width="72" Height="44" Stretch="Uniform" Margin="0,0,6,0" />
+                            <!-- 縮圖右下角標出時間軸上用了幾段 -->
+                            <Grid Width="72" Height="44" Margin="0,0,6,0">
+                                <Image Source="{Binding Thumbnail}" Stretch="Uniform" />
+                                <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="#DD2E6FB5" CornerRadius="2" Padding="4,0"
+                                        Visibility="{Binding IsUsed, Converter={StaticResource BoolToVisibility}}" ToolTip="{Binding UsageToolTip}">
+                                    <TextBlock Text="{Binding UsageText}" FontSize="10" Foreground="White" />
+                                </Border>
+                            </Grid>
                             <StackPanel>
                                 <TextBlock Text="{Binding Info.FileName}" TextTrimming="CharacterEllipsis" FontSize="12" ToolTip="{Binding Info.Path}" />
                                 <TextBlock Text="{Binding Summary}" Foreground="{x:Static local:Palette.TextDim}" FontSize="12" TextTrimming="CharacterEllipsis" />
