@@ -192,3 +192,56 @@ public class ShortcutListTests
         Assert.Equal(order, groups.Where((g, i) => i == 0 || groups[i - 1] != g).ToList());
     }
 }
+
+public class ReviewFixTests
+{
+    [Theory]
+    [InlineData("10", 29.97, "00:00:10:00")]
+    [InlineData("00:00:10:15", 29.97, "00:00:10:15")]
+    [InlineData("00:00:10:29", 29.97, "00:00:10:29")]
+    [InlineData("1:05", 30, "00:01:05:00")]
+    [InlineData("00:00:03:07", 25, "00:00:03:07")]
+    public void TypedTimecodeStaysOnTheSameFrameAfterAlignment(string text, double fps, string expected)
+    {
+        // 剪輯預覽輸入時間後會對齊到影格；29.97 fps 時往下取會跳到前一格（code review 發現）。
+        var seconds = Timecode.Parse(text, fps, 0).Seconds!.Value;
+        Assert.Equal(expected, Timecode.Format(Timecode.AlignToFrame(seconds, fps), fps));
+    }
+
+    [Fact]
+    public void HalfPercentRoundsTheSameWayAsTheInputBox()
+    {
+        Assert.Equal(1, VolumeText.ParsePercent("0.5"));
+        Assert.NotEqual("靜音", VolumeText.Describe(0.5));
+    }
+
+    [Fact]
+    public void SidePanelsShrinkProportionallyWhenTheyDoNotFit()
+    {
+        // 上次在大螢幕存了 600 與 900，現在視窗只剩 1320 可用：中間至少 400，兩欄共 920。
+        var (left, right) = VideoEditor.Core.Settings.PanelLayout.FitSides(600, 900, 1320, 200, 260, 400);
+        Assert.Equal(920, left!.Value + right!.Value, 6);
+        Assert.Equal(600 / 900.0, left.Value / right.Value, 6);
+    }
+
+    [Fact]
+    public void SidePanelsThatFitAreKeptAndMissingOnesStayDefault()
+    {
+        Assert.Equal((300.0, 320.0), VideoEditor.Core.Settings.PanelLayout.FitSides(300, 320, 1320, 200, 260, 400));
+        Assert.Equal((null, null), VideoEditor.Core.Settings.PanelLayout.FitSides(null, null, 900, 200, 260, 400));
+    }
+
+    [Fact]
+    public void SidePanelsNeverGoBelowTheirMinimum()
+    {
+        var (left, right) = VideoEditor.Core.Settings.PanelLayout.FitSides(1000, 1000, 500, 200, 260, 400);
+        Assert.Equal((200.0, 260.0), (left, right));
+    }
+
+    [Theory]
+    [InlineData(254, 700, 254)]  // 放得下
+    [InlineData(600, 700, 400)]  // 上方保住 300
+    [InlineData(600, 400, 210)]  // 視窗太小，不小於時間軸最小高度
+    public void TimelineHeightLeavesRoomForThePreview(double saved, double available, double expected) =>
+        Assert.Equal(expected, VideoEditor.Core.Settings.PanelLayout.FitBottom(saved, available, 210, 300));
+}

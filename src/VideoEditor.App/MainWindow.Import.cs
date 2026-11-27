@@ -158,13 +158,14 @@ public partial class MainWindow
             && MediaList.ItemContainerGenerator.ContainerFromItem(MediaList.SelectedItem) is ListBoxItem container)
             container.Focus();
         ShowStatus(clips.Count > 0
-            ? $"已從素材清單移除 {item.Info.FileName}，並移除時間軸上的 {clips.Count} 個片段（Ctrl+Z 可以找回片段）"
+            ? $"已從素材清單移除 {item.Info.FileName}，並移除時間軸上的 {clips.Count} 個片段（Ctrl+Z 可以把片段和素材都找回來）"
             : $"已從素材清單移除 {item.Info.FileName}", StatusKind.Info);
     }
 
     private void OnMediaSelected(object sender, SelectionChangedEventArgs e)
     {
         _selectedMedia = MediaList.SelectedItem as MediaItem;
+        InvalidateFps();
         MediaDetails.Text = _selectedMedia == null ? "" : DescribeMedia(_selectedMedia.Info);
         _points.Clear();
         if (_selectedMedia == null)

@@ -61,6 +61,7 @@ public partial class MainWindow
     private void OnPreviewModeChecked(object sender, RoutedEventArgs e)
     {
         if (!IsInitialized) return;
+        InvalidateFps();
         LoadPreviewSource();
         UpdateMarks();
         UpdatePreviewLayout();

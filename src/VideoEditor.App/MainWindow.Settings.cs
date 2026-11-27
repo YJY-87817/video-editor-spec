@@ -32,10 +32,15 @@ public partial class MainWindow
         // 先設好一般狀態的位置再最大化，取消最大化時才會回到這個位置。
         if (_settings.WindowMaximized) WindowState = WindowState.Maximized;
 
-        SetLength(LeftColumn, _settings.LeftPanelWidth);
-        SetLength(RightColumn, _settings.RightPanelWidth);
+        // 上次可能是在比較大的螢幕或最大化時存的：兩欄加起來放不下時按比例縮小，中間的預覽才保得住最小寬度。
+        var windowWidth = WindowState == WindowState.Maximized ? SystemParameters.WorkArea.Width : Width;
+        var windowHeight = WindowState == WindowState.Maximized ? SystemParameters.WorkArea.Height : Height;
+        var (left, right) = PanelLayout.FitSides(_settings.LeftPanelWidth, _settings.RightPanelWidth,
+            windowWidth - ChromeWidth, LeftColumn.MinWidth, RightColumn.MinWidth, CenterMinWidth);
+        SetLength(LeftColumn, left);
+        SetLength(RightColumn, right);
         if (_settings.TimelineHeight is { } height && double.IsFinite(height))
-            TimelineRow.Height = new GridLength(Math.Max(TimelineRow.MinHeight, height));
+            TimelineRow.Height = new GridLength(PanelLayout.FitBottom(height, windowHeight - ChromeHeight, TimelineRow.MinHeight, TopMinHeight));
 
         SilenceSnapCheck.IsChecked = TimelineView.SnapToSilence = _settings.SnapToSilence;
         ClipSnapCheck.IsChecked = TimelineView.SnapToClips = _settings.SnapToClips;
@@ -44,6 +49,12 @@ public partial class MainWindow
         (_settings.Mode == FitMode.Pad ? ModePad : ModeFill).IsChecked = true;
         _timeDisplay = _settings.TimeDisplay;
     }
+
+    // 版面裡固定佔掉的寬高：兩條分隔線、外框與邊距、狀態列與標題列（約略值，寧可估大）。
+    private const double ChromeWidth = 40;
+    private const double ChromeHeight = 80;
+    private const double CenterMinWidth = 400;
+    private const double TopMinHeight = 300;
 
     private static void SetLength(ColumnDefinition column, double? width)
     {

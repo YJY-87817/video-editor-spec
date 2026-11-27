@@ -114,3 +114,26 @@ public sealed class SettingsStore(string path)
         }
     }
 }
+
+/// <summary>還原分隔線位置時，讓存下的寬高配合目前的視窗大小。</summary>
+public static class PanelLayout
+{
+    /// <summary>
+    /// 左右兩欄的寬度。兩欄加上中間欄的最小寬度放得下就照存的值；放不下時兩欄按比例縮小，但不小於各自的最小寬度。
+    /// 沒存過（null）的欄位回傳 null，交給 XAML 的預設值。
+    /// </summary>
+    public static (double? Left, double? Right) FitSides(double? left, double? right, double available, double leftMin, double rightMin, double centerMin)
+    {
+        if (left is not { } l || !double.IsFinite(l)) left = null;
+        if (right is not { } r || !double.IsFinite(r)) right = null;
+        var room = available - centerMin;
+        var total = (left ?? leftMin) + (right ?? rightMin);
+        if (total <= room || total <= 0) return (left, right);
+        var scale = Math.Max(0, room) / total;
+        return (left is { } a ? Math.Max(leftMin, a * scale) : null, right is { } b ? Math.Max(rightMin, b * scale) : null);
+    }
+
+    /// <summary>時間軸的高度：上方保住最小高度，放不下時縮小，但不小於時間軸的最小高度。</summary>
+    public static double FitBottom(double height, double available, double bottomMin, double topMin) =>
+        Math.Max(bottomMin, Math.Min(height, available - topMin));
+}

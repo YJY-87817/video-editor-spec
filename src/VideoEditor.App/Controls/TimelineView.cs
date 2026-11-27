@@ -489,8 +489,8 @@ public sealed partial class TimelineView : FrameworkElement
         if (_drag != DragKind.None) return;
         Focus();
         var p = e.GetPosition(this);
-        if (p.X < HeaderWidth) return;
-        var clip = HitTest(p).Clip;
+        // 軌道名稱欄不是片段：取消選取，選單只顯示時間軸的項目，不會對看不到的片段動手。
+        var clip = p.X < HeaderWidth ? null : HitTest(p).Clip;
         Select(clip);
         if (clip != null) ClipPressed?.Invoke();
     }

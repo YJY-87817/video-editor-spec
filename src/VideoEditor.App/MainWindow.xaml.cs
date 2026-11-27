@@ -29,6 +29,7 @@ public partial class MainWindow : Window, IExportView, IImportView
     private readonly ImportController? _import;
     private readonly PreviewEngine? _engine;
     private readonly WaveformCache? _waveforms;
+    private readonly FrameExtractor? _extractor;
     private Timeline? _sourcePreview;
     private MediaItem? _selectedMedia;
     private readonly InOutPoints _points = new();
@@ -84,13 +85,13 @@ public partial class MainWindow : Window, IExportView, IImportView
             try { ReversePreviewCache.CleanupStale(); }
             catch (Exception e) { Log.Warn("清理上次遺留的預覽暫存失敗", e); }
         });
-        var extractor = new FrameExtractor(_tools);
+        var extractor = _extractor = new FrameExtractor(_tools);
         _import = new ImportController(new MediaProbe(_tools), extractor, this);
         _export = new ExportController(_tools, this);
         _engine = new PreviewEngine(extractor, new ReversePreviewCache(_tools, progress: new Progress<double?>(ProgressPanel.ShowReverse)), Dispatcher);
         _engine.PositionChanged += OnEnginePosition;
         _engine.PlayingChanged += UpdatePlaybackButtons;
-        _engine.Status += message => ShowStatus(message);
+        _engine.Status += OnEngineStatus;
         _engine.SurfaceChanged += OnSurfaceChanged;
         _engine.Error += message =>
         {

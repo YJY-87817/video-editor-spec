@@ -58,7 +58,36 @@ public partial class MainWindow
         if (selected != null && !_timeline.AllClips.Contains(selected)) TimelineView.Select(null);
         else OnTimelineSelectionChanged(selected);
         OnClipsChanged();
+        RelistMissingMedia();
         ShowStatus(redo ? $"已重做：{label}" : $"已復原：{label}");
+    }
+
+    /// <summary>
+    /// 素材清單不在復原範圍內：復原「移除素材」連帶移除的片段後，片段回來了但素材不在清單裡，
+    /// 沒辦法再預覽或標記。把這些素材加回清單（縮圖在背景重新產生，產生好才加入，因為 MediaItem 建立後不會更新畫面）。
+    /// </summary>
+    private async void RelistMissingMedia()
+    {
+        var missing = _timeline.AllClips.Select(c => c.Media).Distinct()
+            .Where(info => _media.All(m => m.Info != info)).ToList();
+        foreach (var info in missing)
+        {
+            byte[]? thumbnail = null;
+            if (info.HasVideo && _extractor != null)
+            {
+                try
+                {
+                    thumbnail = await _extractor.ThumbnailAsync(info.Path, info.IsStill ? 0 : Math.Min(1, info.Duration / 10), 144, default, info.IsStill);
+                }
+                catch (Exception e) when (VideoEditor.Core.Ffmpeg.ExpectedErrors.IsProcess(e))
+                {
+                    // 沒有縮圖不影響其他功能。
+                }
+            }
+            // 等縮圖的期間可能已經加回來（連按兩次復原）或片段又被移走。
+            if (_media.Any(m => m.Info == info) || !_timeline.AllClips.Any(c => c.Media == info)) continue;
+            _media.Add(new MediaItem(info) { Thumbnail = thumbnail is { Length: > 0 } ? TryCreateThumbnail(thumbnail) : null });
+        }
     }
 
     private void UpdateHistoryButtons()

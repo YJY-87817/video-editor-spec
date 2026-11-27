@@ -14,7 +14,7 @@ public static class VolumeText
     /// <summary>輸入框旁邊的說明：「靜音」「原音量」「+3.5 dB」「-6.0 dB」。</summary>
     public static string Describe(double percent)
     {
-        if (Decibels(Math.Round(percent)) is not { } db) return "靜音";
+        if (Decibels(Math.Round(percent, MidpointRounding.AwayFromZero)) is not { } db) return "靜音";
         if (Math.Abs(db) < 0.05) return "原音量";
         return (db > 0 ? "+" : "") + db.ToString("0.0", CultureInfo.InvariantCulture) + " dB";
     }

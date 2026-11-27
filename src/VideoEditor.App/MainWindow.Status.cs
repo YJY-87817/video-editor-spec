@@ -43,6 +43,27 @@ public partial class MainWindow
         StatusText.ToolTip = empty ? null : message;
     }
 
+    // 預覽引擎上一次顯示的訊息（例如「正在準備倒放預覽…」）。
+    private string? _engineStatus;
+
+    /// <summary>
+    /// 預覽引擎的狀態：有訊息就顯示；空字串表示它的訊息結束了，只在狀態列還是那則訊息時才清掉，
+    /// 不會把之後別人顯示的訊息（例如匯出完成與「開啟資料夾」）一起清掉。
+    /// </summary>
+    private void OnEngineStatus(string message)
+    {
+        if (message.Length > 0)
+        {
+            _engineStatus = message;
+            ShowStatus(message);
+        }
+        else if (_engineStatus != null && StatusText.Text == _engineStatus)
+        {
+            _engineStatus = null;
+            ShowStatus("");
+        }
+    }
+
     private void OnStatusActionClick(object sender, RoutedEventArgs e) => _statusAction?.Invoke();
 
     /// <summary>錯誤訊息常有好幾行（例如 FFmpeg 的錯誤輸出），狀態列只放第一個非空白行。</summary>

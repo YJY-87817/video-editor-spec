@@ -43,6 +43,16 @@ public static partial class Timecode
         return $"{total / 3600:00}:{total / 60 % 60:00}:{total % 60:00}:{frame:00}";
     }
 
+    /// <summary>
+    /// 對齊到最近的一格（和 <c>InOutPoints.Snap</c> 相同，四捨五入）。輸入的時間碼在非整數影格率（29.97）時
+    /// 會落在兩格之間，往下取會跳到前一格，顯示成和輸入不同的時間碼。
+    /// </summary>
+    public static double AlignToFrame(double seconds, double fps)
+    {
+        fps = EffectiveFps(fps);
+        return Math.Floor(seconds * fps + 0.5) / fps;
+    }
+
     /// <summary>依設定的顯示方式格式化。</summary>
     public static string Display(double seconds, double fps, TimeDisplay mode) =>
         mode == TimeDisplay.Timecode ? Format(seconds, fps) : PlaybackText.Duration(seconds);
