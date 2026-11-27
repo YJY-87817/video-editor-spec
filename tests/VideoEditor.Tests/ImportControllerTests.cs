@@ -98,7 +98,54 @@ public class ImportControllerTests(TestMedia media)
         Assert.False(string.IsNullOrWhiteSpace(failure.Message));
         Assert.Single(view.Added);
         Assert.Equal(media.Landscape, view.Added[0].Info.Path);
-        Assert.Equal("Hide", view.Events[^1]);
+        Assert.Equal(["Hide", "Failures"], view.Events[^2..]);
+    }
+
+    [Fact]
+    public async Task SeveralFailuresAreReportedOnceInImportOrderAfterProgressIsHidden()
+    {
+        var first = media.Output("batch-bad-1.mp4");
+        var second = media.Output("batch-bad-2.mov");
+        await File.WriteAllTextAsync(first, "這不是影片");
+        await File.WriteAllTextAsync(second, "這也不是影片");
+        var view = new FakeView();
+
+        await Create(view).ImportAsync([first, media.Landscape, second]);
+
+        Assert.Equal(1, view.FailureReports);
+        Assert.Equal(["batch-bad-1.mp4", "batch-bad-2.mov"], view.Failures.Select(f => f.Name));
+        Assert.Single(view.Added);
+        // 進度先收起來，再顯示失敗（對話框才不會疊在進度面板上）。
+        Assert.Equal(["Hide", "Failures"], view.Events[^2..]);
+    }
+
+    [Fact]
+    public async Task FilesDroppedWhileImportingShareOneFailureReport()
+    {
+        var first = media.Output("round-bad-1.mp4");
+        var second = media.Output("round-bad-2.mp4");
+        await File.WriteAllTextAsync(first, "這不是影片");
+        await File.WriteAllTextAsync(second, "這不是影片");
+        var view = new FakeView();
+        var controller = Create(view);
+
+        // 第一批還在讀取時又拖進第二批：同一輪匯入，只回報一次。
+        var a = controller.ImportAsync([media.Landscape, first]);
+        var b = controller.ImportAsync([second]);
+        await Task.WhenAll(a, b);
+
+        Assert.Equal(1, view.FailureReports);
+        Assert.Equal(2, view.Failures.Count);
+    }
+
+    [Fact]
+    public async Task NoFailureReportWhenEverythingImports()
+    {
+        var view = new FakeView();
+
+        await Create(view).ImportAsync([media.Landscape]);
+
+        Assert.Equal(0, view.FailureReports);
     }
 
     [Theory]
@@ -171,7 +218,7 @@ public class ImportControllerTests(TestMedia media)
 
         await controller.ImportAsync([media.Landscape, media.Music]);
         Assert.Equal("landscape.mp4,music.m4a", string.Join(",", view.Failures.Select(f => f.Name)));
-        Assert.Equal("Hide", view.Events[^1]);
+        Assert.Equal(["Hide", "Failures"], view.Events[^2..]);
 
         // 兩個檔案都沒有卡在「排入中」，可以再試。
         await controller.ImportAsync([media.Landscape, media.Music]);
@@ -228,6 +275,13 @@ public class ImportControllerTests(TestMedia media)
             Added.Add((info, thumbnail));
             OnAdded?.Invoke();
         }
-        public void ShowFailure(string name, string message) => Failures.Add((name, message));
+        public void ShowFailures(IReadOnlyList<ImportFailure> failures)
+        {
+            FailureReports++;
+            Failures.AddRange(failures.Select(f => (f.Name, f.Message)));
+            Events.Add("Failures");
+        }
+
+        public int FailureReports { get; private set; }
     }
 }

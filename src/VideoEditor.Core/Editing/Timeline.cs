@@ -38,7 +38,7 @@ public sealed class TimelineClip(MediaInfo media, TrackKind track, double source
     /// <summary>填滿裁切時取用畫面的哪一部分。只用於影片軌。</summary>
     public ClipFraming Framing { get; internal set; } = ClipFraming.Default;
 
-    /// <summary>把音量、倒放、旋轉鏡像與畫面位置複製到另一個片段（分割時用）。新增這類屬性時要加在這裡。</summary>
+    /// <summary>把音量、倒放、旋轉鏡像與畫面位置複製到另一個片段（分割時用）。新增這類屬性時要加在這裡，也要加到 <see cref="ClipState"/>（復原用）。</summary>
     internal void CopySettingsTo(TimelineClip other)
     {
         other.Volume = Volume;
@@ -129,6 +129,60 @@ public sealed class Timeline
     }
 
     public void Remove(TimelineClip clip) => ListOf(clip.Track).Remove(clip);
+
+    /// <summary>素材加到時間軸時預設放的軌道：有畫面的放影片軌，只有聲音的放配樂軌。</summary>
+    public static TrackKind DefaultTrack(MediaInfo media) => media.HasVideo ? TrackKind.Video : TrackKind.Music;
+
+    /// <summary>
+    /// 在 <paramref name="start"/> 插入一段新片段（拖曳素材到時間軸用）。同一軌在 start 之後的片段一起往後移，
+    /// 移到剛好不重疊為止，片段之間原本的空白不變；放得下時其他片段都不動。其他軌不動。
+    /// start 不能落在既有片段的中間（呼叫端先用 <see cref="TimelineEditor.InsertTarget"/> 算好位置）。
+    /// 回傳新片段與往後移的距離。
+    /// </summary>
+    public (TimelineClip Clip, double Shift, int ShiftedCount) Insert(MediaInfo media, double sourceIn, double sourceOut, double start, TrackKind? track = null)
+    {
+        if (!double.IsFinite(start)) throw new ArgumentOutOfRangeException(nameof(start));
+        start = Math.Max(0, start);
+        var kind = track ?? DefaultTrack(media);
+        if (ListOf(kind).Any(c => start > c.Start + Epsilon && start < c.End - Epsilon))
+            throw new ArgumentException("插入位置在片段中間。", nameof(start));
+
+        // Append 負責檢查素材與長度，並把圖片的來源範圍整理好；之後再搬到插入位置。
+        var clip = Append(media, sourceIn, sourceOut, kind);
+        var list = ListOf(kind);
+        var later = list.Where(c => c != clip && c.Start >= start - Epsilon).ToList();
+        var shift = later.Count == 0 ? 0 : Math.Max(0, start + clip.Duration - later.Min(c => c.Start));
+        if (shift > Epsilon)
+            foreach (var other in later) other.Start += shift;
+        else
+            shift = 0;
+        clip.Start = start;
+        Sort(list);
+        return (clip, shift, shift > 0 ? later.Count : 0);
+    }
+
+    /// <summary>記下兩軌目前有哪些片段、順序與各自的狀態，給復原用（<see cref="TimelineHistory"/>）。</summary>
+    public TimelineSnapshot Capture() => new([.. _video.Select(ClipState.Of)], [.. _music.Select(ClipState.Of)]);
+
+    /// <summary>
+    /// 回到 <see cref="Capture"/> 當時的樣子。片段用的是同一個 <see cref="TimelineClip"/> 物件（不是複製），
+    /// 所以選取、波形與倒放預覽這些以片段物件或素材為鍵的狀態都還對得上。
+    /// </summary>
+    public void Restore(TimelineSnapshot snapshot)
+    {
+        Fill(_video, snapshot.Video);
+        Fill(_music, snapshot.Music);
+
+        static void Fill(List<TimelineClip> list, IReadOnlyList<ClipState> states)
+        {
+            list.Clear();
+            foreach (var state in states)
+            {
+                state.ApplyTo();
+                list.Add(state.Clip);
+            }
+        }
+    }
 
     /// <summary>
     /// 設定旋轉與鏡像。位置與長度不變。方向改變時畫面位置回到預設：

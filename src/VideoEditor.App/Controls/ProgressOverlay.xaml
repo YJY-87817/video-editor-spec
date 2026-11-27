@@ -51,6 +51,9 @@
                 </StackPanel>
                 <TextBlock x:Name="ExportPercent" AutomationProperties.AutomationId="ExportPercent" Grid.Column="1" FontSize="26" FontWeight="Bold" Foreground="#7FE09A" VerticalAlignment="Center" Margin="16,0,12,0" MinWidth="80" TextAlignment="Right" />
                 <Button x:Name="CancelButton" AutomationProperties.AutomationId="CancelButton" Grid.Column="2" Content="取消匯出" VerticalAlignment="Center" Margin="0" Click="OnCancelClick" />
+                <!-- 匯出完成後取代取消按鈕 -->
+                <Button x:Name="OpenFolderButton" AutomationProperties.AutomationId="OpenFolderButton" Grid.Column="2" Content="開啟資料夾" VerticalAlignment="Center" Margin="0"
+                        Visibility="Collapsed" Click="OnOpenFolderClick" />
             </Grid>
         </StackPanel>
     </Border>

@@ -19,9 +19,15 @@ public interface IImportView
     /// <summary>讀取成功，加入素材清單。沒有畫面或縮圖產生失敗時 thumbnail 為 null。</summary>
     void AddMedia(MediaInfo info, byte[]? thumbnail);
 
-    /// <summary>這個檔案無法匯入。</summary>
-    void ShowFailure(string name, string message);
+    /// <summary>
+    /// 這一輪匯入有檔案無法匯入。整輪處理完（進度收起之後）才呼叫一次，依匯入順序列出，
+    /// 一次拖進很多壞檔時才不會連跳好幾個對話框。沒有失敗時不呼叫。
+    /// </summary>
+    void ShowFailures(IReadOnlyList<ImportFailure> failures);
 }
+
+/// <summary>一個無法匯入的檔案：檔名與錯誤說明（FFmpeg 的錯誤輸出或例外訊息）。</summary>
+public sealed record ImportFailure(string Name, string Message);
 
 /// <summary>逐一讀取素材資訊與縮圖，並把進度與結果交給 <see cref="IImportView"/>。</summary>
 public sealed class ImportController(MediaProbe probe, FrameExtractor extractor, IImportView view, int thumbnailWidth = 144)
@@ -35,6 +41,8 @@ public sealed class ImportController(MediaProbe probe, FrameExtractor extractor,
     private readonly HashSet<string> _queued = new(StringComparer.OrdinalIgnoreCase);
     // 目前這一輪匯入共用的取消來源；Cancel 之後換新的，之後才拖進來的檔案不受影響。
     private CancellationTokenSource? _cancel;
+    // 這一輪匯入目前為止的失敗；整輪結束時一次交給畫面。匯入中又拖進的檔案屬於同一輪。
+    private readonly List<ImportFailure> _failures = [];
 
     /// <summary>
     /// 取消目前的匯入：正在讀的檔案立刻停止（終止 ffprobe／ffmpeg），還沒開始的檔案略過。
@@ -77,7 +85,7 @@ public sealed class ImportController(MediaProbe probe, FrameExtractor extractor,
                 {
                     // FfmpegException 的命令列與錯誤輸出已由 ProcessRunner 記錄，這裡不再重複堆疊。
                     Log.Warn($"匯入失敗：{path}", e is FfmpegException ? null : e);
-                    view.ShowFailure(name, (e as FfmpegException)?.Stderr ?? e.Message);
+                    _failures.Add(new ImportFailure(name, (e as FfmpegException)?.Stderr ?? e.Message));
                 }
                 finally
                 {
@@ -85,6 +93,7 @@ public sealed class ImportController(MediaProbe probe, FrameExtractor extractor,
                     processed++;
                     CountDone(1);
                     Report(name, "完成", 0);
+                    ReportFailuresIfFinished();
                 }
             }
         }
@@ -97,8 +106,18 @@ public sealed class ImportController(MediaProbe probe, FrameExtractor extractor,
                 foreach (var path in pending.Skip(processed)) _queued.Remove(path);
                 CountDone(pending.Count - processed);
                 if (_total == 0) view.HideProgress();
+                ReportFailuresIfFinished();
             }
         }
+    }
+
+    /// <summary>整輪匯入都處理完（進度已收起）時，把累積的失敗一次交給畫面。</summary>
+    private void ReportFailuresIfFinished()
+    {
+        if (_total != 0 || _failures.Count == 0) return;
+        var failures = _failures.ToList();
+        _failures.Clear();
+        view.ShowFailures(failures);
     }
 
     private void CountDone(int count)

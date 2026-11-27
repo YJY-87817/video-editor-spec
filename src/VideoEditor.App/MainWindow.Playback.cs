@@ -26,7 +26,7 @@ public partial class MainWindow
             ScrubSlider.Maximum = Math.Max(0.001, _engine.Duration);
             ScrubSlider.Value = position;
         }
-        TimeText.Text = PlaybackText.Position(position, _engine.Duration);
+        TimeText.Text = $"{ShowTime(position)} / {ShowTime(_engine.Duration)}";
         if (IsTimelinePreview) TimelineView.Playhead = position;
         UpdateMarkRange();
         UpdateFramingForPosition();
@@ -81,6 +81,13 @@ public partial class MainWindow
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (HandleHistoryKey(e) || HandleGoToKey(e)) return;
+        if (e.Key == Key.F1 && Keyboard.Modifiers == ModifierKeys.None)
+        {
+            ShowShortcuts();
+            e.Handled = true;
+            return;
+        }
         // Ctrl／Alt／Shift／Win 組合鍵（例如 Ctrl+S）不是預覽快捷鍵。
         if (!PreviewKeys.ShouldHandle(CurrentModifiers())) return;
         // 正在輸入文字時，按鍵歸文字框。
@@ -91,7 +98,7 @@ public partial class MainWindow
         if (command is PreviewCommand.PreviousEditPoint or PreviewCommand.NextEditPoint
             && e.OriginalSource is System.Windows.Controls.Primitives.Selector or System.Windows.Controls.ListBoxItem
                 or System.Windows.Controls.Primitives.ScrollBar) return;
-        // 焦點在素材清單時，Delete 移除選取的素材，而不是時間軸上的片段。
+        // 焦點在素材清單時，Delete 是從清單移除素材，不是刪除時間軸上的片段。
         if (command == PreviewCommand.DeleteClip && MediaList.IsKeyboardFocusWithin) RemoveSelectedMedia();
         else Execute(command);
         e.Handled = true;

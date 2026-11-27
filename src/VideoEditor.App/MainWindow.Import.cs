@@ -19,6 +19,13 @@ public partial class MainWindow
 {
     // ---- 匯入 ----
 
+    /// <summary>視窗只接受檔案（匯入）；素材清單的素材只能放到時間軸（時間軸自己處理，不會傳到這裡）。</summary>
+    private void OnWindowDragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
     private void OnFileDrop(object sender, DragEventArgs e)
     {
         if (e.Data.GetData(DataFormats.FileDrop) is string[] files) RunImport(files);
@@ -35,7 +42,7 @@ public partial class MainWindow
         catch (Exception e)
         {
             Log.Error("匯入時發生預料之外的錯誤", e);
-            StatusText.Text = $"匯入時發生錯誤：{e.Message}";
+            ShowStatus($"匯入時發生錯誤：{e.Message}", StatusKind.Error);
         }
     }
 
@@ -47,8 +54,11 @@ public partial class MainWindow
             Filter = "影音與圖片|*.mp4;*.mov;*.m4v;*.mkv;*.avi;*.webm;*.mts;*.m2ts;*.mp3;*.m4a;*.wav;*.aac;*.flac;*.jpg;*.jpeg;*.png;*.bmp;*.webp;*.tif;*.tiff"
                 + "|影音檔|*.mp4;*.mov;*.m4v;*.mkv;*.avi;*.webm;*.mts;*.m2ts;*.mp3;*.m4a;*.wav;*.aac;*.flac"
                 + "|圖片|*.jpg;*.jpeg;*.png;*.bmp;*.webp;*.tif;*.tiff|所有檔案|*.*",
+            InitialDirectory = ExistingFolder(_settings.LastImportFolder) ?? "",
         };
-        if (dialog.ShowDialog(this) == true) RunImport(dialog.FileNames);
+        if (dialog.ShowDialog(this) != true) return;
+        RememberImportFolder(dialog.FileName);
+        RunImport(dialog.FileNames);
     }
 
     // ---- IImportView：匯入流程需要的畫面更新 ----
@@ -69,8 +79,27 @@ public partial class MainWindow
         MediaList.SelectedItem ??= item;
     }
 
-    void IImportView.ShowFailure(string name, string message) =>
-        MessageBox.Show(this, $"無法匯入 {name}：\n{message}", "匯入失敗", MessageBoxButton.OK, MessageBoxImage.Warning);
+    /// <summary>
+    /// 一個檔案失敗時照舊顯示完整的錯誤；好幾個時合成一個對話框，每個檔案只列第一行錯誤（完整內容在紀錄檔），
+    /// 列太多時截斷，對話框才不會超出螢幕。
+    /// </summary>
+    void IImportView.ShowFailures(IReadOnlyList<ImportFailure> failures)
+    {
+        ShowStatus(failures.Count == 1 ? $"無法匯入 {failures[0].Name}" : $"{failures.Count} 個檔案無法匯入", StatusKind.Warning);
+        string text;
+        if (failures.Count == 1)
+        {
+            text = $"無法匯入 {failures[0].Name}：\n{failures[0].Message}";
+        }
+        else
+        {
+            const int shown = 10;
+            var lines = failures.Take(shown).Select(f => $"• {f.Name}：{FirstLine(f.Message)}");
+            var more = failures.Count > shown ? $"\n…還有 {failures.Count - shown} 個" : "";
+            text = $"以下 {failures.Count} 個檔案無法匯入：\n\n{string.Join('\n', lines)}{more}\n\n完整的錯誤訊息記錄在紀錄檔。";
+        }
+        MessageBox.Show(this, text, "匯入失敗", MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
 
     /// <summary>縮圖只是裝飾：解碼失敗時不要讓整批匯入中斷，回傳 null 顯示空白。</summary>
     private static BitmapSource? TryCreateThumbnail(byte[] bytes)
@@ -98,7 +127,8 @@ public partial class MainWindow
     private void OnRemoveMediaClick(object sender, RoutedEventArgs e) => RemoveSelectedMedia();
 
     /// <summary>
-    /// 從素材清單移除選取的素材（不刪除硬碟上的檔案）。時間軸上有用到它的片段時先確認，確定後一併移除這些片段。
+    /// 從素材清單移除選取的素材（不刪除硬碟上的檔案）。時間軸上有用到它的片段時先確認，確定後一併移除這些片段；
+    /// 移除片段算一步，可以用 Ctrl+Z 把片段找回來（素材清單不在復原範圍內，要再匯入一次）。
     /// 移除後選取下一個素材（沒有下一個就選上一個）。
     /// </summary>
     private void RemoveSelectedMedia()
@@ -112,7 +142,9 @@ public partial class MainWindow
                 "移除素材", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
             if (answer != MessageBoxResult.Yes) return;
             _engine?.Pause();
+            var before = _history.Capture();
             foreach (var clip in clips) _timeline.Remove(clip);
+            _history.Commit(before, $"移除素材 {item.Info.FileName} 的片段");
             if (TimelineView.SelectedClip is { } selected && clips.Contains(selected)) TimelineView.Select(null);
             OnClipsChanged();
         }
@@ -125,7 +157,9 @@ public partial class MainWindow
         if (MediaList.SelectedItem != null
             && MediaList.ItemContainerGenerator.ContainerFromItem(MediaList.SelectedItem) is ListBoxItem container)
             container.Focus();
-        StatusText.Text = $"已從素材清單移除 {item.Info.FileName}";
+        ShowStatus(clips.Count > 0
+            ? $"已從素材清單移除 {item.Info.FileName}，並移除時間軸上的 {clips.Count} 個片段（Ctrl+Z 可以找回片段）"
+            : $"已從素材清單移除 {item.Info.FileName}", StatusKind.Info);
     }
 
     private void OnMediaSelected(object sender, SelectionChangedEventArgs e)

@@ -16,7 +16,7 @@ public enum PreviewFollowUp
 }
 
 /// <summary>把標記的素材放上時間軸的結果。成功時有 Clip，失敗時有 Error。</summary>
-public sealed record AddResult(TimelineClip? Clip, string? Error);
+public sealed record AddResult(TimelineClip? Clip, string? Error, double Shift = 0, int ShiftedCount = 0);
 
 /// <summary>在播放頭分割的結果。成功時 Clip 是右段，失敗時有 Error（給狀態列的提示）。</summary>
 public sealed record SplitResult(TimelineClip? Clip, string? Error);
@@ -34,6 +34,43 @@ public sealed class TimelineEditor(Timeline timeline)
                 : timeline.Append(media, points.InPoint, points.OutPoint(media));
             points.Clear();
             return new AddResult(clip, null);
+        }
+        catch (ArgumentException error)
+        {
+            return new AddResult(null, error.Message);
+        }
+    }
+
+    /// <summary>
+    /// 素材拖到時間軸 <paramref name="dropTime"/> 時要插入的位置：落在某個片段上時，
+    /// 在片段的前半（左半邊）就插在它前面（它的開頭），後半（含正中間）就插在它後面（它的結尾）；
+    /// 落在空白處時就是放下的位置（不小於 0）。
+    /// </summary>
+    public double InsertTarget(TrackKind track, double dropTime)
+    {
+        var clips = track == TrackKind.Video ? timeline.VideoClips : timeline.MusicClips;
+        foreach (var clip in clips)
+        {
+            if (dropTime < clip.Start || dropTime >= clip.End) continue;
+            return dropTime < (clip.Start + clip.End) / 2 ? clip.Start : clip.End;
+        }
+        return Math.Max(0, dropTime);
+    }
+
+    /// <summary>
+    /// 把素材拖到時間軸：依 <see cref="InsertTarget"/> 決定位置插入，後面的片段往後移（見 <see cref="Timeline.Insert"/>）。
+    /// 入出點的規則與 <see cref="Add"/> 相同（圖片固定 5 秒），成功後清掉入出點。
+    /// </summary>
+    public AddResult AddAt(MediaInfo media, InOutPoints points, double dropTime)
+    {
+        try
+        {
+            var start = InsertTarget(Timeline.DefaultTrack(media), dropTime);
+            var (clip, shift, count) = media.IsStill
+                ? timeline.Insert(media, 0, Timeline.StillClipDuration, start)
+                : timeline.Insert(media, points.InPoint, points.OutPoint(media), start);
+            points.Clear();
+            return new AddResult(clip, null, shift, count);
         }
         catch (ArgumentException error)
         {

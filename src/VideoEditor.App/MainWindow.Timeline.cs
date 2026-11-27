@@ -22,6 +22,10 @@ public partial class MainWindow
     private void OnClipsChanged()
     {
         RefreshClipList();
+        // 片段的編號（第幾段）可能變了。
+        UpdateClipPanel(TimelineView.SelectedClip);
+        // 輸出基準（第一個影片片段）可能換了，時間尺與時間文字的影格率跟著換。
+        RefreshTimeTexts();
         TimelineView.InvalidateVisual();
         UpdateTimelineScrollBar();
         UpdateOutputInfo();
@@ -48,11 +52,13 @@ public partial class MainWindow
 
     private void OnTimelineSelectionChanged(TimelineClip? clip)
     {
+        UpdateClipPanel(clip);
+        SplitButton.IsEnabled = DeleteButton.IsEnabled = clip != null;
         using (_volumeGuard.Enter())
         {
-            VolumeSlider.IsEnabled = clip is { Media.HasAudio: true };
+            VolumeSlider.IsEnabled = VolumeInput.IsEnabled = clip is { Media.HasAudio: true };
             VolumeSlider.Value = (clip?.Volume ?? 1) * 100;
-            VolumeText.Text = clip == null ? "—" : $"{VolumeSlider.Value:0}%";
+            ShowVolumeText(clip);
         }
 
         using (_clipListGuard.Enter())
@@ -68,6 +74,21 @@ public partial class MainWindow
         UpdateFramingControls(clip);
     }
 
+    /// <summary>
+    /// 右側「選取的片段」：沒有選取時只顯示提示；配樂片段只有音量；影片片段再加上旋轉鏡像、畫面位置與倒放。
+    /// </summary>
+    private void UpdateClipPanel(TimelineClip? clip)
+    {
+        ClipHint.Visibility = clip == null ? Visibility.Visible : Visibility.Collapsed;
+        ClipPropertiesPanel.Visibility = clip == null ? Visibility.Collapsed : Visibility.Visible;
+        if (clip == null) return;
+        VideoPropertiesPanel.Visibility = clip.Track == TrackKind.Video ? Visibility.Visible : Visibility.Collapsed;
+        ClipPropertiesTitle.Text = clip.Track == TrackKind.Video
+            ? $"第 {_timeline.VideoClips.TakeWhile(c => c != clip).Count() + 1} 段：{clip.Media.FileName}"
+            : $"配樂：{clip.Media.FileName}";
+        ClipPropertiesTitle.ToolTip = clip.Media.Path;
+    }
+
     // ---- 旋轉與鏡像 ----
 
     private void UpdateTransformControls(TimelineClip? clip)
@@ -76,16 +97,18 @@ public partial class MainWindow
         TransformText.Text = clip is { Track: TrackKind.Video } ? clip.Transform.Label : "—";
     }
 
-    private void OnRotateLeft(object sender, RoutedEventArgs e) => ChangeTransform(t => t.Rotate(-90));
-    private void OnRotateRight(object sender, RoutedEventArgs e) => ChangeTransform(t => t.Rotate(90));
-    private void OnFlipHorizontal(object sender, RoutedEventArgs e) => ChangeTransform(t => t.ToggleHorizontal());
-    private void OnFlipVertical(object sender, RoutedEventArgs e) => ChangeTransform(t => t.ToggleVertical());
-    private void OnResetTransform(object sender, RoutedEventArgs e) => ChangeTransform(_ => FrameTransform.Identity);
+    private void OnRotateLeft(object sender, RoutedEventArgs e) => ChangeTransform("左轉 90°", t => t.Rotate(-90));
+    private void OnRotateRight(object sender, RoutedEventArgs e) => ChangeTransform("右轉 90°", t => t.Rotate(90));
+    private void OnFlipHorizontal(object sender, RoutedEventArgs e) => ChangeTransform("水平鏡像", t => t.ToggleHorizontal());
+    private void OnFlipVertical(object sender, RoutedEventArgs e) => ChangeTransform("垂直鏡像", t => t.ToggleVertical());
+    private void OnResetTransform(object sender, RoutedEventArgs e) => ChangeTransform("重設旋轉與鏡像", _ => FrameTransform.Identity);
 
-    private void ChangeTransform(Func<FrameTransform, FrameTransform> change)
+    private void ChangeTransform(string label, Func<FrameTransform, FrameTransform> change)
     {
         if (TimelineView.SelectedClip is not { Track: TrackKind.Video } clip) return;
+        var before = _history.Capture();
         var followUp = _editor.ChangeTransform(clip, change, IsTimelinePreview, TimelineView.Playhead);
+        _history.Commit(before, label);
         UpdateTransformControls(clip);
         // 方向改變時畫面位置會回到預設。
         UpdateFramingControls(clip);
@@ -107,24 +130,83 @@ public partial class MainWindow
     {
         if (_reverseGuard.Active || TimelineView.SelectedClip is not { Track: TrackKind.Video } clip) return;
         _engine?.Pause();
-        _timeline.SetReversed(clip, ReverseCheck.IsChecked == true);
+        var before = _history.Capture();
+        var reversed = ReverseCheck.IsChecked == true;
+        _timeline.SetReversed(clip, reversed);
+        _history.Commit(before, reversed ? "倒放" : "取消倒放");
         OnClipsChanged();
     }
 
     private void OnVolumeChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (_volumeGuard.Active || TimelineView.SelectedClip is not { } clip) return;
+        var before = _history.Capture();
         clip.Volume = TimelineEditor.VolumeFromPercent(e.NewValue);
-        VolumeText.Text = $"{e.NewValue:0}%";
+        // 拖曳滑桿時每一點移動都會進來，同一個片段連續調整併成一步。
+        _history.Commit(before, "調整音量", $"volume:{clip.Id}");
+        ShowVolumeText(clip);
         TimelineView.InvalidateVisual();
     }
 
-    private void OnMoveUp(object sender, RoutedEventArgs e) => SwapSelected(-1);
-    private void OnMoveDown(object sender, RoutedEventArgs e) => SwapSelected(1);
+    /// <summary>右邊的百分比輸入框與下面的分貝說明。</summary>
+    private void ShowVolumeText(TimelineClip? clip)
+    {
+        if (clip is not { Media.HasAudio: true })
+        {
+            VolumeInput.Text = "";
+            VolumeDbText.Text = clip == null ? "" : "這個片段沒有聲音";
+            return;
+        }
+        VolumeInput.Text = $"{Math.Round(VolumeSlider.Value):0}";
+        VolumeDbText.Text = VolumeText.Describe(VolumeSlider.Value);
+    }
 
+    private void OnVolumeSliderDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (VolumeSlider.IsEnabled) VolumeSlider.Value = 100;
+    }
+
+    private void OnVolumeInputKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key is System.Windows.Input.Key.Enter or System.Windows.Input.Key.Return)
+        {
+            ApplyVolumeInput();
+            VolumeInput.SelectAll();
+            e.Handled = true;
+        }
+        else if (e.Key == System.Windows.Input.Key.Escape)
+        {
+            ShowVolumeText(TimelineView.SelectedClip);
+            TimelineView.Focus();
+            e.Handled = true;
+        }
+    }
+
+    private void OnVolumeInputLostFocus(object sender, System.Windows.Input.KeyboardFocusChangedEventArgs e) => ApplyVolumeInput();
+
+    /// <summary>套用輸入的百分比；不是 0～200 的數字時恢復原值並說明。經由滑桿套用，復原紀錄與畫面更新走同一條路。</summary>
+    private void ApplyVolumeInput()
+    {
+        if (TimelineView.SelectedClip is not { Media.HasAudio: true } clip) return;
+        if (VolumeText.ParsePercent(VolumeInput.Text) is { } percent)
+        {
+            VolumeSlider.Value = percent;
+        }
+        else if (VolumeInput.Text.Trim() != $"{Math.Round(clip.Volume * 100):0}")
+        {
+            ShowStatus($"音量請輸入 0～{VolumeText.MaxPercent:0} 的數字。", StatusKind.Warning);
+        }
+        ShowVolumeText(clip);
+    }
+
+    /// <summary>和前一段（-1）或後一段（1）交換順序。右鍵選單使用（UIUX-PLAN 階段 5）。</summary>
     private void SwapSelected(int direction)
     {
-        if (TimelineView.SelectedClip is { } clip && _timeline.Swap(clip, direction)) OnClipsChanged();
+        if (TimelineView.SelectedClip is not { } clip) return;
+        var before = _history.Capture();
+        if (!_timeline.Swap(clip, direction)) return;
+        _history.Commit(before, "調整順序");
+        OnClipsChanged();
     }
 
     private void OnDeleteClip(object sender, RoutedEventArgs e) => DeleteSelectedClip();
@@ -132,7 +214,9 @@ public partial class MainWindow
     private void DeleteSelectedClip()
     {
         if (TimelineView.SelectedClip is not { } clip) return;
+        var before = _history.Capture();
         _timeline.Remove(clip);
+        _history.Commit(before, "刪除片段");
         TimelineView.Select(null);
         OnClipsChanged();
     }
@@ -152,10 +236,12 @@ public partial class MainWindow
     /// <summary>在播放頭分割選取的片段，成功後選取右段。不能分割時在狀態列說明原因。</summary>
     private void SplitSelectedClip()
     {
+        var before = _history.Capture();
         var result = _editor.Split(TimelineView.SelectedClip, TimelineView.Playhead, IsTimelinePreview);
+        _history.Commit(before, "分割片段");
         if (result.Clip == null)
         {
-            StatusText.Text = result.Error ?? "";
+            ShowStatus(result.Error ?? "", StatusKind.Warning);
             return;
         }
         _engine?.Pause();

@@ -24,6 +24,8 @@ public partial class MainWindow
     private TimelineClip? _framingDragClip;
     private Point _framingDragStart;
     private ClipFraming _framingAtStart = ClipFraming.Default;
+    // 拖曳開始時時間軸的樣子；放開滑鼠時記成一步復原。
+    private TimelineSnapshot? _framingDragBefore;
     // 縮放時固定不動的對角（來源像素），與拖曳的角往哪個方向延伸。
     private double _framingAnchorX, _framingAnchorY;
     private int _framingDirectionX, _framingDirectionY;
@@ -88,6 +90,8 @@ public partial class MainWindow
 
     private void UpdateFramingControls(TimelineClip? selected)
     {
+        // 加黑邊時不裁切，用不到畫面位置，整區隱藏。
+        FramingSection.Visibility = SelectedMode == FitMode.Fill ? Visibility.Visible : Visibility.Collapsed;
         var clip = FramingTarget(selected);
         ResetFramingButton.IsEnabled = clip != null && !clip.Framing.IsDefault;
         if (clip == null)
@@ -97,8 +101,7 @@ public partial class MainWindow
         }
         // 與片段清單的編號相同。
         var index = _timeline.VideoClips.TakeWhile(c => c != clip).Count() + 1;
-        FramingText.Text = SelectedMode != FitMode.Fill ? "加黑邊時不裁切，不使用畫面位置。"
-            : $"第 {index} 段：{clip.Framing.Label}。在剪輯預覽中拖曳黃色框移動、拖曳四角縮放，也可以用滑鼠滾輪縮放、雙擊框重設。";
+        FramingText.Text = $"第 {index} 段：{clip.Framing.Label}。在剪輯預覽中拖曳黃色框移動、拖曳四角縮放，也可以用滑鼠滾輪縮放、雙擊框重設。";
     }
 
     /// <param name="refreshList">拖曳中每次移動都會呼叫，片段清單等放開滑鼠再更新一次就好。</param>
@@ -113,7 +116,14 @@ public partial class MainWindow
 
     private void OnResetFraming(object sender, RoutedEventArgs e)
     {
-        if (FramingTarget(TimelineView.SelectedClip) is { } clip) ApplyFraming(clip, ClipFraming.Default);
+        if (FramingTarget(TimelineView.SelectedClip) is { } clip) ResetFraming(clip);
+    }
+
+    private void ResetFraming(TimelineClip clip)
+    {
+        var before = _history.Capture();
+        ApplyFraming(clip, ClipFraming.Default);
+        _history.Commit(before, "重設畫面位置");
     }
 
     private void OnFramingMoveStart(object sender, MouseButtonEventArgs e)
@@ -122,7 +132,7 @@ public partial class MainWindow
         e.Handled = true;
         if (e.ClickCount == 2)
         {
-            ApplyFraming(clip, ClipFraming.Default);
+            ResetFraming(clip);
             return;
         }
         BeginFramingDrag(clip, FramingDragKind.Move, e);
@@ -151,6 +161,7 @@ public partial class MainWindow
         _framingDragClip = clip;
         _framingDragStart = e.GetPosition(PreviewCanvas);
         _framingAtStart = clip.Framing;
+        _framingDragBefore = _history.Capture();
         PreviewCanvas.CaptureMouse();
     }
 
@@ -185,6 +196,8 @@ public partial class MainWindow
         var changed = _framingDragClip is { } clip && clip.Framing != _framingAtStart;
         _framingDrag = FramingDragKind.None;
         _framingDragClip = null;
+        if (_framingDragBefore is { } before) _history.Commit(before, "調整畫面位置");
+        _framingDragBefore = null;
         if (changed) RefreshClipList();
     }
 
@@ -193,6 +206,9 @@ public partial class MainWindow
         if (_framingClip is not { } clip || FramingSizes(clip) is not { } sizes) return;
         e.Handled = true;
         TimelineView.Select(clip);
+        var before = _history.Capture();
         ApplyFraming(clip, clip.Framing.ZoomBy(Math.Pow(WheelZoomStep, e.Delta / 120.0), sizes.Source, sizes.Output));
+        // 連續滾動併成一步。
+        _history.Commit(before, "縮放畫面位置", $"framing-zoom:{clip.Id}");
     }
 }

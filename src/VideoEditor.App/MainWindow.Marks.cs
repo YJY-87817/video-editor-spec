@@ -41,15 +41,21 @@ public partial class MainWindow
     private bool RejectStillMark()
     {
         if (_selectedMedia?.Info.IsStill != true) return false;
-        StatusText.Text = $"圖片沒有入點與出點，加入時間軸固定 {Timeline.StillClipDuration:0} 秒，之後可拖曳兩端調整長度。";
+        ShowStatus($"圖片沒有入點與出點，加入時間軸固定 {Timeline.StillClipDuration:0} 秒，之後可拖曳兩端調整長度。", StatusKind.Warning);
         return true;
     }
 
+    /// <summary>入點、出點的文字（點一下可以輸入時間）；圖片只顯示加入後的長度。</summary>
     private void UpdateMarks()
     {
-        MarkText.Text = _selectedMedia == null || IsTimelinePreview ? ""
-            : _selectedMedia.Info.IsStill ? $"圖片：加入時間軸為 {Timeline.StillClipDuration:0} 秒"
-            : $"I {PlaybackText.Duration(_points.InPoint)}  O {PlaybackText.Duration(_points.OutPoint(_selectedMedia.Info))}";
+        var marks = _selectedMedia is { Info.IsStill: false } && !IsTimelinePreview;
+        MarkInText.Visibility = MarkOutText.Visibility = marks ? Visibility.Visible : Visibility.Collapsed;
+        if (marks)
+        {
+            MarkInText.Text = $"I {ShowTime(_points.InPoint)}";
+            MarkOutText.Text = $"O {ShowTime(_points.OutPoint(_selectedMedia!.Info))}";
+        }
+        MarkText.Text = _selectedMedia is { Info.IsStill: true } && !IsTimelinePreview ? $"圖片：加入時間軸為 {Timeline.StillClipDuration:0} 秒" : "";
         UpdateMarkRange();
     }
 
@@ -71,12 +77,14 @@ public partial class MainWindow
     private void OnAddToTimeline(object sender, RoutedEventArgs e)
     {
         if (_selectedMedia == null) return;
+        var before = _history.Capture();
         var result = _editor.Add(_selectedMedia.Info, _points);
         if (result.Clip == null)
         {
-            StatusText.Text = result.Error ?? "";
+            ShowStatus(result.Error ?? "", StatusKind.Warning);
             return;
         }
+        _history.Commit(before, "加入片段");
         TimelineView.Select(result.Clip);
         UpdateMarks();
         OnClipsChanged();
