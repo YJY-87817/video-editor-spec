@@ -58,10 +58,13 @@ public partial class MainWindow
             return;
         }
 
+        // 預設檔名「第一段的檔名_剪輯_日期時間.mp4」；資料夾用上次匯出的，沒有就用第一段所在的資料夾。
+        var first = _timeline.VideoClips[0].Media.Path;
         var dialog = new SaveFileDialog
         {
-            Filter = "MP4 影片|*.mp4", FileName = "輸出.mp4", DefaultExt = ".mp4",
-            InitialDirectory = ExistingFolder(_settings.LastExportFolder) ?? "",
+            Filter = "MP4 影片|*.mp4", DefaultExt = ".mp4",
+            FileName = ExportNaming.DefaultFileName(first, DateTime.Now),
+            InitialDirectory = ExportNaming.DefaultFolder(_settings.LastExportFolder, first, Directory.Exists) ?? "",
         };
         if (dialog.ShowDialog(this) != true) return;
         RememberExportFolder(dialog.FileName);
@@ -74,6 +77,24 @@ public partial class MainWindow
             // async void 的例外不會回到呼叫端；預料之外的錯誤要顯示出來，而不是丟給全域處理器。
             Log.Error("匯出時發生預料之外的錯誤", ex);
             ShowStatus($"匯出時發生錯誤：{ex.Message}", StatusKind.Error);
+        }
+    }
+
+    private string? _lastExport;
+
+    /// <summary>在檔案總管開啟剛匯出的檔案所在的資料夾，並選取那個檔案。</summary>
+    private void OpenExportFolder()
+    {
+        if (_lastExport is not { } file) return;
+        try
+        {
+            var arguments = File.Exists(file) ? $"/select,\"{file}\"" : $"\"{System.IO.Path.GetDirectoryName(file)}\"";
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", arguments) { UseShellExecute = false });
+        }
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            Log.Warn("開啟匯出資料夾失敗", e);
+            ShowStatus($"無法開啟資料夾：{e.Message}", StatusKind.Error);
         }
     }
 
@@ -105,7 +126,8 @@ public partial class MainWindow
 
     void IExportView.ShowSucceeded(string output, string elapsed)
     {
-        ShowStatus($"匯出完成：{output}", StatusKind.Success);
+        _lastExport = output;
+        ShowStatus($"匯出完成：{output}", StatusKind.Success, "開啟資料夾", OpenExportFolder);
         ProgressPanel.FinishExport($"✔ 匯出完成：{output}（花費 {elapsed}）");
         Taskbar.ProgressState = System.Windows.Shell.TaskbarItemProgressState.None;
     }

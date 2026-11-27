@@ -102,6 +102,12 @@ public sealed partial class TimelineView : FrameworkElement
     /// </summary>
     public bool SnapToClips { get; set; } = true;
 
+    /// <summary>時間尺的刻度：時間碼時，不到一秒的刻度寫成「分:秒:格」。</summary>
+    public VideoEditor.Core.Playback.TimeDisplay RulerDisplay { get; set; } = VideoEditor.Core.Playback.TimeDisplay.Timecode;
+
+    /// <summary>時間尺換算格數用的影格率（輸出基準）。</summary>
+    public double RulerFps { get; set; } = VideoEditor.Core.Playback.Timecode.FallbackFps;
+
     public double PixelsPerSecond => _pixelsPerSecond;
     public double ScrollOffset => _scrollOffset;
     public double ViewportWidth => Math.Max(1, ActualWidth - HeaderWidth);
@@ -241,10 +247,13 @@ public sealed partial class TimelineView : FrameworkElement
         return 7200;
     }
 
-    private static string FormatTick(double t)
+    private string FormatTick(double t)
     {
         var span = TimeSpan.FromSeconds(Math.Round(t, 1));
-        return span.Milliseconds > 0 ? $"{(int)span.TotalMinutes}:{span.Seconds:00}.{span.Milliseconds / 100}" : $"{(int)span.TotalMinutes}:{span.Seconds:00}";
+        if (span.Milliseconds == 0) return $"{(int)span.TotalMinutes}:{span.Seconds:00}";
+        if (RulerDisplay == VideoEditor.Core.Playback.TimeDisplay.Timecode)
+            return $"{(int)span.TotalMinutes}:{span.Seconds:00}:{(int)Math.Floor(span.Milliseconds / 1000.0 * RulerFps + 1e-6):00}";
+        return $"{(int)span.TotalMinutes}:{span.Seconds:00}.{span.Milliseconds / 100}";
     }
 
     private void DrawClip(DrawingContext dc, TimelineClip clip, double y, double height, Brush brush, string label, bool audio = false)

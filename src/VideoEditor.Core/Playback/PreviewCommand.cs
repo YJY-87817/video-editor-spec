@@ -46,7 +46,8 @@ public static class PreviewKeys
 {
     /// <summary>
     /// 預覽快捷鍵只在沒有按任何修飾鍵時處理。
-    /// Ctrl+S（使用者習慣的存檔）等組合鍵若被當成 S（分割片段），會改動時間軸，而本程式沒有復原。
+    /// Ctrl+S（使用者習慣的存檔）等組合鍵若被當成 S（分割片段），會在沒有預期時改動時間軸。
+    /// 組合鍵另外處理（Ctrl+Z 復原、Ctrl+G 跳到指定時間）。
     /// </summary>
     public static bool ShouldHandle(KeyModifiers modifiers) => modifiers == KeyModifiers.None;
 

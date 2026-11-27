@@ -17,6 +17,9 @@ public static class Palette
     /// <summary>次要文字（說明、狀態列的一般訊息）。</summary>
     public static readonly Brush TextSecondary = Frozen(0xB0, 0xB0, 0xB0);
 
+    /// <summary>較不重要的說明文字。在 #1E1E1E 背景上對比約 6:1，12 號字也達到 WCAG AA。</summary>
+    public static readonly Brush TextDim = Frozen(0x9A, 0x9A, 0x9A);
+
     /// <summary>狀態列：完成。</summary>
     public static readonly Brush StatusSuccess = Frozen(0x7F, 0xE0, 0x9A);
 

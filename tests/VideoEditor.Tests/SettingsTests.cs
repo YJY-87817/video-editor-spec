@@ -1,4 +1,5 @@
 using VideoEditor.Core.Models;
+using VideoEditor.Core.Playback;
 using VideoEditor.Core.Settings;
 
 namespace VideoEditor.Tests;
@@ -24,6 +25,7 @@ public sealed class SettingsTests : IDisposable
         Assert.True(settings.SnapToClips);
         Assert.Equal(AspectRatio.Original, settings.Ratio);
         Assert.Equal(FitMode.Fill, settings.Mode);
+        Assert.Equal(TimeDisplay.Timecode, settings.TimeDisplay);
         Assert.Null(settings.Window);
     }
 
@@ -42,6 +44,7 @@ public sealed class SettingsTests : IDisposable
             SnapToClips = false,
             Ratio = AspectRatio.R9x16,
             Mode = FitMode.Pad,
+            TimeDisplay = TimeDisplay.Decimal,
             LastImportFolder = @"D:\影片",
             LastExportFolder = @"E:\輸出",
         };
@@ -64,6 +67,7 @@ public sealed class SettingsTests : IDisposable
     [InlineData("{\"Ratio\": {\"W\": 7, \"H\": 3}}")]   // 不是程式提供的比例
     [InlineData("{\"Ratio\": null}")]
     [InlineData("{\"Mode\": 9}")]                     // 列舉值超出範圍
+    [InlineData("{\"TimeDisplay\": 7}")]
     public void EditedValuesOutsideTheChoicesFallBackToDefaults(string content)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
@@ -73,6 +77,7 @@ public sealed class SettingsTests : IDisposable
 
         Assert.Equal(AspectRatio.Original, settings.Ratio);
         Assert.Equal(FitMode.Fill, settings.Mode);
+        Assert.Equal(TimeDisplay.Timecode, settings.TimeDisplay);
     }
 
     [Fact]

@@ -24,6 +24,8 @@ public partial class MainWindow
         RefreshClipList();
         // 片段的編號（第幾段）可能變了。
         UpdateClipPanel(TimelineView.SelectedClip);
+        // 輸出基準（第一個影片片段）可能換了，時間尺與時間文字的影格率跟著換。
+        RefreshTimeTexts();
         TimelineView.InvalidateVisual();
         UpdateTimelineScrollBar();
         UpdateOutputInfo();
@@ -54,9 +56,9 @@ public partial class MainWindow
         SplitButton.IsEnabled = DeleteButton.IsEnabled = clip != null;
         using (_volumeGuard.Enter())
         {
-            VolumeSlider.IsEnabled = clip is { Media.HasAudio: true };
+            VolumeSlider.IsEnabled = VolumeInput.IsEnabled = clip is { Media.HasAudio: true };
             VolumeSlider.Value = (clip?.Volume ?? 1) * 100;
-            VolumeText.Text = clip == null ? "—" : clip.Media.HasAudio ? $"{VolumeSlider.Value:0}%" : "無聲音";
+            ShowVolumeText(clip);
         }
 
         using (_clipListGuard.Enter())
@@ -142,8 +144,59 @@ public partial class MainWindow
         clip.Volume = TimelineEditor.VolumeFromPercent(e.NewValue);
         // 拖曳滑桿時每一點移動都會進來，同一個片段連續調整併成一步。
         _history.Commit(before, "調整音量", $"volume:{clip.Id}");
-        VolumeText.Text = $"{e.NewValue:0}%";
+        ShowVolumeText(clip);
         TimelineView.InvalidateVisual();
+    }
+
+    /// <summary>右邊的百分比輸入框與下面的分貝說明。</summary>
+    private void ShowVolumeText(TimelineClip? clip)
+    {
+        if (clip is not { Media.HasAudio: true })
+        {
+            VolumeInput.Text = "";
+            VolumeDbText.Text = clip == null ? "" : "這個片段沒有聲音";
+            return;
+        }
+        VolumeInput.Text = $"{Math.Round(VolumeSlider.Value):0}";
+        VolumeDbText.Text = VolumeText.Describe(VolumeSlider.Value);
+    }
+
+    private void OnVolumeSliderDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (VolumeSlider.IsEnabled) VolumeSlider.Value = 100;
+    }
+
+    private void OnVolumeInputKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key is System.Windows.Input.Key.Enter or System.Windows.Input.Key.Return)
+        {
+            ApplyVolumeInput();
+            VolumeInput.SelectAll();
+            e.Handled = true;
+        }
+        else if (e.Key == System.Windows.Input.Key.Escape)
+        {
+            ShowVolumeText(TimelineView.SelectedClip);
+            TimelineView.Focus();
+            e.Handled = true;
+        }
+    }
+
+    private void OnVolumeInputLostFocus(object sender, System.Windows.Input.KeyboardFocusChangedEventArgs e) => ApplyVolumeInput();
+
+    /// <summary>套用輸入的百分比；不是 0～200 的數字時恢復原值並說明。經由滑桿套用，復原紀錄與畫面更新走同一條路。</summary>
+    private void ApplyVolumeInput()
+    {
+        if (TimelineView.SelectedClip is not { Media.HasAudio: true } clip) return;
+        if (VolumeText.ParsePercent(VolumeInput.Text) is { } percent)
+        {
+            VolumeSlider.Value = percent;
+        }
+        else if (VolumeInput.Text.Trim() != $"{Math.Round(clip.Volume * 100):0}")
+        {
+            ShowStatus($"音量請輸入 0～{VolumeText.MaxPercent:0} 的數字。", StatusKind.Warning);
+        }
+        ShowVolumeText(clip);
     }
 
     /// <summary>和前一段（-1）或後一段（1）交換順序。右鍵選單使用（UIUX-PLAN 階段 5）。</summary>

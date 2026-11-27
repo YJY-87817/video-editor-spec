@@ -20,6 +20,9 @@ public partial class ProgressOverlay : UserControl
     /// <summary>按下「取消匯出」。</summary>
     public event Action? CancelExportRequested;
 
+    /// <summary>匯出完成後按下「開啟資料夾」。</summary>
+    public event Action? OpenFolderRequested;
+
     // ---- 讀取素材 ----
 
     public void ShowImport(string text, double value)
@@ -54,6 +57,7 @@ public partial class ProgressOverlay : UserControl
     {
         CancelButton.IsEnabled = true;
         CancelButton.Visibility = Visibility.Visible;
+        OpenFolderButton.Visibility = Visibility.Collapsed;
         ExportProgress.Value = 0;
         ExportPercent.Text = "0%";
         ExportText.Text = title;
@@ -75,6 +79,7 @@ public partial class ProgressOverlay : UserControl
         ExportPercent.Text = "100%";
         ExportText.Text = text;
         CancelButton.Visibility = Visibility.Collapsed;
+        OpenFolderButton.Visibility = Visibility.Visible;
     }
 
     /// <summary>匯出結束（無論成功、取消或失敗）：取消按鈕不能再按。</summary>
@@ -87,6 +92,7 @@ public partial class ProgressOverlay : UserControl
     }
 
     private void OnCancelClick(object sender, RoutedEventArgs e) => CancelExportRequested?.Invoke();
+    private void OnOpenFolderClick(object sender, RoutedEventArgs e) => OpenFolderRequested?.Invoke();
     private void OnCancelImportClick(object sender, RoutedEventArgs e) => CancelImportRequested?.Invoke();
 
     private void UpdateVisibility() =>

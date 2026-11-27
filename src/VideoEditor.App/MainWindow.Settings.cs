@@ -42,6 +42,7 @@ public partial class MainWindow
 
         RatioButton(_settings.Ratio).IsChecked = true;
         (_settings.Mode == FitMode.Pad ? ModePad : ModeFill).IsChecked = true;
+        _timeDisplay = _settings.TimeDisplay;
     }
 
     private static void SetLength(ColumnDefinition column, double? width)
@@ -72,6 +73,7 @@ public partial class MainWindow
             SnapToClips = ClipSnapCheck.IsChecked == true,
             Ratio = SelectedRatio,
             Mode = SelectedMode,
+            TimeDisplay = _timeDisplay,
         });
     }
 

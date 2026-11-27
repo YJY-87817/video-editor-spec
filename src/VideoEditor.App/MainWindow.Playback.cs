@@ -26,7 +26,7 @@ public partial class MainWindow
             ScrubSlider.Maximum = Math.Max(0.001, _engine.Duration);
             ScrubSlider.Value = position;
         }
-        TimeText.Text = PlaybackText.Position(position, _engine.Duration);
+        TimeText.Text = $"{ShowTime(position)} / {ShowTime(_engine.Duration)}";
         if (IsTimelinePreview) TimelineView.Playhead = position;
         UpdateMarkRange();
         UpdateFramingForPosition();
@@ -81,7 +81,13 @@ public partial class MainWindow
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (HandleHistoryKey(e)) return;
+        if (HandleHistoryKey(e) || HandleGoToKey(e)) return;
+        if (e.Key == Key.F1 && Keyboard.Modifiers == ModifierKeys.None)
+        {
+            ShowShortcuts();
+            e.Handled = true;
+            return;
+        }
         // Ctrl／Alt／Shift／Win 組合鍵（例如 Ctrl+S）不是預覽快捷鍵。
         if (!PreviewKeys.ShouldHandle(CurrentModifiers())) return;
         // 正在輸入文字時，按鍵歸文字框。

@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using VideoEditor.Core.Logging;
 using VideoEditor.Core.Models;
+using VideoEditor.Core.Playback;
 
 namespace VideoEditor.Core.Settings;
 
@@ -26,6 +27,9 @@ public sealed record AppSettings
     /// <summary>存成 {"W":16,"H":9}；原尺寸是 {"W":0,"H":0}。</summary>
     public AspectRatio Ratio { get; init; } = AspectRatio.Original;
     public FitMode Mode { get; init; } = FitMode.Fill;
+
+    /// <summary>時間顯示成時間碼（時:分:秒:格）還是百分秒。</summary>
+    public TimeDisplay TimeDisplay { get; init; } = TimeDisplay.Timecode;
 
     /// <summary>上次選檔匯入、上次匯出的資料夾。</summary>
     public string? LastImportFolder { get; init; }
@@ -89,6 +93,7 @@ public sealed class SettingsStore(string path)
     {
         Ratio = settings.Ratio is { } ratio && (ratio.IsOriginal || AspectRatio.Presets.Contains(ratio)) ? ratio : AspectRatio.Original,
         Mode = Enum.IsDefined(settings.Mode) ? settings.Mode : FitMode.Fill,
+        TimeDisplay = Enum.IsDefined(settings.TimeDisplay) ? settings.TimeDisplay : TimeDisplay.Timecode,
     };
 
     public bool Save(AppSettings settings)

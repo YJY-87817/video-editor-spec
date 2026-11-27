@@ -64,6 +64,7 @@ public partial class MainWindow : Window, IExportView, IImportView
         TimelineView.ViewChanged += UpdateTimelineScrollBar;
         ProgressPanel.CancelExportRequested += () => _export?.Cancel();
         ProgressPanel.CancelImportRequested += () => _import?.Cancel();
+        ProgressPanel.OpenFolderRequested += () => OpenExportFolder();
 
         try
         {
@@ -109,7 +110,7 @@ public partial class MainWindow : Window, IExportView, IImportView
         TimelineView.WaveformOf = _waveforms.Get;
         TimelineView.WaveformPending = _waveforms.IsPending;
         UpdateOutputInfo();
-        UpdateMarks();
+        RefreshTimeTexts();
 
         Loaded += async (_, _) =>
         {

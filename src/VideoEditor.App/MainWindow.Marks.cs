@@ -45,11 +45,17 @@ public partial class MainWindow
         return true;
     }
 
+    /// <summary>入點、出點的文字（點一下可以輸入時間）；圖片只顯示加入後的長度。</summary>
     private void UpdateMarks()
     {
-        MarkText.Text = _selectedMedia == null || IsTimelinePreview ? ""
-            : _selectedMedia.Info.IsStill ? $"圖片：加入時間軸為 {Timeline.StillClipDuration:0} 秒"
-            : $"I {PlaybackText.Duration(_points.InPoint)}  O {PlaybackText.Duration(_points.OutPoint(_selectedMedia.Info))}";
+        var marks = _selectedMedia is { Info.IsStill: false } && !IsTimelinePreview;
+        MarkInText.Visibility = MarkOutText.Visibility = marks ? Visibility.Visible : Visibility.Collapsed;
+        if (marks)
+        {
+            MarkInText.Text = $"I {ShowTime(_points.InPoint)}";
+            MarkOutText.Text = $"O {ShowTime(_points.OutPoint(_selectedMedia!.Info))}";
+        }
+        MarkText.Text = _selectedMedia is { Info.IsStill: true } && !IsTimelinePreview ? $"圖片：加入時間軸為 {Timeline.StillClipDuration:0} 秒" : "";
         UpdateMarkRange();
     }
 

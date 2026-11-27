@@ -22,10 +22,20 @@
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="#E0E0E0" />
         </Style>
+        <!-- 用 Tab 移動焦點時顯示的外框（強調色）。空白鍵、方向鍵仍由視窗的快捷鍵先處理，按鈕取得焦點也不會吃掉它們 -->
+        <Style x:Key="FocusOutline">
+            <Setter Property="Control.Template">
+                <Setter.Value>
+                    <ControlTemplate>
+                        <Rectangle Margin="-2" Stroke="{x:Static local:Palette.Accent}" StrokeThickness="1" SnapsToDevicePixels="True" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style TargetType="RadioButton">
             <Setter Property="Foreground" Value="#E0E0E0" />
             <Setter Property="Margin" Value="0,0,12,0" />
-            <Setter Property="Focusable" Value="False" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusOutline}" />
         </Style>
         <Style TargetType="Button">
             <Setter Property="Background" Value="#3A3A3A" />
@@ -33,7 +43,18 @@
             <Setter Property="BorderBrush" Value="#555555" />
             <Setter Property="Padding" Value="10,4" />
             <Setter Property="Margin" Value="0,0,6,0" />
-            <Setter Property="Focusable" Value="False" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusOutline}" />
+        </Style>
+        <!-- 可以點一下輸入時間的文字（目前時間、入點、出點）：滑鼠移上去加底線 -->
+        <Style x:Key="EditableTime" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Consolas" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Cursor" Value="IBeam" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="TextDecorations" Value="Underline" />
+                </Trigger>
+            </Style.Triggers>
         </Style>
         <Style TargetType="ListBox">
             <Setter Property="Background" Value="#252525" />
@@ -59,7 +80,7 @@
         <!-- 預覽模式切換：並排的兩個按鈕。BorderBrush 是這個模式的顏色，選中時整個填滿 -->
         <Style x:Key="SegmentButton" TargetType="RadioButton">
             <Setter Property="Foreground" Value="#E0E0E0" />
-            <Setter Property="Focusable" Value="False" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusOutline}" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -137,7 +158,7 @@
                             <Image Source="{Binding Thumbnail}" Width="72" Height="44" Stretch="Uniform" Margin="0,0,6,0" />
                             <StackPanel>
                                 <TextBlock Text="{Binding Info.FileName}" TextTrimming="CharacterEllipsis" FontSize="12" ToolTip="{Binding Info.Path}" />
-                                <TextBlock Text="{Binding Summary}" Foreground="#9A9A9A" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding Summary}" Foreground="{x:Static local:Palette.TextDim}" FontSize="12" TextTrimming="CharacterEllipsis" />
                             </StackPanel>
                         </DockPanel>
                     </DataTemplate>
@@ -183,7 +204,7 @@
                         Background="#CC2E6FB5" IsHitTestVisible="False" AutomationProperties.AutomationId="ModeBadge">
                     <TextBlock x:Name="ModeBadgeText" FontSize="13" FontWeight="SemiBold" Foreground="White" AutomationProperties.AutomationId="ModeBadgeText" />
                 </Border>
-                <TextBlock x:Name="EmptyHint" Text="匯入素材後，在這裡預覽並用 I / O 標記入出點" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#777777" />
+                <TextBlock x:Name="EmptyHint" Text="匯入素材後，在這裡預覽並用 I / O 標記入出點" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{x:Static local:Palette.TextDim}" />
 
                 <!-- 進度面板：疊在預覽下方，有工作進行時才出現，不推動其他版面 -->
                 <controls:ProgressOverlay x:Name="ProgressPanel" VerticalAlignment="Bottom" Margin="16" />
@@ -198,7 +219,12 @@
                     </Canvas>
                 </Grid>
                 <DockPanel>
-                    <TextBlock x:Name="TimeText" AutomationProperties.AutomationId="TimeText" DockPanel.Dock="Right" VerticalAlignment="Center" FontFamily="Consolas" Text="00:00:00.00 / 00:00:00.00" />
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock x:Name="TimeText" AutomationProperties.AutomationId="TimeText" Style="{StaticResource EditableTime}" Text="00:00:00:00 / 00:00:00:00"
+                                   MouseLeftButtonUp="OnTimeTextClick" ToolTip="點一下輸入要跳到的時間（Ctrl+G）" />
+                        <Button x:Name="TimeFormatButton" AutomationProperties.AutomationId="TimeFormatButton" AutomationProperties.Name="切換時間顯示方式"
+                                Content="⇄" Padding="6,1" Margin="6,0,0,0" Click="OnTimeFormatClick" />
+                    </StackPanel>
                     <WrapPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                             <Button x:Name="RewindButton" AutomationProperties.AutomationId="RewindButton" AutomationProperties.Name="倒帶" Content="◀◀ 倒帶" Width="72" Click="OnRewindClick" ToolTip="J（再按加速）" />
@@ -211,7 +237,11 @@
                             <Border Style="{StaticResource GroupSeparator}" />
                             <Button Content="入點 I" AutomationProperties.AutomationId="MarkInButton" Click="OnMarkIn" ToolTip="I：把目前這一格設為入點" />
                             <Button Content="出點 O" AutomationProperties.AutomationId="MarkOutButton" Click="OnMarkOut" ToolTip="O：把目前這一格設為出點（不含這一格）" />
-                            <TextBlock x:Name="MarkText" AutomationProperties.AutomationId="MarkText" VerticalAlignment="Center" Foreground="{x:Static local:Palette.Accent}" FontFamily="Consolas" Margin="2,0,6,0" />
+                            <TextBlock x:Name="MarkInText" AutomationProperties.AutomationId="MarkInText" Style="{StaticResource EditableTime}" Foreground="{x:Static local:Palette.Accent}" Margin="2,0,10,0"
+                                       MouseLeftButtonUp="OnMarkInTextClick" ToolTip="點一下輸入入點的時間" />
+                            <TextBlock x:Name="MarkOutText" AutomationProperties.AutomationId="MarkOutText" Style="{StaticResource EditableTime}" Foreground="{x:Static local:Palette.Accent}" Margin="0,0,6,0"
+                                       MouseLeftButtonUp="OnMarkOutTextClick" ToolTip="點一下輸入出點的時間" />
+                            <TextBlock x:Name="MarkText" AutomationProperties.AutomationId="MarkText" VerticalAlignment="Center" Foreground="{x:Static local:Palette.Accent}" Margin="2,0,6,0" />
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                             <Border Style="{StaticResource GroupSeparator}" />
@@ -259,10 +289,16 @@
                         <TextBlock x:Name="ClipPropertiesTitle" AutomationProperties.AutomationId="ClipPropertiesTitle" Style="{StaticResource SectionTitle}" TextTrimming="CharacterEllipsis" />
 
                         <TextBlock Style="{StaticResource SubTitle}" Text="音量" Margin="0,0,0,4" />
+                        <!-- 滑桿雙擊回到 100%；右邊可以直接輸入百分比（Enter 套用，Esc 取消） -->
                         <DockPanel>
-                            <TextBlock x:Name="VolumeText" AutomationProperties.AutomationId="VolumeText" DockPanel.Dock="Right" Width="52" TextAlignment="Right" Text="—" />
-                            <Slider x:Name="VolumeSlider" AutomationProperties.AutomationId="VolumeSlider" Minimum="0" Maximum="200" IsEnabled="False" Focusable="False" ValueChanged="OnVolumeChanged" />
+                            <TextBlock DockPanel.Dock="Right" Text="%" VerticalAlignment="Center" Margin="2,0,0,0" />
+                            <TextBox x:Name="VolumeInput" AutomationProperties.AutomationId="VolumeInput" AutomationProperties.Name="音量百分比" DockPanel.Dock="Right" Width="44"
+                                     TextAlignment="Right" VerticalContentAlignment="Center" Background="#2A2A2A" Foreground="#F0F0F0" BorderBrush="#555555"
+                                     IsEnabled="False" KeyDown="OnVolumeInputKeyDown" LostKeyboardFocus="OnVolumeInputLostFocus" ToolTip="0～200，按 Enter 套用" />
+                            <Slider x:Name="VolumeSlider" AutomationProperties.AutomationId="VolumeSlider" Minimum="0" Maximum="200" IsEnabled="False" Focusable="False"
+                                    ValueChanged="OnVolumeChanged" MouseDoubleClick="OnVolumeSliderDoubleClick" Margin="0,0,6,0" ToolTip="雙擊回到 100%" />
                         </DockPanel>
+                        <TextBlock x:Name="VolumeDbText" AutomationProperties.AutomationId="VolumeDbText" FontSize="12" Foreground="{x:Static local:Palette.TextSecondary}" Margin="0,2,0,0" />
 
                         <!-- 只有影片軌的片段才有這些 -->
                         <StackPanel x:Name="VideoPropertiesPanel">
@@ -316,7 +352,9 @@
                 <CheckBox x:Name="ClipSnapCheck" AutomationProperties.AutomationId="ClipSnapCheck" Content="吸附片段" IsChecked="True"
                           Foreground="#E0E0E0" VerticalAlignment="Center" Margin="8,0,0,0" Click="OnClipSnapClick"
                           ToolTip="移動片段時貼齊其他片段的邊緣、播放頭與時間軸開頭；修剪時也貼齊其他片段的邊緣" />
-                <TextBlock Text="Ctrl + 滾輪縮放；S 在播放頭分割；Page Up／Down 跳剪輯點；按住 Alt 暫停吸附" TextTrimming="CharacterEllipsis" Foreground="#777777" FontSize="12" VerticalAlignment="Center" Margin="8,0,0,0" />
+                <Button x:Name="ShortcutsButton" AutomationProperties.AutomationId="ShortcutsButton" AutomationProperties.Name="快捷鍵一覽" Content="?" Padding="8,2" Margin="12,0,0,0"
+                        Click="OnShortcutsClick" ToolTip="快捷鍵一覽（F1）" />
+                <TextBlock Text="F1：快捷鍵" TextTrimming="CharacterEllipsis" Foreground="{x:Static local:Palette.TextDim}" FontSize="12" VerticalAlignment="Center" Margin="6,0,0,0" />
             </DockPanel>
             <ScrollBar x:Name="TimelineScroll" DockPanel.Dock="Bottom" Orientation="Horizontal" Scroll="OnTimelineScroll" />
             <controls:TimelineView x:Name="TimelineView" AutomationProperties.AutomationId="Timeline" ContextMenuOpening="OnTimelineContextMenuOpening">
@@ -344,11 +382,25 @@
             </controls:TimelineView>
         </DockPanel>
 
+        <!-- 輸入時間：點目前時間、入點或出點的文字，或按 Ctrl+G 時，在那段文字旁邊彈出 -->
+        <Popup x:Name="TimePopup" Placement="Top" StaysOpen="False" AllowsTransparency="True" Closed="OnTimePopupClosed">
+            <Border Background="#2A2A2A" BorderBrush="{x:Static local:Palette.Accent}" BorderThickness="1" CornerRadius="3" Padding="8,6">
+                <StackPanel>
+                    <TextBlock x:Name="TimePopupTitle" FontSize="12" Foreground="{x:Static local:Palette.TextSecondary}" Margin="0,0,0,4" />
+                    <TextBox x:Name="TimeInputBox" AutomationProperties.AutomationId="TimeInputBox" Width="170" FontFamily="Consolas" FontSize="14"
+                             Background="#1E1E1E" Foreground="#F0F0F0" BorderBrush="#555555" CaretBrush="#F0F0F0" KeyDown="OnTimeInputKeyDown" />
+                    <TextBlock FontSize="11" Foreground="{x:Static local:Palette.TextDim}" Margin="0,4,0,0" Text="例：1:05、00:01:05:12、+10、-12f" />
+                </StackPanel>
+            </Border>
+        </Popup>
+
         <!-- 狀態列：固定在視窗最下方，訊息不會被捲到畫面外 -->
         <Border Grid.Row="3" Grid.ColumnSpan="5" Background="#181818" BorderBrush="#2E2E2E" BorderThickness="0,1,0,0" Padding="10,4">
             <DockPanel>
                 <TextBlock x:Name="FfmpegText" AutomationProperties.AutomationId="FfmpegText" DockPanel.Dock="Right" Margin="16,0,0,0" FontSize="12"
-                           Foreground="#8A8A8A" TextTrimming="CharacterEllipsis" MaxWidth="420" VerticalAlignment="Center" />
+                           Foreground="{x:Static local:Palette.TextDim}" TextTrimming="CharacterEllipsis" MaxWidth="420" VerticalAlignment="Center" />
+                <Button x:Name="StatusAction" AutomationProperties.AutomationId="StatusAction" DockPanel.Dock="Right" Visibility="Collapsed" Padding="8,0" Margin="12,0,0,0"
+                        FontSize="12" Click="OnStatusActionClick" />
                 <TextBlock x:Name="StatusIcon" AutomationProperties.AutomationId="StatusIcon" Width="18" FontSize="12" VerticalAlignment="Center" />
                 <TextBlock x:Name="StatusText" AutomationProperties.AutomationId="StatusText" FontSize="12" Foreground="{x:Static local:Palette.TextSecondary}"
                            TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
