@@ -52,6 +52,7 @@
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="254" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="250" />
@@ -193,7 +194,6 @@
 
                 <TextBlock Style="{StaticResource SectionTitle}" Text="匯出" />
                 <Button x:Name="ExportButton" AutomationProperties.AutomationId="ExportButton" Content="匯出 MP4…" Padding="10,8" Margin="0" Click="OnExportClick" />
-                <TextBlock x:Name="StatusText" AutomationProperties.AutomationId="StatusText" Margin="0,8,0,0" FontSize="12" TextWrapping="Wrap" Foreground="#B0B0B0" />
             </StackPanel>
         </ScrollViewer>
 
@@ -216,8 +216,19 @@
             <controls:TimelineView x:Name="TimelineView" AutomationProperties.AutomationId="Timeline" />
         </DockPanel>
 
+        <!-- 狀態列：固定在視窗最下方，訊息不會被捲到畫面外 -->
+        <Border Grid.Row="3" Grid.ColumnSpan="3" Background="#181818" BorderBrush="#2E2E2E" BorderThickness="0,1,0,0" Padding="10,4">
+            <DockPanel>
+                <TextBlock x:Name="FfmpegText" AutomationProperties.AutomationId="FfmpegText" DockPanel.Dock="Right" Margin="16,0,0,0" FontSize="12"
+                           Foreground="#8A8A8A" TextTrimming="CharacterEllipsis" MaxWidth="420" VerticalAlignment="Center" />
+                <TextBlock x:Name="StatusIcon" AutomationProperties.AutomationId="StatusIcon" Width="18" FontSize="12" VerticalAlignment="Center" />
+                <TextBlock x:Name="StatusText" AutomationProperties.AutomationId="StatusText" FontSize="12" Foreground="{x:Static local:Palette.TextSecondary}"
+                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+            </DockPanel>
+        </Border>
+
         <!-- 尚未找到 FFmpeg 時的錯誤遮罩 -->
-        <Border x:Name="FatalPanel" Grid.RowSpan="3" Grid.ColumnSpan="3" Background="#E0101010" Visibility="Collapsed">
+        <Border x:Name="FatalPanel" Grid.RowSpan="4" Grid.ColumnSpan="3" Background="#E0101010" Visibility="Collapsed">
             <TextBlock x:Name="FatalText" HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="600" FontSize="16" />
         </Border>
     </Grid>

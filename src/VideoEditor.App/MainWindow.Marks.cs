@@ -41,7 +41,7 @@ public partial class MainWindow
     private bool RejectStillMark()
     {
         if (_selectedMedia?.Info.IsStill != true) return false;
-        StatusText.Text = $"圖片沒有入點與出點，加入時間軸固定 {Timeline.StillClipDuration:0} 秒，之後可拖曳兩端調整長度。";
+        ShowStatus($"圖片沒有入點與出點，加入時間軸固定 {Timeline.StillClipDuration:0} 秒，之後可拖曳兩端調整長度。", StatusKind.Warning);
         return true;
     }
 
@@ -74,7 +74,7 @@ public partial class MainWindow
         var result = _editor.Add(_selectedMedia.Info, _points);
         if (result.Clip == null)
         {
-            StatusText.Text = result.Error ?? "";
+            ShowStatus(result.Error ?? "", StatusKind.Warning);
             return;
         }
         TimelineView.Select(result.Clip);

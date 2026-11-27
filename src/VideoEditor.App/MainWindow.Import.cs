@@ -35,7 +35,7 @@ public partial class MainWindow
         catch (Exception e)
         {
             Log.Error("匯入時發生預料之外的錯誤", e);
-            StatusText.Text = $"匯入時發生錯誤：{e.Message}";
+            ShowStatus($"匯入時發生錯誤：{e.Message}", StatusKind.Error);
         }
     }
 
@@ -69,8 +69,27 @@ public partial class MainWindow
         MediaList.SelectedItem ??= item;
     }
 
-    void IImportView.ShowFailure(string name, string message) =>
-        MessageBox.Show(this, $"無法匯入 {name}：\n{message}", "匯入失敗", MessageBoxButton.OK, MessageBoxImage.Warning);
+    /// <summary>
+    /// 一個檔案失敗時照舊顯示完整的錯誤；好幾個時合成一個對話框，每個檔案只列第一行錯誤（完整內容在紀錄檔），
+    /// 列太多時截斷，對話框才不會超出螢幕。
+    /// </summary>
+    void IImportView.ShowFailures(IReadOnlyList<ImportFailure> failures)
+    {
+        ShowStatus(failures.Count == 1 ? $"無法匯入 {failures[0].Name}" : $"{failures.Count} 個檔案無法匯入", StatusKind.Warning);
+        string text;
+        if (failures.Count == 1)
+        {
+            text = $"無法匯入 {failures[0].Name}：\n{failures[0].Message}";
+        }
+        else
+        {
+            const int shown = 10;
+            var lines = failures.Take(shown).Select(f => $"• {f.Name}：{FirstLine(f.Message)}");
+            var more = failures.Count > shown ? $"\n…還有 {failures.Count - shown} 個" : "";
+            text = $"以下 {failures.Count} 個檔案無法匯入：\n\n{string.Join('\n', lines)}{more}\n\n完整的錯誤訊息記錄在紀錄檔。";
+        }
+        MessageBox.Show(this, text, "匯入失敗", MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
 
     /// <summary>縮圖只是裝飾：解碼失敗時不要讓整批匯入中斷，回傳 null 顯示空白。</summary>
     private static BitmapSource? TryCreateThumbnail(byte[] bytes)

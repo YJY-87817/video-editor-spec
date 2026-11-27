@@ -54,7 +54,7 @@ public partial class MainWindow
         if (_export == null) return;
         if (_timeline.VideoClips.Count == 0)
         {
-            StatusText.Text = "影片軌沒有片段，請先加入時間軸。";
+            ShowStatus("影片軌沒有片段，請先加入時間軸。", StatusKind.Warning);
             return;
         }
 
@@ -68,7 +68,7 @@ public partial class MainWindow
         {
             // async void 的例外不會回到呼叫端；預料之外的錯誤要顯示出來，而不是丟給全域處理器。
             Log.Error("匯出時發生預料之外的錯誤", ex);
-            StatusText.Text = $"匯出時發生錯誤：{ex.Message}";
+            ShowStatus($"匯出時發生錯誤：{ex.Message}", StatusKind.Error);
         }
     }
 
@@ -89,7 +89,7 @@ public partial class MainWindow
         ProgressPanel.StartExport(title);
         Taskbar.ProgressState = System.Windows.Shell.TaskbarItemProgressState.Normal;
         Taskbar.ProgressValue = 0;
-        StatusText.Text = title;
+        ShowStatus(title);
     }
 
     void IExportView.ShowProgress(double value, string text)
@@ -100,12 +100,12 @@ public partial class MainWindow
 
     void IExportView.ShowSucceeded(string output, string elapsed)
     {
-        StatusText.Text = $"匯出完成：{output}";
+        ShowStatus($"匯出完成：{output}", StatusKind.Success);
         ProgressPanel.FinishExport($"✔ 匯出完成：{output}（花費 {elapsed}）");
         Taskbar.ProgressState = System.Windows.Shell.TaskbarItemProgressState.None;
     }
 
-    void IExportView.ShowStatus(string message) => StatusText.Text = message;
+    void IExportView.ShowStatus(string message) => ShowStatus(message, StatusKind.Warning);
 
     void IExportView.ShowError(string message) =>
         MessageBox.Show(this, message, "匯出失敗", MessageBoxButton.OK, MessageBoxImage.Error);

@@ -155,7 +155,7 @@ public partial class MainWindow
         var result = _editor.Split(TimelineView.SelectedClip, TimelineView.Playhead, IsTimelinePreview);
         if (result.Clip == null)
         {
-            StatusText.Text = result.Error ?? "";
+            ShowStatus(result.Error ?? "", StatusKind.Warning);
             return;
         }
         _engine?.Pause();
