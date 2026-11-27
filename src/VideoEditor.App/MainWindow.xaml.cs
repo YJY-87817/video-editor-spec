@@ -29,6 +29,8 @@ public partial class MainWindow : Window, IExportView, IImportView
     private readonly ImportController? _import;
     private readonly PreviewEngine? _engine;
     private readonly WaveformCache? _waveforms;
+    private readonly FrameExtractor? _extractor;
+    private readonly VideoEditor.App.Controls.TimelineThumbnails? _thumbnails;
     private Timeline? _sourcePreview;
     private MediaItem? _selectedMedia;
     private readonly InOutPoints _points = new();
@@ -68,13 +70,12 @@ public partial class MainWindow : Window, IExportView, IImportView
 
         try
         {
-            _tools = FfmpegLocator.Locate();
+            _tools = FfmpegLocator.Locate(preferredDirectory: _settings.FfmpegFolder);
             _ = ShowFfmpegAsync(_tools);
         }
         catch (FfmpegNotFoundException e)
         {
-            FatalText.Text = e.Message;
-            FatalPanel.Visibility = Visibility.Visible;
+            ShowFfmpegMissing(e.Message);
             return;
         }
 
@@ -84,13 +85,16 @@ public partial class MainWindow : Window, IExportView, IImportView
             try { ReversePreviewCache.CleanupStale(); }
             catch (Exception e) { Log.Warn("清理上次遺留的預覽暫存失敗", e); }
         });
-        var extractor = new FrameExtractor(_tools);
-        _import = new ImportController(new MediaProbe(_tools), extractor, this);
+        var extractor = _extractor = new FrameExtractor(_tools);
+        _thumbnails = new VideoEditor.App.Controls.TimelineThumbnails(extractor, TimelineView.InvalidateVisual);
+        TimelineView.Thumbnails = _thumbnails;
+        var probe = new MediaProbe(_tools);
+        _import = new ImportController(probe, extractor, this);
         _export = new ExportController(_tools, this);
         _engine = new PreviewEngine(extractor, new ReversePreviewCache(_tools, progress: new Progress<double?>(ProgressPanel.ShowReverse)), Dispatcher);
         _engine.PositionChanged += OnEnginePosition;
         _engine.PlayingChanged += UpdatePlaybackButtons;
-        _engine.Status += message => ShowStatus(message);
+        _engine.Status += OnEngineStatus;
         _engine.SurfaceChanged += OnSurfaceChanged;
         _engine.Error += message =>
         {
@@ -111,13 +115,21 @@ public partial class MainWindow : Window, IExportView, IImportView
         TimelineView.WaveformPending = _waveforms.IsPending;
         UpdateOutputInfo();
         RefreshTimeTexts();
+        StartProjectTracking(probe);
 
         Loaded += async (_, _) =>
         {
-            // 可由命令列直接開啟素材。轉成絕對路徑，以 - 開頭的相對路徑才不會被當成選項。
+            // 可由命令列直接開啟素材或專案檔。轉成絕對路徑，以 - 開頭的相對路徑才不會被當成選項。
             try
             {
-                await _import!.ImportAsync(Environment.GetCommandLineArgs().Skip(1).Where(File.Exists).Select(System.IO.Path.GetFullPath));
+                // 上次沒有正常關閉時，先問要不要還原；問完才開始自動存檔（否則計時器會先把上次的自動存檔刪掉）。
+                try { await OfferAutoSaveRecoveryAsync(); }
+                finally { StartAutoSave(); }
+                var files = Environment.GetCommandLineArgs().Skip(1).Where(File.Exists).Select(System.IO.Path.GetFullPath).ToList();
+                if (files is [var project] && string.Equals(System.IO.Path.GetExtension(project), VideoEditor.Core.Project.ProjectFile.Extension, StringComparison.OrdinalIgnoreCase))
+                    await OpenProjectAsync(project);
+                else
+                    await _import!.ImportAsync(files);
             }
             catch (Exception ex)
             {
@@ -137,7 +149,7 @@ public partial class MainWindow : Window, IExportView, IImportView
         var text = version == null ? $"使用的 FFmpeg：{tools.Ffmpeg}" : $"使用的 FFmpeg：{tools.Ffmpeg}（{version}）";
         Log.Info(text);
         FfmpegText.Text = version == null ? "FFmpeg" : $"FFmpeg {version}";
-        FfmpegText.ToolTip = text;
+        FfmpegText.ToolTip = $"{text}\n點一下可以改用其他資料夾的 FFmpeg（程式會重新啟動）";
     }
 
     private bool IsTimelinePreview => TimelineMode.IsChecked == true;
@@ -155,20 +167,18 @@ public partial class MainWindow : Window, IExportView, IImportView
 
     /// <summary>
     /// 關閉視窗前確認，避免剪輯成果不見：
-    /// 匯出中關閉會取消匯出，確定後等暫存檔清掉再關，不留下半成品；
-    /// 沒在匯出但時間軸有片段時，提醒目前不能存檔、關閉後會遺失。兩者同時成立時只問一次（匯出中的訊息）。
+    /// 有沒存的變更時先問要不要儲存（儲存／不儲存／取消，UIUX-PLAN-2 決定 5）；
+    /// 匯出中關閉會取消匯出，確定後等暫存檔清掉再關，不留下半成品。
     /// </summary>
     private async void OnClosing(object? sender, CancelEventArgs e)
     {
         if (_closingAfterExport) return;
-        if (_export is not { IsRunning: true } export)
+        if (!ConfirmSaveChanges())
         {
-            if (!_timeline.AllClips.Any()) return;
-            var discard = MessageBox.Show(this, "時間軸上的剪輯會遺失（目前不支援存檔）。\n\n確定要關閉嗎？", "關閉影片編輯器",
-                MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
-            if (discard != MessageBoxResult.Yes) e.Cancel = true;
+            e.Cancel = true;
             return;
         }
+        if (_export is not { IsRunning: true } export) return;
         e.Cancel = true;
         var answer = MessageBox.Show(this, "匯出還沒完成，關閉視窗會取消匯出。\n\n確定要關閉嗎？", "匯出中",
             MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
@@ -181,8 +191,13 @@ public partial class MainWindow : Window, IExportView, IImportView
     private void OnClosed(object? sender, EventArgs e)
     {
         SaveSettings();
+        _autoSaveTimer?.Stop();
+        // 正常關閉（已經存了，或選了不儲存）：不需要下次還原。找不到 FFmpeg 時不動，留給下次還原。
+        if (_tools != null) DeleteAutoSave();
+        if (_restartAfterClose) RestartApplication();
         _export?.Cancel();
         _engine?.Dispose();
         _waveforms?.Dispose();
+        _thumbnails?.Dispose();
     }
 }

@@ -26,6 +26,7 @@ public partial class MainWindow
         UpdateClipPanel(TimelineView.SelectedClip);
         // 輸出基準（第一個影片片段）可能換了，時間尺與時間文字的影格率跟著換。
         RefreshTimeTexts();
+        UpdateMediaUsage();
         TimelineView.InvalidateVisual();
         UpdateTimelineScrollBar();
         UpdateOutputInfo();
@@ -33,6 +34,13 @@ public partial class MainWindow
         // 先在背景產生倒放預覽檔，按播放時多半已經好了；修剪後舊範圍的預覽檔也在這裡停掉。
         _engine?.SyncReverse(_timeline);
         if (IsTimelinePreview) _engine?.Refresh();
+    }
+
+    /// <summary>素材清單上的「N 段」標記。片段數通常不多，每次編輯後整個重算。</summary>
+    private void UpdateMediaUsage()
+    {
+        var counts = _timeline.AllClips.GroupBy(c => c.Media).ToDictionary(g => g.Key, g => g.Count());
+        foreach (var item in _media) item.UsageCount = counts.GetValueOrDefault(item.Info);
     }
 
     private void RefreshClipList()

@@ -130,6 +130,20 @@ public sealed class Timeline
 
     public void Remove(TimelineClip clip) => ListOf(clip.Track).Remove(clip);
 
+    /// <summary>
+    /// 刪除並補齊（Shift+Delete）：刪除片段，同一軌在它之後的片段往前移它的長度，片段之間原本的空白不變，其他軌不動。
+    /// 回傳往前移的片段數。
+    /// </summary>
+    public int RemoveAndClose(TimelineClip clip)
+    {
+        var list = ListOf(clip.Track);
+        if (!list.Remove(clip)) return 0;
+        var later = list.Where(c => c.Start >= clip.End - Epsilon).ToList();
+        foreach (var other in later) other.Start = Math.Max(0, other.Start - clip.Duration);
+        Sort(list);
+        return later.Count;
+    }
+
     /// <summary>素材加到時間軸時預設放的軌道：有畫面的放影片軌，只有聲音的放配樂軌。</summary>
     public static TrackKind DefaultTrack(MediaInfo media) => media.HasVideo ? TrackKind.Video : TrackKind.Music;
 

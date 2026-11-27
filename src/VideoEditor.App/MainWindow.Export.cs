@@ -115,7 +115,7 @@ public partial class MainWindow
         ProgressPanel.StartExport(title);
         Taskbar.ProgressState = System.Windows.Shell.TaskbarItemProgressState.Normal;
         Taskbar.ProgressValue = 0;
-        ShowStatus(title);
+        ShowStatus(title, keep: true);
     }
 
     void IExportView.ShowProgress(double value, string text)

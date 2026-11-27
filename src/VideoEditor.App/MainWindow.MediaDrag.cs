@@ -140,7 +140,7 @@ public partial class MainWindow
     {
         var clip = TimelineView.SelectedClip;
         var video = clip is { Track: TrackKind.Video };
-        foreach (var item in new Control[] { MenuSplit, MenuDelete, MenuClipSeparator1, MenuSwapPrevious, MenuSwapNext, MenuClipSeparator2, MenuVolumeReset })
+        foreach (var item in new Control[] { MenuSplit, MenuDelete, MenuRippleDelete, MenuClipSeparator1, MenuSwapPrevious, MenuSwapNext, MenuClipSeparator2, MenuVolumeReset })
             item.Visibility = clip != null ? Visibility.Visible : Visibility.Collapsed;
         foreach (var item in new Control[] { MenuReverse, MenuRotateLeft, MenuRotateRight, MenuFlipHorizontal, MenuFlipVertical, MenuResetFraming, MenuClipSeparator3 })
             item.Visibility = video ? Visibility.Visible : Visibility.Collapsed;

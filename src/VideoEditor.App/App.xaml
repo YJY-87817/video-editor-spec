@@ -3,7 +3,224 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:VideoEditor.App"
              StartupUri="MainWindow.xaml">
+    <!--
+        全程式共用的深色樣式（UIUX-PLAN-2 階段 1）。放在這裡而不是 MainWindow 的 Window.Resources：
+        右鍵選單、滑鼠提示是另外的彈出視窗，不在主視窗的元素樹裡，只有 Application.Resources 套得到；
+        快捷鍵一覽這類另外開的視窗也一樣。
+        不設隱含的 TextBlock 樣式：放在這一層會連控制項範本裡的文字一起改掉。
+        MessageBox 與檔案對話方塊是 Windows 原生視窗，WPF 樣式改不到。
+    -->
     <Application.Resources>
-         
+        <!-- 用 Tab 移動焦點時顯示的外框（強調色）。空白鍵、方向鍵仍由視窗的快捷鍵先處理，按鈕取得焦點也不會吃掉它們 -->
+        <Style x:Key="FocusOutline">
+            <Setter Property="Control.Template">
+                <Setter.Value>
+                    <ControlTemplate>
+                        <Rectangle Margin="-2" Stroke="{x:Static local:Palette.Accent}" StrokeThickness="1" SnapsToDevicePixels="True" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 按鈕：自己的範本，滑鼠移入、按下、停用都是深色（Windows 內建範本移入時是淺藍、停用時是淺灰） -->
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="#3A3A3A" />
+            <Setter Property="Foreground" Value="#F0F0F0" />
+            <Setter Property="BorderBrush" Value="#555555" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="Margin" Value="0,0,6,0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusOutline}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="3" SnapsToDevicePixels="True">
+                            <ContentPresenter Margin="{TemplateBinding Padding}" RecognizesAccessKey="True"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#474747" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#6E6E6E" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#2C2C2C" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Background" Value="#2A2A2A" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#383838" />
+                                <Setter Property="Foreground" Value="{x:Static local:Palette.TextDim}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="RadioButton">
+            <Setter Property="Foreground" Value="#E0E0E0" />
+            <Setter Property="Margin" Value="0,0,12,0" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusOutline}" />
+        </Style>
+
+        <!-- 勾選框：深色方框、白色勾 -->
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="#E0E0E0" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusOutline}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <StackPanel Orientation="Horizontal" Background="Transparent">
+                            <Border x:Name="Box" Width="15" Height="15" CornerRadius="2" Background="#2A2A2A" BorderBrush="#7A7A7A" BorderThickness="1"
+                                    VerticalAlignment="Center" SnapsToDevicePixels="True">
+                                <Path x:Name="Mark" Data="M 2.5,7.5 L 6,11 L 12,3.5" Stroke="White" StrokeThickness="2" Visibility="Collapsed" />
+                            </Border>
+                            <ContentPresenter Margin="6,0,0,0" VerticalAlignment="Center" RecognizesAccessKey="True" />
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Mark" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="Box" Property="Background" Value="#2E6FB5" />
+                                <Setter TargetName="Box" Property="BorderBrush" Value="#4A90D9" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Box" Property="BorderBrush" Value="#B0B0B0" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!--
+            輸入框：深色底，取得焦點時邊框變成強調色。輸入內容有錯時程式把 Tag 設成 "error"，邊框變紅
+            （寫在焦點的觸發之後，焦點還在輸入框時也看得到紅框）。
+        -->
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="#2A2A2A" />
+            <Setter Property="Foreground" Value="#F0F0F0" />
+            <Setter Property="BorderBrush" Value="#555555" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CaretBrush" Value="#F0F0F0" />
+            <Setter Property="SelectionBrush" Value="#4A90D9" />
+            <Setter Property="Padding" Value="2,1" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="2" SnapsToDevicePixels="True">
+                            <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" Focusable="False"
+                                          HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#7A7A7A" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{x:Static local:Palette.Accent}" />
+                            </Trigger>
+                            <Trigger Property="Tag" Value="error">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{x:Static local:Palette.StatusError}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="ListBox">
+            <Setter Property="Background" Value="#252525" />
+            <Setter Property="Foreground" Value="#E0E0E0" />
+            <Setter Property="BorderBrush" Value="#3A3A3A" />
+        </Style>
+
+        <!-- 滑鼠提示：深色底、細邊框，長的文字自動換行 -->
+        <Style TargetType="ToolTip">
+            <Setter Property="Foreground" Value="#E8E8E8" />
+            <Setter Property="MaxWidth" Value="400" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToolTip">
+                        <Border Background="#2A2A2A" BorderBrush="#5A5A5A" BorderThickness="1" CornerRadius="3" Padding="8,5" SnapsToDevicePixels="True">
+                            <ContentPresenter>
+                                <ContentPresenter.Resources>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="TextWrapping" Value="Wrap" />
+                                    </Style>
+                                </ContentPresenter.Resources>
+                            </ContentPresenter>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 右鍵選單：深色底。程式裡的選單都沒有子選單，範本只處理一層的項目 -->
+        <Style TargetType="ContextMenu">
+            <Setter Property="Foreground" Value="#E8E8E8" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContextMenu">
+                        <Border Background="#262626" BorderBrush="#555555" BorderThickness="1" CornerRadius="3" Padding="2" SnapsToDevicePixels="True">
+                            <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="MenuItem">
+            <Setter Property="Foreground" Value="#E8E8E8" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Border x:Name="Bd" Background="Transparent" CornerRadius="2" Padding="6,4,10,4" MinWidth="180" SnapsToDevicePixels="True">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="22" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="Check" Text="✓" Foreground="{x:Static local:Palette.Accent}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
+                                <ContentPresenter Grid.Column="1" ContentSource="Header" RecognizesAccessKey="True" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="2" Text="{TemplateBinding InputGestureText}" Margin="24,0,0,0" VerticalAlignment="Center"
+                                           Foreground="{x:Static local:Palette.TextDim}" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Check" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#34506F" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="#6A6A6A" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="{x:Static MenuItem.SeparatorStyleKey}" TargetType="Separator">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Separator">
+                        <Border Height="1" Margin="6,4" Background="#444444" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Application.Resources>
 </Application>

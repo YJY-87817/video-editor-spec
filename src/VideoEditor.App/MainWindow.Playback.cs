@@ -76,12 +76,15 @@ public partial class MainWindow
         Key.S => PreviewKey.S,
         Key.PageUp => PreviewKey.PageUp,
         Key.PageDown => PreviewKey.PageDown,
+        Key.Home => PreviewKey.Home,
+        Key.End => PreviewKey.End,
+        Key.E => PreviewKey.E,
         _ => null,
     };
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (HandleHistoryKey(e) || HandleGoToKey(e)) return;
+        if (HandleFileKey(e) || HandleHistoryKey(e) || HandleGoToKey(e) || HandleEditKey(e)) return;
         if (e.Key == Key.F1 && Keyboard.Modifiers == ModifierKeys.None)
         {
             ShowShortcuts();
@@ -94,8 +97,8 @@ public partial class MainWindow
         if (e.OriginalSource is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.PasswordBox) return;
         if (ToPreviewKey(e.Key) is not { } key) return;
         var command = PreviewKeys.FromKey(key);
-        // 清單與捲軸自己用換頁鍵捲動，不搶。
-        if (command is PreviewCommand.PreviousEditPoint or PreviewCommand.NextEditPoint
+        // 清單與捲軸自己用換頁鍵與 Home／End 捲動、跳到頭尾，不搶。
+        if (command is PreviewCommand.PreviousEditPoint or PreviewCommand.NextEditPoint or PreviewCommand.GoToStart or PreviewCommand.GoToEnd
             && e.OriginalSource is System.Windows.Controls.Primitives.Selector or System.Windows.Controls.ListBoxItem
                 or System.Windows.Controls.Primitives.ScrollBar) return;
         // 焦點在素材清單時，Delete 是從清單移除素材，不是刪除時間軸上的片段。
@@ -122,6 +125,9 @@ public partial class MainWindow
             case PreviewCommand.SplitClip: SplitSelectedClip(); break;
             case PreviewCommand.PreviousEditPoint: JumpToEditPoint(forward: false); break;
             case PreviewCommand.NextEditPoint: JumpToEditPoint(forward: true); break;
+            case PreviewCommand.GoToStart: GoToEnd(atStart: true); break;
+            case PreviewCommand.GoToEnd: GoToEnd(atStart: false); break;
+            case PreviewCommand.AddToTimeline: OnAddToTimeline(this, new RoutedEventArgs()); break;
         }
     }
 

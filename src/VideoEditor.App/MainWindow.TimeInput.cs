@@ -3,6 +3,7 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using VideoEditor.Core.Editing;
 using VideoEditor.Core.Export;
+using VideoEditor.Core.Models;
 using VideoEditor.Core.Playback;
 
 namespace VideoEditor.App;
@@ -20,9 +21,14 @@ public partial class MainWindow
     /// 目前畫面上時間對應的影格率：匯入影片預覽用該素材的；剪輯預覽用輸出基準（和匯出相同），時間軸是空的時用 30。
     /// 圖片沒有影格率，由 <see cref="Timecode.EffectiveFps"/> 換成 30。
     /// </summary>
-    private double CurrentFps() => Timecode.EffectiveFps(IsTimelinePreview
+    /// 播放時每個 tick 都會用到，所以算一次存起來；時間軸、預覽模式或選取的素材改變時清掉（<see cref="InvalidateFps"/>）。
+    private double CurrentFps() => _fps ??= Timecode.EffectiveFps(IsTimelinePreview
         ? ExportPlanner.Reference(_timeline)?.Media.FrameRate.Value ?? 0
         : _selectedMedia?.Info.FrameRate.Value ?? 0);
+
+    private double? _fps;
+
+    private void InvalidateFps() => _fps = null;
 
     private string ShowTime(double seconds) => Timecode.Display(seconds, CurrentFps(), _timeDisplay);
 
@@ -35,6 +41,7 @@ public partial class MainWindow
     /// <summary>切換顯示方式或切換預覽（影格率可能不同）後，重寫畫面上所有的時間。</summary>
     private void RefreshTimeTexts()
     {
+        InvalidateFps();
         TimeFormatButton.ToolTip = _timeDisplay == TimeDisplay.Timecode
             ? "目前顯示 時:分:秒:格；按一下改成 時:分:秒.百分秒"
             : "目前顯示 時:分:秒.百分秒；按一下改成 時:分:秒:格";
@@ -72,7 +79,7 @@ public partial class MainWindow
             _ => IsTimelinePreview ? "跳到時間軸的時間（Enter 跳過去）" : "跳到影片的時間（Enter 跳過去）",
         };
         TimeInputBox.Text = ShowTime(CurrentTimeOf(target));
-        TimeInputBox.BorderBrush = InputBorder;
+        TimeInputBox.Tag = null;
         TimePopup.PlacementTarget = anchor;
         TimePopup.IsOpen = true;
         // 彈出視窗出現之後才能把焦點交給輸入框。
@@ -84,8 +91,6 @@ public partial class MainWindow
         });
     }
 
-    private static readonly System.Windows.Media.Brush InputBorder = Palette.Frozen(0x55, 0x55, 0x55);
-
     private double CurrentTimeOf(TimeTarget target) => target switch
     {
         TimeTarget.In => _points.InPoint,
@@ -95,6 +100,8 @@ public partial class MainWindow
 
     private void OnTimeInputKeyDown(object sender, KeyEventArgs e)
     {
+        // 開始修改就拿掉上次的紅框。
+        if (e.Key is not (Key.Enter or Key.Return or Key.Escape)) TimeInputBox.Tag = null;
         if (e.Key == Key.Escape)
         {
             TimePopup.IsOpen = false;
@@ -126,7 +133,7 @@ public partial class MainWindow
         {
             case TimeTarget.Position when IsTimelinePreview:
                 // 對齊到輸出的影格，和匯出看到的一樣。
-                time = Math.Min(end, Math.Floor(time * fps + 1e-6) / fps);
+                time = Math.Min(end, Timecode.AlignToFrame(time, fps));
                 TimelineView.Playhead = time;
                 _engine.Seek(time);
                 break;
@@ -156,7 +163,8 @@ public partial class MainWindow
 
     private bool Reject(string message)
     {
-        TimeInputBox.BorderBrush = Palette.StatusError;
+        // 紅框由 App.xaml 的輸入框樣式依 Tag 顯示，取得焦點時也看得到。
+        TimeInputBox.Tag = "error";
         ShowStatus(message, StatusKind.Warning);
         TimeInputBox.SelectAll();
         return false;

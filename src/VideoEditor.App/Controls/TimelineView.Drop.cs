@@ -41,6 +41,7 @@ public sealed partial class TimelineView
     protected override void OnDragLeave(DragEventArgs e)
     {
         base.OnDragLeave(e);
+        StopAutoScroll();
         _drop = null;
         InvalidateVisual();
     }
@@ -48,6 +49,7 @@ public sealed partial class TimelineView
     protected override void OnDrop(DragEventArgs e)
     {
         var time = DropTime(e);
+        StopAutoScroll();
         _drop = null;
         InvalidateVisual();
         if (DraggedMedia?.Invoke(e.Data) is { } dragged) MediaDropped?.Invoke(dragged.Media, time);
@@ -59,6 +61,7 @@ public sealed partial class TimelineView
 
     private void UpdateDrop(DragEventArgs e)
     {
+        UpdateAutoScroll(e.GetPosition(this), dropping: true);
         var time = DropTime(e);
         if (DraggedMedia?.Invoke(e.Data) is { } dragged)
         {

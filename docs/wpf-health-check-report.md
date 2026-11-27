@@ -281,7 +281,7 @@ Core 沒有任何第三方套件。專案沒有 MVVM 框架、DI 容器、Loggin
 - **仍待處理**：`TimelineView` 與 `MainWindow.Preview.cs` 內單一控制項用的顏色仍寫在原處；所有 UI 文字硬編碼為繁體中文，沒有 `.resx`。
 
 #### W-7　資料繫結只有基本用法
-- **Low／已確認**：`MediaItem` 沒有 `INotifyPropertyChanged`，目前縮圖在建立時就設好所以正常；`ClipList` 每次編輯重新指派 `ItemsSource` 並以旗標避免循環。
+- **Low／已確認（部分已處理）**：`MediaItem` 已實作 `INotifyPropertyChanged`（2026-11-27，使用段數會變；縮圖仍在建立時設好）；`ClipList` 每次編輯重新指派 `ItemsSource` 並以旗標避免循環。
 
 #### W-9　其他小項目
 - **Low／已確認（部分已處理）**：`FatalPanel` 只擋滑鼠，不擋鍵盤（已確認指令在 `_engine == null` 時都安全）。快捷鍵已改用 `PreviewKey` 列舉，不再以字串傳遞。
