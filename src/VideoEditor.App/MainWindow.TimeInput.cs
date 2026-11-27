@@ -78,7 +78,7 @@ public partial class MainWindow
             _ => IsTimelinePreview ? "跳到時間軸的時間（Enter 跳過去）" : "跳到影片的時間（Enter 跳過去）",
         };
         TimeInputBox.Text = ShowTime(CurrentTimeOf(target));
-        TimeInputBox.BorderBrush = InputBorder;
+        TimeInputBox.Tag = null;
         TimePopup.PlacementTarget = anchor;
         TimePopup.IsOpen = true;
         // 彈出視窗出現之後才能把焦點交給輸入框。
@@ -90,8 +90,6 @@ public partial class MainWindow
         });
     }
 
-    private static readonly System.Windows.Media.Brush InputBorder = Palette.Frozen(0x55, 0x55, 0x55);
-
     private double CurrentTimeOf(TimeTarget target) => target switch
     {
         TimeTarget.In => _points.InPoint,
@@ -101,6 +99,8 @@ public partial class MainWindow
 
     private void OnTimeInputKeyDown(object sender, KeyEventArgs e)
     {
+        // 開始修改就拿掉上次的紅框。
+        if (e.Key is not (Key.Enter or Key.Return or Key.Escape)) TimeInputBox.Tag = null;
         if (e.Key == Key.Escape)
         {
             TimePopup.IsOpen = false;
@@ -162,7 +162,8 @@ public partial class MainWindow
 
     private bool Reject(string message)
     {
-        TimeInputBox.BorderBrush = Palette.StatusError;
+        // 紅框由 App.xaml 的輸入框樣式依 Tag 顯示，取得焦點時也看得到。
+        TimeInputBox.Tag = "error";
         ShowStatus(message, StatusKind.Warning);
         TimeInputBox.SelectAll();
         return false;

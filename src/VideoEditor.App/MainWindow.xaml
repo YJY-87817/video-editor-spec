@@ -22,29 +22,7 @@
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="#E0E0E0" />
         </Style>
-        <!-- 用 Tab 移動焦點時顯示的外框（強調色）。空白鍵、方向鍵仍由視窗的快捷鍵先處理，按鈕取得焦點也不會吃掉它們 -->
-        <Style x:Key="FocusOutline">
-            <Setter Property="Control.Template">
-                <Setter.Value>
-                    <ControlTemplate>
-                        <Rectangle Margin="-2" Stroke="{x:Static local:Palette.Accent}" StrokeThickness="1" SnapsToDevicePixels="True" />
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-        <Style TargetType="RadioButton">
-            <Setter Property="Foreground" Value="#E0E0E0" />
-            <Setter Property="Margin" Value="0,0,12,0" />
-            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusOutline}" />
-        </Style>
-        <Style TargetType="Button">
-            <Setter Property="Background" Value="#3A3A3A" />
-            <Setter Property="Foreground" Value="#F0F0F0" />
-            <Setter Property="BorderBrush" Value="#555555" />
-            <Setter Property="Padding" Value="10,4" />
-            <Setter Property="Margin" Value="0,0,6,0" />
-            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusOutline}" />
-        </Style>
+        <!-- 按鈕、勾選框、輸入框、清單、右鍵選單、滑鼠提示的共用樣式在 App.xaml -->
         <!-- 可以點一下輸入時間的文字（目前時間、入點、出點）：滑鼠移上去加底線 -->
         <Style x:Key="EditableTime" TargetType="TextBlock">
             <Setter Property="FontFamily" Value="Consolas" />
@@ -55,11 +33,6 @@
                     <Setter Property="TextDecorations" Value="Underline" />
                 </Trigger>
             </Style.Triggers>
-        </Style>
-        <Style TargetType="ListBox">
-            <Setter Property="Background" Value="#252525" />
-            <Setter Property="Foreground" Value="#E0E0E0" />
-            <Setter Property="BorderBrush" Value="#3A3A3A" />
         </Style>
         <!-- 分隔線：平常幾乎看不見，滑鼠移上去才亮起來 -->
         <Style x:Key="Splitter" TargetType="GridSplitter">
@@ -293,7 +266,7 @@
                         <DockPanel>
                             <TextBlock DockPanel.Dock="Right" Text="%" VerticalAlignment="Center" Margin="2,0,0,0" />
                             <TextBox x:Name="VolumeInput" AutomationProperties.AutomationId="VolumeInput" AutomationProperties.Name="音量百分比" DockPanel.Dock="Right" Width="44"
-                                     TextAlignment="Right" VerticalContentAlignment="Center" Background="#2A2A2A" Foreground="#F0F0F0" BorderBrush="#555555"
+                                     TextAlignment="Right" VerticalContentAlignment="Center"
                                      IsEnabled="False" KeyDown="OnVolumeInputKeyDown" LostKeyboardFocus="OnVolumeInputLostFocus" ToolTip="0～200，按 Enter 套用" />
                             <Slider x:Name="VolumeSlider" AutomationProperties.AutomationId="VolumeSlider" Minimum="0" Maximum="200" IsEnabled="False" Focusable="False"
                                     ValueChanged="OnVolumeChanged" MouseDoubleClick="OnVolumeSliderDoubleClick" Margin="0,0,6,0" ToolTip="雙擊回到 100%" />
@@ -388,7 +361,7 @@
                 <StackPanel>
                     <TextBlock x:Name="TimePopupTitle" FontSize="12" Foreground="{x:Static local:Palette.TextSecondary}" Margin="0,0,0,4" />
                     <TextBox x:Name="TimeInputBox" AutomationProperties.AutomationId="TimeInputBox" Width="170" FontFamily="Consolas" FontSize="14"
-                             Background="#1E1E1E" Foreground="#F0F0F0" BorderBrush="#555555" CaretBrush="#F0F0F0" KeyDown="OnTimeInputKeyDown" />
+                             Background="#1E1E1E" KeyDown="OnTimeInputKeyDown" />
                     <TextBlock FontSize="11" Foreground="{x:Static local:Palette.TextDim}" Margin="0,4,0,0" Text="例：1:05、00:01:05:12、+10、-12f" />
                 </StackPanel>
             </Border>
