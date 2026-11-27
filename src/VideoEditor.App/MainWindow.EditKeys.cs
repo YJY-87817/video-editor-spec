@@ -18,8 +18,7 @@ public partial class MainWindow
     {
         if (e.OriginalSource is System.Windows.Controls.Primitives.TextBoxBase) return false;
         var modifiers = Keyboard.Modifiers;
-        // 按著 Alt 時 WPF 給的是 Key.System，真正的按鍵在 SystemKey。
-        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        var key = ShortcutKey(e);
         switch (key)
         {
             case Key.E when modifiers == ModifierKeys.Shift:

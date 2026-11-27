@@ -156,7 +156,7 @@ public partial class MainWindow
     private bool HandleFileKey(KeyEventArgs e)
     {
         var modifiers = Keyboard.Modifiers;
-        switch (e.Key)
+        switch (ShortcutKey(e))
         {
             case Key.N when modifiers == ModifierKeys.Control: NewProject(); break;
             case Key.O when modifiers == ModifierKeys.Control: RunOpenProject(); break;
