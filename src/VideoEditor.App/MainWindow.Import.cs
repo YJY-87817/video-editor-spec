@@ -102,7 +102,7 @@ public partial class MainWindow
     }
 
     /// <summary>縮圖只是裝飾：解碼失敗時不要讓整批匯入中斷，回傳 null 顯示空白。</summary>
-    private static BitmapSource? TryCreateThumbnail(byte[] bytes)
+    internal static BitmapSource? TryCreateThumbnail(byte[] bytes)
     {
         try
         {

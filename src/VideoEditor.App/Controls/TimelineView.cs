@@ -91,6 +91,9 @@ public sealed partial class TimelineView : FrameworkElement
 
     /// <summary>取得素材已產生好的波形；還沒好或沒有時回傳 null。沒設定就不畫波形。</summary>
     public Func<MediaInfo, WaveformData?>? WaveformOf { get; set; }
+    /// <summary>影片片段上的縮圖；沒設定就不畫。</summary>
+    public TimelineThumbnails? Thumbnails { get; set; }
+
     /// <summary>素材的波形是否還在產生中（片段上會加註）。</summary>
     public Func<MediaInfo, bool>? WaveformPending { get; set; }
 
@@ -185,6 +188,7 @@ public sealed partial class TimelineView : FrameworkElement
     protected override void OnRender(DrawingContext dc)
     {
         dc.DrawRectangle(Background, null, new Rect(0, 0, ActualWidth, ActualHeight));
+        Thumbnails?.BeginRender();
         var width = ActualWidth;
 
         DrawRow(dc, "V1", VideoRowY, VideoRowHeight, width);
@@ -264,6 +268,8 @@ public sealed partial class TimelineView : FrameworkElement
         var rect = new Rect(x, y + 1, Math.Max(1, w), height - 2);
         dc.DrawRoundedRectangle(brush, null, rect, 3, 3);
         Brush? labelBack = null;
+        // 影片軌（V1）畫縮圖；有縮圖時文字墊深色底才看得清楚。
+        if (!audio && y == VideoRowY && DrawThumbnails(dc, clip, rect)) labelBack = LabelBackBrush;
         if (audio)
         {
             if (WaveformOf?.Invoke(clip.Media) is { } waveform)
@@ -280,6 +286,45 @@ public sealed partial class TimelineView : FrameworkElement
         // 選取框畫在波形上面，才不會被蓋住。
         if (clip == SelectedClip) dc.DrawRoundedRectangle(null, SelectedPen, rect, 3, 3);
         if (w > 24) DrawText(dc, label, Math.Max(x, HeaderWidth) + 6, y + 4, TextBrush, x + w - Math.Max(x, HeaderWidth) - 10, labelBack);
+    }
+
+    /// <summary>
+    /// 沿著片段畫縮圖（哪幾張由 <see cref="ThumbnailPlan"/> 決定，只畫看得到的），套用片段的旋轉與鏡像。
+    /// 縮圖還沒產生好的位置只有底色。回傳是否有要畫縮圖的位置。
+    /// </summary>
+    private bool DrawThumbnails(DrawingContext dc, TimelineClip clip, Rect rect)
+    {
+        if (Thumbnails == null) return false;
+        var height = rect.Height - 4;
+        var size = clip.DisplaySize;
+        var aspect = size.Height > 0 ? Math.Clamp((double)size.Width / size.Height, 0.5, 2.5) : 16.0 / 9;
+        var thumbWidth = height * aspect;
+        var slots = ThumbnailPlan.Slots(clip, _pixelsPerSecond, thumbWidth, XToTime(HeaderWidth), XToTime(ActualWidth));
+        if (slots.Count == 0) return false;
+        dc.PushClip(new RectangleGeometry(rect, 3, 3));
+        foreach (var slot in slots)
+        {
+            if (Thumbnails.Get(clip.Media, slot.SourceTime) is not { } bitmap) continue;
+            DrawTransformed(dc, bitmap, new Rect(TimeToX(slot.TimelineTime), rect.Top + 2, thumbWidth, height), clip.Transform);
+        }
+        dc.Pop();
+        return true;
+    }
+
+    /// <summary>
+    /// 先順時針旋轉，再做水平／垂直鏡像（和 <see cref="FrameTransform"/> 匯出時相同），畫進 dest。
+    /// 推入的變換是後推先套用：畫圖 → 旋轉 → 鏡像 → 移到 dest 中心。
+    /// </summary>
+    private static void DrawTransformed(DrawingContext dc, ImageSource image, Rect dest, FrameTransform transform)
+    {
+        var (width, height) = transform.SwapsSize ? (dest.Height, dest.Width) : (dest.Width, dest.Height);
+        dc.PushTransform(new TranslateTransform(dest.Left + dest.Width / 2, dest.Top + dest.Height / 2));
+        dc.PushTransform(new ScaleTransform(transform.FlipHorizontal ? -1 : 1, transform.FlipVertical ? -1 : 1));
+        dc.PushTransform(new RotateTransform(transform.Rotation));
+        dc.DrawImage(image, new Rect(-width / 2, -height / 2, width, height));
+        dc.Pop();
+        dc.Pop();
+        dc.Pop();
     }
 
     /// <summary>

@@ -30,6 +30,7 @@ public partial class MainWindow : Window, IExportView, IImportView
     private readonly PreviewEngine? _engine;
     private readonly WaveformCache? _waveforms;
     private readonly FrameExtractor? _extractor;
+    private readonly VideoEditor.App.Controls.TimelineThumbnails? _thumbnails;
     private Timeline? _sourcePreview;
     private MediaItem? _selectedMedia;
     private readonly InOutPoints _points = new();
@@ -85,6 +86,8 @@ public partial class MainWindow : Window, IExportView, IImportView
             catch (Exception e) { Log.Warn("清理上次遺留的預覽暫存失敗", e); }
         });
         var extractor = _extractor = new FrameExtractor(_tools);
+        _thumbnails = new VideoEditor.App.Controls.TimelineThumbnails(extractor, TimelineView.InvalidateVisual);
+        TimelineView.Thumbnails = _thumbnails;
         _import = new ImportController(new MediaProbe(_tools), extractor, this);
         _export = new ExportController(_tools, this);
         _engine = new PreviewEngine(extractor, new ReversePreviewCache(_tools, progress: new Progress<double?>(ProgressPanel.ShowReverse)), Dispatcher);
@@ -185,5 +188,6 @@ public partial class MainWindow : Window, IExportView, IImportView
         _export?.Cancel();
         _engine?.Dispose();
         _waveforms?.Dispose();
+        _thumbnails?.Dispose();
     }
 }

@@ -220,3 +220,10 @@
 - **片段的滑鼠提示**（#7）：Core 新增 `Editing/ClipDescription.cs`。和規劃不同：時間的格式化由呼叫端傳入（`Func<double, double, string>`），因為架構規則不允許 Editing 依賴 Playback（`Timecode` 在 Playback）。`TimelineView` 在滑鼠移動時重算提示文字，文字沒變就不換（提示才不會閃）；按下滑鼠、離開時間軸時拿掉。時間格式與時間尺相同。
 - **素材使用標記**（#11）：`MediaItem` 實作 `INotifyPropertyChanged`，新增 `UsageCount`、`IsUsed`、`UsageText`、`UsageToolTip`。`OnClipsChanged` 時重算（一次分組，不是每個素材掃一次時間軸）。縮圖右下角藍色小標記「N 段」，滑鼠提示說明。健檢報告 W-7 更新。
 - **測試**：新增 `ClipDescriptionTests` 4 個（一般影片、改過設定的片段、配樂、圖片）。單元測試 709 個全部通過。
+
+### 階段 5（2026-11-27 完成，畫面與播放時的流暢度需在 Windows 上確認）
+
+- **Core**：`Editing/ThumbnailPlan.cs`。和規劃相比，縮圖的間隔從一組整齊的秒數（0.5、1、2、5、10、15、30、60…）中挑放得下一張縮圖的最小值，而不是照像素平均分配：同一個縮放範圍內取的來源時間都一樣，快取比較容易命中。來源時間對齊到影格並留在片段的來源範圍內；倒放片段用 `ToSourceTime`，第一張是出點前最後一格。
+- **App**：`Controls/TimelineThumbnails.cs` 照規劃（單一 FFmpeg、最近一次繪製優先、兩次繪製以前的請求丟掉、100 毫秒合併重畫、`LruCache` 300 張，產生失敗的也記住，不會一直重試；正在產生的那一張不會重複排入）。`TimelineView.DrawThumbnails` 依片段轉完方向的長寬比決定縮圖寬度，用變換套用旋轉與鏡像（先旋轉再鏡像，和匯出相同）；有縮圖時文字墊深色底。`MainWindow.TryCreateThumbnail` 改成 internal 共用。
+- **W-2**：沒有在 Windows 上量測；縮圖是凍結的點陣圖，繪製本身便宜，但播放時每個 tick 會多畫看得到的縮圖。如果實機上播放變卡，照 W-2 的建議把播放頭拆成獨立圖層。
+- **測試**：新增 `ThumbnailPlanTests` 12 個（間隔、縮小時只有一張、放大時沿片段排列、只列看得到的、太窄不畫、倒放、對齊影格、圖片取 0 秒）。單元測試 721 個全部通過。
