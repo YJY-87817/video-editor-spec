@@ -84,7 +84,7 @@ public partial class MainWindow
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (HandleHistoryKey(e) || HandleGoToKey(e) || HandleEditKey(e)) return;
+        if (HandleFileKey(e) || HandleHistoryKey(e) || HandleGoToKey(e) || HandleEditKey(e)) return;
         if (e.Key == Key.F1 && Keyboard.Modifiers == ModifierKeys.None)
         {
             ShowShortcuts();

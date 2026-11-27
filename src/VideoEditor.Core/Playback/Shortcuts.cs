@@ -32,6 +32,10 @@ public static class Shortcuts
         new("時間軸", "Ctrl + 滾輪、+ / -", "縮放時間軸"),
         new("時間軸", "滾輪", "左右捲動時間軸"),
         new("時間軸", "按住 Alt 拖曳", "暫時不吸附"),
+        new("檔案", "Ctrl + N", "新專案"),
+        new("檔案", "Ctrl + O", "開啟專案"),
+        new("檔案", "Ctrl + S", "儲存專案"),
+        new("檔案", "Ctrl + Shift + S", "另存新檔"),
         new("其他", "F1", "顯示這個一覽"),
     ];
 

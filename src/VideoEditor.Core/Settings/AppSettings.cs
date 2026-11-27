@@ -37,6 +37,7 @@ public sealed record AppSettings
     /// <summary>上次選檔匯入、上次匯出的資料夾。</summary>
     public string? LastImportFolder { get; init; }
     public string? LastExportFolder { get; init; }
+    public string? LastProjectFolder { get; init; }
 }
 
 /// <summary>視窗的位置與大小（裝置無關像素）。</summary>

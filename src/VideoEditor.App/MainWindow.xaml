@@ -113,6 +113,21 @@
 
         <!-- 素材清單 -->
         <DockPanel Grid.Row="0" Grid.Column="0" Margin="8,8,3,8">
+            <!-- 專案：檔案選單（新專案、開啟、儲存、另存新檔）與常用的儲存 -->
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                <Button x:Name="FileMenuButton" AutomationProperties.AutomationId="FileMenuButton" AutomationProperties.Name="檔案選單" Content="檔案 ▾" Click="OnFileMenuClick">
+                    <Button.ContextMenu>
+                        <ContextMenu x:Name="FileMenu" AutomationProperties.AutomationId="FileMenu">
+                            <MenuItem Header="新專案" InputGestureText="Ctrl+N" Click="OnNewProjectClick" />
+                            <MenuItem Header="開啟專案…" InputGestureText="Ctrl+O" Click="OnOpenProjectClick" />
+                            <Separator />
+                            <MenuItem Header="儲存" InputGestureText="Ctrl+S" Click="OnSaveClick" />
+                            <MenuItem Header="另存新檔…" InputGestureText="Ctrl+Shift+S" Click="OnSaveAsClick" />
+                        </ContextMenu>
+                    </Button.ContextMenu>
+                </Button>
+                <Button x:Name="SaveButton" AutomationProperties.AutomationId="SaveButton" Content="儲存" Margin="0" Click="OnSaveClick" ToolTip="Ctrl+S：儲存專案" />
+            </DockPanel>
             <Button x:Name="ImportButton" AutomationProperties.AutomationId="ImportButton" DockPanel.Dock="Top" Margin="0,0,0,6" Content="匯入素材…（或拖放到視窗）" Click="OnImportClick" />
             <TextBlock x:Name="MediaDetails" DockPanel.Dock="Bottom" Margin="0,8,0,0" TextWrapping="Wrap" FontSize="12" LineHeight="18"
                        AutomationProperties.AutomationId="MediaDetails" />

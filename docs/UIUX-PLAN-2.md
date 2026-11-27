@@ -227,3 +227,20 @@
 - **App**：`Controls/TimelineThumbnails.cs` 照規劃（單一 FFmpeg、最近一次繪製優先、兩次繪製以前的請求丟掉、100 毫秒合併重畫、`LruCache` 300 張，產生失敗的也記住，不會一直重試；正在產生的那一張不會重複排入）。`TimelineView.DrawThumbnails` 依片段轉完方向的長寬比決定縮圖寬度，用變換套用旋轉與鏡像（先旋轉再鏡像，和匯出相同）；有縮圖時文字墊深色底。`MainWindow.TryCreateThumbnail` 改成 internal 共用。
 - **W-2**：沒有在 Windows 上量測；縮圖是凍結的點陣圖，繪製本身便宜，但播放時每個 tick 會多畫看得到的縮圖。如果實機上播放變卡，照 W-2 的建議把播放頭拆成獨立圖層。
 - **測試**：新增 `ThumbnailPlanTests` 12 個（間隔、縮小時只有一張、放大時沿片段排列、只列看得到的、太窄不畫、倒放、對齊影格、圖片取 0 秒）。單元測試 721 個全部通過。
+
+### 階段 6（2026-11-27 完成，畫面需在 Windows 上確認）
+
+- **Core**（`Project/ProjectFile.cs`）：`ProjectFile`／`ProjectMedia`／`ProjectClip`（JSON，版本 1）、`ProjectSerializer`（`Create`、`Save`、`Load`、`Validate`、`ResolveMediaPath`、`Build`）、`ProjectState`（有沒有沒存的變更）、`AutoSaveTracker`（3 秒沒有再改才存、和上次存的一樣就不存）。`Build` 用第一輪的 `TimelineSnapshot`／`Timeline.Restore` 一次換掉整條時間軸；素材找不到、素材變短、沒有畫面或聲音、和前一段重疊的片段略過並說明。`TimelineHistory.Clear()`。`ArchitectureTests` 加上 Project（依賴 Models、Editing）。
+- **和規劃不同**：
+  - 沒有獨立的 `ProjectLoader`：重新讀取素材資訊（`MediaProbe`，屬於 Ffmpeg）放在 App 的 `LoadProjectAsync`，Project 資料夾就不必依賴 Ffmpeg。整合測試照樣用真實影片走一遍「存檔 → 讀檔 → 找素材 → 讀素材資訊 → 重建」。
+  - 「有沒有沒存的變更」也比較素材清單（匯入素材也算變更），否則只匯入素材沒有加到時間軸時，關閉不會提醒。
+  - 檔案按鈕不是一整排：左欄上方放「檔案 ▾」（選單）與「儲存」，左欄寬度放不下四個按鈕。
+  - 開啟 `.vedit` 也支援命令列（檔案關聯）。
+- **App**（`MainWindow.Project.cs`）：
+  - 每秒一次：更新視窗標題（`*`）、需要時寫自動存檔、沒有變更時刪掉自動存檔。
+  - 啟動時有自動存檔就詢問還原；還原後專案檔路徑用自動存檔裡記的原本位置，並算有沒存的變更。
+  - 開啟時找不到素材：對話框列出每個檔案，有「重新指定…」「略過」，可以取消開啟；讀取素材資訊時用進度面板顯示；有片段沒載入時用一個對話框說明。
+  - 關閉前先問是否儲存（取消就不關），再處理匯出中的確認；正常關閉時刪掉自動存檔（找不到 FFmpeg 時不刪，留給下次還原）。
+  - F1 一覽加上「檔案」一組。
+- **已知限制**：同時開兩個程式時共用同一份自動存檔，後存的會蓋掉先存的（README 已註明）。
+- **測試**：新增 `ProjectTests` 23 個與整合測試 1 個（存讀一致、素材清單順序、資料夾搬家後用相對路徑找到、絕對路徑優先、9 種壞掉的專案檔、檔案不在、素材找不到或變短時略過、重疊略過、重建會清掉原本的時間軸、有沒有沒存的變更、自動存檔的時機兩種、清掉復原紀錄）。在 Linux 上以 FFmpeg 6.1 跑完整測試：887 個通過，失敗的仍是第一輪提過的 3 個環境差異。

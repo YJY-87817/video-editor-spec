@@ -69,6 +69,15 @@ public sealed class TimelineHistory(Timeline timeline, int capacity = TimelineHi
 
     public TimelineSnapshot Capture() => timeline.Capture();
 
+    /// <summary>清掉所有可以復原與重做的步驟（開新專案、開啟專案時）。</summary>
+    public void Clear()
+    {
+        if (_undo.Count == 0 && _redo.Count == 0) return;
+        _undo.Clear();
+        _redo.Clear();
+        Changed?.Invoke();
+    }
+
     /// <summary>
     /// 把修改前的樣子記成一步。時間軸和 <paramref name="before"/> 一樣時不記錄，回傳 false。
     /// <paramref name="mergeKey"/> 和上一步相同、而且在 <see cref="MergeWindow"/> 以內時，併入上一步（保留上一步修改前的樣子）；
