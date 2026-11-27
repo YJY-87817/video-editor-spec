@@ -22,6 +22,8 @@ public partial class MainWindow
     private void OnClipsChanged()
     {
         RefreshClipList();
+        // 片段的編號（第幾段）可能變了。
+        UpdateClipPanel(TimelineView.SelectedClip);
         TimelineView.InvalidateVisual();
         UpdateTimelineScrollBar();
         UpdateOutputInfo();
@@ -48,11 +50,13 @@ public partial class MainWindow
 
     private void OnTimelineSelectionChanged(TimelineClip? clip)
     {
+        UpdateClipPanel(clip);
+        SplitButton.IsEnabled = DeleteButton.IsEnabled = clip != null;
         using (_volumeGuard.Enter())
         {
             VolumeSlider.IsEnabled = clip is { Media.HasAudio: true };
             VolumeSlider.Value = (clip?.Volume ?? 1) * 100;
-            VolumeText.Text = clip == null ? "—" : $"{VolumeSlider.Value:0}%";
+            VolumeText.Text = clip == null ? "—" : clip.Media.HasAudio ? $"{VolumeSlider.Value:0}%" : "無聲音";
         }
 
         using (_clipListGuard.Enter())
@@ -66,6 +70,21 @@ public partial class MainWindow
         }
         UpdateTransformControls(clip);
         UpdateFramingControls(clip);
+    }
+
+    /// <summary>
+    /// 右側「選取的片段」：沒有選取時只顯示提示；配樂片段只有音量；影片片段再加上旋轉鏡像、畫面位置與倒放。
+    /// </summary>
+    private void UpdateClipPanel(TimelineClip? clip)
+    {
+        ClipHint.Visibility = clip == null ? Visibility.Visible : Visibility.Collapsed;
+        ClipPropertiesPanel.Visibility = clip == null ? Visibility.Collapsed : Visibility.Visible;
+        if (clip == null) return;
+        VideoPropertiesPanel.Visibility = clip.Track == TrackKind.Video ? Visibility.Visible : Visibility.Collapsed;
+        ClipPropertiesTitle.Text = clip.Track == TrackKind.Video
+            ? $"第 {_timeline.VideoClips.TakeWhile(c => c != clip).Count() + 1} 段：{clip.Media.FileName}"
+            : $"配樂：{clip.Media.FileName}";
+        ClipPropertiesTitle.ToolTip = clip.Media.Path;
     }
 
     // ---- 旋轉與鏡像 ----
@@ -127,9 +146,7 @@ public partial class MainWindow
         TimelineView.InvalidateVisual();
     }
 
-    private void OnMoveUp(object sender, RoutedEventArgs e) => SwapSelected(-1);
-    private void OnMoveDown(object sender, RoutedEventArgs e) => SwapSelected(1);
-
+    /// <summary>和前一段（-1）或後一段（1）交換順序。右鍵選單使用（UIUX-PLAN 階段 5）。</summary>
     private void SwapSelected(int direction)
     {
         if (TimelineView.SelectedClip is not { } clip) return;

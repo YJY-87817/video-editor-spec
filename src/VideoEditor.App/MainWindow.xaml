@@ -40,6 +40,11 @@
             <Setter Property="Foreground" Value="#E0E0E0" />
             <Setter Property="BorderBrush" Value="#3A3A3A" />
         </Style>
+        <Style x:Key="SubTitle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#C8C8C8" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="0,10,0,4" />
+        </Style>
         <Style x:Key="SectionTitle" TargetType="TextBlock">
             <Setter Property="Foreground" Value="#9CC4F0" />
             <Setter Property="FontWeight" Value="SemiBold" />
@@ -133,69 +138,79 @@
             </DockPanel>
         </StackPanel>
 
-        <!-- 輸出設定 -->
-        <ScrollViewer Grid.Row="0" Grid.RowSpan="2" Grid.Column="2" Margin="8" VerticalScrollBarVisibility="Auto" Focusable="False">
-            <StackPanel>
-                <TextBlock Style="{StaticResource SectionTitle}" Text="畫面比例" Margin="0,0,0,6" />
-                <WrapPanel>
-                    <RadioButton x:Name="RatioOriginal" AutomationProperties.AutomationId="RatioOriginal" Content="原尺寸" GroupName="Ratio" IsChecked="True" Checked="OnOutputSettingChanged" />
-                    <RadioButton x:Name="Ratio16x9" AutomationProperties.AutomationId="Ratio16x9" Content="16:9" GroupName="Ratio" Checked="OnOutputSettingChanged" />
-                    <RadioButton x:Name="Ratio9x16" AutomationProperties.AutomationId="Ratio9x16" Content="9:16" GroupName="Ratio" Checked="OnOutputSettingChanged" />
-                    <RadioButton x:Name="Ratio1x1" AutomationProperties.AutomationId="Ratio1x1" Content="1:1" GroupName="Ratio" Checked="OnOutputSettingChanged" />
-                    <RadioButton x:Name="Ratio4x5" AutomationProperties.AutomationId="Ratio4x5" Content="4:5" GroupName="Ratio" Checked="OnOutputSettingChanged" />
-                </WrapPanel>
-                <TextBlock Style="{StaticResource SectionTitle}" Text="處理方式" />
-                <WrapPanel>
-                    <RadioButton x:Name="ModeFill" AutomationProperties.AutomationId="ModeFill" Content="填滿裁切" GroupName="Mode" IsChecked="True" Checked="OnOutputSettingChanged" />
-                    <RadioButton x:Name="ModePad" AutomationProperties.AutomationId="ModePad" Content="加黑邊" GroupName="Mode" Checked="OnOutputSettingChanged" />
-                </WrapPanel>
-                <TextBlock x:Name="OutputInfo" AutomationProperties.AutomationId="OutputInfo" Margin="0,8,0,0" FontSize="12" Foreground="#B0B0B0" TextWrapping="Wrap" />
-
-                <TextBlock Style="{StaticResource SectionTitle}" Text="片段清單（影片軌）" />
-                <ListBox x:Name="ClipList" AutomationProperties.AutomationId="ClipList" Height="170" SelectionChanged="OnClipListSelected" PreviewMouseLeftButtonUp="OnClipListClicked" DisplayMemberPath="Label" />
-                <WrapPanel Margin="0,6,0,0">
-                    <Button Content="上移" AutomationProperties.AutomationId="MoveUpButton" Click="OnMoveUp" />
-                    <Button Content="下移" AutomationProperties.AutomationId="MoveDownButton" Click="OnMoveDown" />
-                    <Button Content="刪除" AutomationProperties.AutomationId="DeleteButton" Click="OnDeleteClip" ToolTip="Delete 鍵" />
-                    <Button Content="在播放頭分割" AutomationProperties.AutomationId="SplitButton" Click="OnSplitClick"
-                            ToolTip="S 鍵：把選取的片段從時間軸播放頭的位置切成兩段" />
-                </WrapPanel>
-
-                <TextBlock Style="{StaticResource SectionTitle}" Text="片段音量" />
-                <DockPanel>
-                    <TextBlock x:Name="VolumeText" AutomationProperties.AutomationId="VolumeText" DockPanel.Dock="Right" Width="44" TextAlignment="Right" Text="—" />
-                    <Slider x:Name="VolumeSlider" AutomationProperties.AutomationId="VolumeSlider" Minimum="0" Maximum="200" IsEnabled="False" Focusable="False" ValueChanged="OnVolumeChanged" />
-                </DockPanel>
-
-                <TextBlock Style="{StaticResource SectionTitle}" Text="旋轉與鏡像" />
-                <StackPanel x:Name="TransformPanel" IsEnabled="False">
-                    <WrapPanel>
-                        <Button Content="↺ 左轉 90°" AutomationProperties.AutomationId="RotateLeftButton" Margin="0,0,6,6" Click="OnRotateLeft" />
-                        <Button Content="↻ 右轉 90°" AutomationProperties.AutomationId="RotateRightButton" Margin="0,0,6,6" Click="OnRotateRight" />
-                        <Button Content="⇋ 水平鏡像" AutomationProperties.AutomationId="FlipHorizontalButton" Margin="0,0,6,6" Click="OnFlipHorizontal" />
-                        <Button Content="⇵ 垂直鏡像" AutomationProperties.AutomationId="FlipVerticalButton" Margin="0,0,6,6" Click="OnFlipVertical" />
-                        <Button Content="重設" AutomationProperties.AutomationId="ResetTransformButton" Margin="0,0,6,6" Click="OnResetTransform" />
-                    </WrapPanel>
-                    <TextBlock x:Name="TransformText" AutomationProperties.AutomationId="TransformText" FontSize="12" Foreground="#B0B0B0" Text="—" />
-                </StackPanel>
-
-                <TextBlock Style="{StaticResource SectionTitle}" Text="畫面位置（填滿裁切）" />
+        <!-- 右側：上方是輸出設定與匯出（固定，不捲動），下方是片段清單與選取片段的屬性（可捲動） -->
+        <DockPanel Grid.Row="0" Grid.RowSpan="2" Grid.Column="2" Margin="8">
+            <Border DockPanel.Dock="Top" Background="#252525" BorderBrush="#333333" BorderThickness="1" CornerRadius="4" Padding="10,0,10,10" Margin="0,0,0,8">
                 <StackPanel>
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="輸出" />
+                    <TextBlock Style="{StaticResource SubTitle}" Text="畫面比例" Margin="0,0,0,4" />
                     <WrapPanel>
-                        <Button x:Name="ResetFramingButton" Content="重設畫面位置" AutomationProperties.AutomationId="ResetFramingButton" Margin="0,0,6,6"
-                                IsEnabled="False" Click="OnResetFraming" />
+                        <RadioButton x:Name="RatioOriginal" AutomationProperties.AutomationId="RatioOriginal" Content="原尺寸" GroupName="Ratio" IsChecked="True" Checked="OnOutputSettingChanged" />
+                        <RadioButton x:Name="Ratio16x9" AutomationProperties.AutomationId="Ratio16x9" Content="16:9" GroupName="Ratio" Checked="OnOutputSettingChanged" />
+                        <RadioButton x:Name="Ratio9x16" AutomationProperties.AutomationId="Ratio9x16" Content="9:16" GroupName="Ratio" Checked="OnOutputSettingChanged" />
+                        <RadioButton x:Name="Ratio1x1" AutomationProperties.AutomationId="Ratio1x1" Content="1:1" GroupName="Ratio" Checked="OnOutputSettingChanged" />
+                        <RadioButton x:Name="Ratio4x5" AutomationProperties.AutomationId="Ratio4x5" Content="4:5" GroupName="Ratio" Checked="OnOutputSettingChanged" />
                     </WrapPanel>
-                    <TextBlock x:Name="FramingText" AutomationProperties.AutomationId="FramingText" FontSize="12" Foreground="#B0B0B0" TextWrapping="Wrap" Text="—" />
+                    <TextBlock Style="{StaticResource SubTitle}" Text="處理方式" />
+                    <WrapPanel>
+                        <RadioButton x:Name="ModeFill" AutomationProperties.AutomationId="ModeFill" Content="填滿裁切" GroupName="Mode" IsChecked="True" Checked="OnOutputSettingChanged" />
+                        <RadioButton x:Name="ModePad" AutomationProperties.AutomationId="ModePad" Content="加黑邊" GroupName="Mode" Checked="OnOutputSettingChanged" />
+                    </WrapPanel>
+                    <TextBlock x:Name="OutputInfo" AutomationProperties.AutomationId="OutputInfo" Margin="0,8,0,0" FontSize="12" Foreground="{x:Static local:Palette.TextSecondary}" TextWrapping="Wrap" />
+                    <Button x:Name="ExportButton" AutomationProperties.AutomationId="ExportButton" Content="匯出 MP4…" Padding="10,8" Margin="0,10,0,0" Click="OnExportClick" />
                 </StackPanel>
+            </Border>
 
-                <TextBlock Style="{StaticResource SectionTitle}" Text="片段倒放" />
-                <CheckBox x:Name="ReverseCheck" AutomationProperties.AutomationId="ReverseCheck" Content="倒放這個片段（畫面與原音）" Foreground="#E0E0E0"
-                          IsEnabled="False" Focusable="False" Checked="OnReverseChanged" Unchecked="OnReverseChanged" />
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="片段清單（影片軌）" Margin="0,0,0,6" />
+                    <ListBox x:Name="ClipList" AutomationProperties.AutomationId="ClipList" Height="140" SelectionChanged="OnClipListSelected" PreviewMouseLeftButtonUp="OnClipListClicked" DisplayMemberPath="Label" />
 
-                <TextBlock Style="{StaticResource SectionTitle}" Text="匯出" />
-                <Button x:Name="ExportButton" AutomationProperties.AutomationId="ExportButton" Content="匯出 MP4…" Padding="10,8" Margin="0" Click="OnExportClick" />
-            </StackPanel>
-        </ScrollViewer>
+                    <!-- 沒有選取片段時只顯示這行提示 -->
+                    <TextBlock x:Name="ClipHint" AutomationProperties.AutomationId="ClipHint" Margin="0,12,0,0" FontSize="12" TextWrapping="Wrap"
+                               Foreground="{x:Static local:Palette.TextSecondary}" Text="點時間軸上的片段，在這裡調整音量、旋轉鏡像、畫面位置與倒放。" />
+
+                    <StackPanel x:Name="ClipPropertiesPanel" AutomationProperties.AutomationId="ClipPropertiesPanel" Visibility="Collapsed">
+                        <TextBlock x:Name="ClipPropertiesTitle" AutomationProperties.AutomationId="ClipPropertiesTitle" Style="{StaticResource SectionTitle}" TextTrimming="CharacterEllipsis" />
+
+                        <TextBlock Style="{StaticResource SubTitle}" Text="音量" Margin="0,0,0,4" />
+                        <DockPanel>
+                            <TextBlock x:Name="VolumeText" AutomationProperties.AutomationId="VolumeText" DockPanel.Dock="Right" Width="52" TextAlignment="Right" Text="—" />
+                            <Slider x:Name="VolumeSlider" AutomationProperties.AutomationId="VolumeSlider" Minimum="0" Maximum="200" IsEnabled="False" Focusable="False" ValueChanged="OnVolumeChanged" />
+                        </DockPanel>
+
+                        <!-- 只有影片軌的片段才有這些 -->
+                        <StackPanel x:Name="VideoPropertiesPanel">
+                            <TextBlock Style="{StaticResource SubTitle}" Text="旋轉與鏡像" />
+                            <StackPanel x:Name="TransformPanel" IsEnabled="False">
+                                <WrapPanel>
+                                    <Button Content="↺ 左轉 90°" AutomationProperties.AutomationId="RotateLeftButton" Margin="0,0,6,6" Click="OnRotateLeft" />
+                                    <Button Content="↻ 右轉 90°" AutomationProperties.AutomationId="RotateRightButton" Margin="0,0,6,6" Click="OnRotateRight" />
+                                    <Button Content="⇋ 水平鏡像" AutomationProperties.AutomationId="FlipHorizontalButton" Margin="0,0,6,6" Click="OnFlipHorizontal" />
+                                    <Button Content="⇵ 垂直鏡像" AutomationProperties.AutomationId="FlipVerticalButton" Margin="0,0,6,6" Click="OnFlipVertical" />
+                                    <Button Content="重設" AutomationProperties.AutomationId="ResetTransformButton" Margin="0,0,6,6" Click="OnResetTransform" />
+                                </WrapPanel>
+                                <TextBlock x:Name="TransformText" AutomationProperties.AutomationId="TransformText" FontSize="12" Foreground="{x:Static local:Palette.TextSecondary}" Text="—" />
+                            </StackPanel>
+
+                            <!-- 只有填滿裁切才用得到畫面位置 -->
+                            <StackPanel x:Name="FramingSection" AutomationProperties.AutomationId="FramingSection">
+                                <TextBlock Style="{StaticResource SubTitle}" Text="畫面位置" />
+                                <WrapPanel>
+                                    <Button x:Name="ResetFramingButton" Content="重設畫面位置" AutomationProperties.AutomationId="ResetFramingButton" Margin="0,0,6,6"
+                                            IsEnabled="False" Click="OnResetFraming" />
+                                </WrapPanel>
+                                <TextBlock x:Name="FramingText" AutomationProperties.AutomationId="FramingText" FontSize="12" Foreground="{x:Static local:Palette.TextSecondary}" TextWrapping="Wrap" Text="—" />
+                            </StackPanel>
+
+                            <TextBlock Style="{StaticResource SubTitle}" Text="倒放" />
+                            <CheckBox x:Name="ReverseCheck" AutomationProperties.AutomationId="ReverseCheck" Content="倒放這個片段（畫面與原音）" Foreground="#E0E0E0"
+                                      IsEnabled="False" Focusable="False" Checked="OnReverseChanged" Unchecked="OnReverseChanged" />
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </DockPanel>
 
         <!-- 時間軸 -->
         <DockPanel Grid.Row="2" Grid.ColumnSpan="3" Margin="8,0,8,8">
@@ -203,6 +218,10 @@
                 <TextBlock Text="時間軸" Style="{StaticResource SectionTitle}" Margin="0,0,12,0" VerticalAlignment="Center" />
                 <Button x:Name="UndoButton" Content="↶ 復原" AutomationProperties.AutomationId="UndoButton" AutomationProperties.Name="復原" Click="OnUndoClick" />
                 <Button x:Name="RedoButton" Content="↷ 重做" AutomationProperties.AutomationId="RedoButton" AutomationProperties.Name="重做" Margin="0,0,16,0" Click="OnRedoClick" />
+                <Button x:Name="SplitButton" Content="✂ 分割" AutomationProperties.AutomationId="SplitButton" AutomationProperties.Name="在播放頭分割" IsEnabled="False" Click="OnSplitClick"
+                        ToolTip="S：把選取的片段從時間軸播放頭的位置切成兩段" />
+                <Button x:Name="DeleteButton" Content="刪除" AutomationProperties.AutomationId="DeleteButton" AutomationProperties.Name="刪除片段" IsEnabled="False" Margin="0,0,16,0" Click="OnDeleteClip"
+                        ToolTip="Delete：刪除選取的片段" />
                 <Button Content="－" AutomationProperties.AutomationId="ZoomOutButton" Click="OnZoomOut" />
                 <Button Content="＋" AutomationProperties.AutomationId="ZoomInButton" Click="OnZoomIn" />
                 <Button Content="顯示全部" AutomationProperties.AutomationId="ZoomFitButton" Click="OnZoomFit" />

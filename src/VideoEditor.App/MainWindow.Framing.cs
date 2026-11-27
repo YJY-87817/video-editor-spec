@@ -90,6 +90,8 @@ public partial class MainWindow
 
     private void UpdateFramingControls(TimelineClip? selected)
     {
+        // 加黑邊時不裁切，用不到畫面位置，整區隱藏。
+        FramingSection.Visibility = SelectedMode == FitMode.Fill ? Visibility.Visible : Visibility.Collapsed;
         var clip = FramingTarget(selected);
         ResetFramingButton.IsEnabled = clip != null && !clip.Framing.IsDefault;
         if (clip == null)
@@ -99,8 +101,7 @@ public partial class MainWindow
         }
         // 與片段清單的編號相同。
         var index = _timeline.VideoClips.TakeWhile(c => c != clip).Count() + 1;
-        FramingText.Text = SelectedMode != FitMode.Fill ? "加黑邊時不裁切，不使用畫面位置。"
-            : $"第 {index} 段：{clip.Framing.Label}。在剪輯預覽中拖曳黃色框移動、拖曳四角縮放，也可以用滑鼠滾輪縮放、雙擊框重設。";
+        FramingText.Text = $"第 {index} 段：{clip.Framing.Label}。在剪輯預覽中拖曳黃色框移動、拖曳四角縮放，也可以用滑鼠滾輪縮放、雙擊框重設。";
     }
 
     /// <param name="refreshList">拖曳中每次移動都會呼叫，片段清單等放開滑鼠再更新一次就好。</param>
