@@ -122,12 +122,64 @@ public partial class MainWindow
         }
     }
 
+    // ---- 移除素材 ----
+
+    private void OnRemoveMediaClick(object sender, RoutedEventArgs e) => RemoveSelectedMedia();
+
+    /// <summary>
+    /// 從素材清單移除選取的素材（不刪除硬碟上的檔案）。時間軸上有用到它的片段時先確認，確定後一併移除這些片段；
+    /// 移除片段算一步，可以用 Ctrl+Z 把片段找回來（素材清單不在復原範圍內，要再匯入一次）。
+    /// 移除後選取下一個素材（沒有下一個就選上一個）。
+    /// </summary>
+    private void RemoveSelectedMedia()
+    {
+        if (MediaList.SelectedItem is not MediaItem item) return;
+        var clips = _timeline.AllClips.Where(c => c.Media == item.Info).ToList();
+        if (clips.Count > 0)
+        {
+            var answer = MessageBox.Show(this,
+                $"時間軸上有 {clips.Count} 個片段使用 {item.Info.FileName}。\n\n移除素材會一併移除這些片段，確定要移除嗎？",
+                "移除素材", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+            if (answer != MessageBoxResult.Yes) return;
+            _engine?.Pause();
+            var before = _history.Capture();
+            foreach (var clip in clips) _timeline.Remove(clip);
+            _history.Commit(before, $"移除素材 {item.Info.FileName} 的片段");
+            if (TimelineView.SelectedClip is { } selected && clips.Contains(selected)) TimelineView.Select(null);
+            OnClipsChanged();
+        }
+
+        // 先選好下一個再移除，選取只換一次，不會中途變成「沒有選取」而切到剪輯預覽。
+        var index = _media.IndexOf(item);
+        MediaList.SelectedItem = index + 1 < _media.Count ? _media[index + 1] : index > 0 ? _media[index - 1] : null;
+        _media.RemoveAt(index);
+        // 鍵盤焦點留在清單上，可以連按 Delete 移除下一個。
+        if (MediaList.SelectedItem != null
+            && MediaList.ItemContainerGenerator.ContainerFromItem(MediaList.SelectedItem) is ListBoxItem container)
+            container.Focus();
+        ShowStatus(clips.Count > 0
+            ? $"已從素材清單移除 {item.Info.FileName}，並移除時間軸上的 {clips.Count} 個片段（Ctrl+Z 可以找回片段）"
+            : $"已從素材清單移除 {item.Info.FileName}", StatusKind.Info);
+    }
+
     private void OnMediaSelected(object sender, SelectionChangedEventArgs e)
     {
         _selectedMedia = MediaList.SelectedItem as MediaItem;
         MediaDetails.Text = _selectedMedia == null ? "" : DescribeMedia(_selectedMedia.Info);
         _points.Clear();
-        if (_selectedMedia == null) return;
+        if (_selectedMedia == null)
+        {
+            // 選取的素材被移除且清單已空：匯入影片預覽沒有東西可看，時間軸上還有片段就改看剪輯預覽。
+            if (!IsTimelinePreview)
+            {
+                if (_timeline.AllClips.Any()) SwitchToTimelinePreview();
+                else LoadPreviewSource();
+            }
+            if (_media.Count == 0 && !_timeline.AllClips.Any()) EmptyHint.Visibility = Visibility.Visible;
+            UpdateOutputInfo();
+            UpdateMarks();
+            return;
+        }
         EmptyHint.Visibility = Visibility.Collapsed;
         UpdateOutputInfo();
         if (SourceMode.IsChecked == true) LoadPreviewSource();

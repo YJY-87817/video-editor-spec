@@ -148,7 +148,7 @@
                      MouseDoubleClick="OnMediaDoubleClick" ToolTip="拖到時間軸插入；雙擊加到時間軸最後面">
                 <ListBox.ContextMenu>
                     <ContextMenu>
-                        <MenuItem Header="從清單移除" InputGestureText="Delete" AutomationProperties.AutomationId="RemoveMediaMenu" Click="OnRemoveMediaClick" />
+                        <MenuItem Header="從清單移除" InputGestureText="Delete" AutomationProperties.AutomationId="RemoveMediaMenuItem" Click="OnRemoveMediaClick" />
                     </ContextMenu>
                 </ListBox.ContextMenu>
                 <ListBox.ItemTemplate>

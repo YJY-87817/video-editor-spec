@@ -10,7 +10,7 @@ namespace VideoEditor.App;
 
 public partial class MainWindow
 {
-    // ---- 素材清單 → 時間軸：拖曳、雙擊、移除素材 ----
+    // ---- 素材清單 → 時間軸：拖曳、雙擊（移除素材在 MainWindow.Import.cs） ----
 
     private Point _mediaDragStart;
     private MediaItem? _mediaDragItem;
@@ -131,42 +131,6 @@ public partial class MainWindow
         if (!IsOnListItem(MediaList, e)) return;
         OnAddToTimeline(sender, e);
         e.Handled = true;
-    }
-
-    private void OnRemoveMediaClick(object sender, RoutedEventArgs e) => RemoveSelectedMedia();
-
-    /// <summary>
-    /// 從素材清單移除選取的素材。時間軸上還有片段在用時不移除，只說明（UIUX-PLAN 決定 5）。
-    /// 移除正在預覽的素材時清空預覽。
-    /// </summary>
-    private void RemoveSelectedMedia()
-    {
-        if (MediaList.SelectedItem is not MediaItem item) return;
-        var used = _timeline.AllClips.Count(c => c.Media == item.Info);
-        if (used > 0)
-        {
-            ShowStatus($"時間軸上還有 {used} 段使用 {item.Info.FileName}，先刪除這些片段才能移除。", StatusKind.Warning);
-            return;
-        }
-        var index = _media.IndexOf(item);
-        _media.Remove(item);
-        if (_media.Count == 0)
-        {
-            // 清單空了：清掉預覽與入出點，回到剛開啟時的提示。
-            _selectedMedia = null;
-            MediaDetails.Text = "";
-            _points.Clear();
-            EmptyHint.Visibility = Visibility.Visible;
-            if (!IsTimelinePreview) LoadPreviewSource();
-            UpdateMarks();
-            UpdateOutputInfo();
-        }
-        else
-        {
-            // 選下一個（或最後一個），用鍵盤連續移除時比較順手。
-            MediaList.SelectedIndex = Math.Min(index, _media.Count - 1);
-        }
-        ShowStatus($"已從清單移除 {item.Info.FileName}");
     }
 
     // ---- 時間軸右鍵選單 ----
