@@ -87,6 +87,7 @@ public partial class MainWindow
             // 等縮圖的期間可能已經加回來（連按兩次復原）或片段又被移走。
             if (_media.Any(m => m.Info == info) || !_timeline.AllClips.Any(c => c.Media == info)) continue;
             _media.Add(new MediaItem(info) { Thumbnail = thumbnail is { Length: > 0 } ? TryCreateThumbnail(thumbnail) : null });
+            UpdateMediaUsage();
         }
     }
 

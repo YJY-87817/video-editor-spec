@@ -32,11 +32,20 @@ public partial class MainWindow
 
     private bool IsDirty => _savedState == null || !_savedState.Equals(CurrentState());
 
-    /// <summary>建構式最後呼叫：目前（空白）的狀態算已存，開始每秒檢查一次是否要自動存檔、更新標題。</summary>
+    /// <summary>建構式最後呼叫：目前（空白）的狀態算已存。自動存檔的計時要等還原的詢問處理完才開始（<see cref="StartAutoSave"/>）。</summary>
     private void StartProjectTracking(MediaProbe probe)
     {
         _probe = probe;
         MarkSaved();
+    }
+
+    /// <summary>
+    /// 開始每秒檢查一次是否要自動存檔、更新標題。必須在 <see cref="OfferAutoSaveRecoveryAsync"/> 之後：
+    /// 剛開啟時沒有沒存的變更，計時器會把上次留下的自動存檔當成不需要而刪掉，還原就找不到檔案了。
+    /// </summary>
+    private void StartAutoSave()
+    {
+        if (_autoSaveTimer != null || _probe == null) return;
         _autoSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _autoSaveTimer.Tick += (_, _) => OnAutoSaveTick();
         _autoSaveTimer.Start();
@@ -115,7 +124,31 @@ public partial class MainWindow
     }
 
     private void OnNewProjectClick(object sender, RoutedEventArgs e) => NewProject();
-    private async void OnOpenProjectClick(object sender, RoutedEventArgs e) => await OpenProjectAsync(null);
+    private void OnOpenProjectClick(object sender, RoutedEventArgs e) => RunOpenProject();
+
+    /// <summary>選單與 Ctrl+O 共用：開啟不等結果，預料之外的錯誤要記錄並顯示，不能默默丟掉或讓程式當掉。</summary>
+    private async void RunOpenProject()
+    {
+        try
+        {
+            await OpenProjectAsync(null);
+        }
+        catch (Exception e)
+        {
+            Log.Error("開啟專案時發生預料之外的錯誤", e);
+            ShowStatus($"開啟專案時發生錯誤：{e.Message}", StatusKind.Error);
+        }
+    }
+
+    // 正在開啟專案（讀取素材資訊要好幾秒）：這段期間不能再開啟、開新或存檔。
+    private bool _loadingProject;
+
+    private bool RejectWhileLoading()
+    {
+        if (!_loadingProject) return false;
+        ShowStatus("正在開啟專案，請等它完成。", StatusKind.Warning);
+        return true;
+    }
     private void OnSaveClick(object sender, RoutedEventArgs e) => SaveProject(saveAs: false);
     private void OnSaveAsClick(object sender, RoutedEventArgs e) => SaveProject(saveAs: true);
 
@@ -126,7 +159,7 @@ public partial class MainWindow
         switch (e.Key)
         {
             case Key.N when modifiers == ModifierKeys.Control: NewProject(); break;
-            case Key.O when modifiers == ModifierKeys.Control: _ = OpenProjectAsync(null); break;
+            case Key.O when modifiers == ModifierKeys.Control: RunOpenProject(); break;
             case Key.S when modifiers == ModifierKeys.Control: SaveProject(saveAs: false); break;
             case Key.S when modifiers == (ModifierKeys.Control | ModifierKeys.Shift): SaveProject(saveAs: true); break;
             default: return false;
@@ -154,7 +187,7 @@ public partial class MainWindow
     /// <summary>存檔；還沒有專案檔或「另存新檔」時先選位置。回傳是否存好了（取消或失敗是 false）。</summary>
     private bool SaveProject(bool saveAs)
     {
-        if (_tools == null) return false;
+        if (_tools == null || RejectWhileLoading()) return false;
         var path = _projectPath;
         if (saveAs || path == null)
         {
@@ -190,7 +223,7 @@ public partial class MainWindow
 
     private void NewProject()
     {
-        if (_tools == null || !ConfirmSaveChanges()) return;
+        if (_tools == null || RejectWhileLoading() || !ConfirmSaveChanges()) return;
         _engine?.Pause();
         _projectPath = null;
         ReplaceContents([], timeline => timeline.Restore(new TimelineSnapshot([], [])));
@@ -201,7 +234,7 @@ public partial class MainWindow
 
     private async Task OpenProjectAsync(string? path)
     {
-        if (_tools == null || !ConfirmSaveChanges()) return;
+        if (_tools == null || RejectWhileLoading() || !ConfirmSaveChanges()) return;
         if (path == null)
         {
             var dialog = new OpenFileDialog { Filter = ProjectFilter, InitialDirectory = ExistingFolder(_settings.LastProjectFolder) ?? "" };
@@ -217,7 +250,20 @@ public partial class MainWindow
     /// </summary>
     private async Task LoadProjectAsync(string path, bool fromAutoSave)
     {
-        if (_probe == null) return;
+        if (_probe is not { } probe || RejectWhileLoading()) return;
+        _loadingProject = true;
+        try
+        {
+            await LoadProjectCoreAsync(path, fromAutoSave, probe);
+        }
+        finally
+        {
+            _loadingProject = false;
+        }
+    }
+
+    private async Task LoadProjectCoreAsync(string path, bool fromAutoSave, MediaProbe probe)
+    {
         var loaded = ProjectSerializer.Load(path);
         if (loaded.File is not { } project)
         {
@@ -233,6 +279,8 @@ public partial class MainWindow
         var infos = new List<MediaInfo?>();
         var problems = new List<string>();
         _engine?.Pause();
+        // 讀取期間畫面還能操作；讀完要換掉內容前，確認這段期間沒有改過東西，改過就問。
+        var stateBeforeLoading = CurrentState();
         try
         {
             for (var i = 0; i < paths.Count; i++)
@@ -245,7 +293,7 @@ public partial class MainWindow
                 }
                 try
                 {
-                    infos.Add(await _probe.ProbeAsync(file));
+                    infos.Add(await probe.ProbeAsync(file));
                 }
                 catch (Exception e) when (ExpectedErrors.IsProbe(e))
                 {
@@ -262,6 +310,13 @@ public partial class MainWindow
 
         var items = new List<MediaItem>();
         foreach (var info in infos.OfType<MediaInfo>().Distinct()) items.Add(await CreateMediaItemAsync(info));
+        if (!stateBeforeLoading.Equals(CurrentState())
+            && MessageBox.Show(this, "開啟專案期間，目前的剪輯有了修改。\n\n要放棄這些修改，繼續開啟專案嗎？", "開啟專案",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            ShowStatus("已取消開啟專案。", StatusKind.Warning);
+            return;
+        }
         IReadOnlyList<string> buildProblems = [];
         ReplaceContents(items, timeline => buildProblems = ProjectSerializer.Build(project, infos, timeline));
         problems.AddRange(buildProblems);

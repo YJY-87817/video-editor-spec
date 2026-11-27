@@ -122,8 +122,9 @@ public partial class MainWindow : Window, IExportView, IImportView
             // 可由命令列直接開啟素材或專案檔。轉成絕對路徑，以 - 開頭的相對路徑才不會被當成選項。
             try
             {
-                // 上次沒有正常關閉時，先問要不要還原。
-                await OfferAutoSaveRecoveryAsync();
+                // 上次沒有正常關閉時，先問要不要還原；問完才開始自動存檔（否則計時器會先把上次的自動存檔刪掉）。
+                try { await OfferAutoSaveRecoveryAsync(); }
+                finally { StartAutoSave(); }
                 var files = Environment.GetCommandLineArgs().Skip(1).Where(File.Exists).Select(System.IO.Path.GetFullPath).ToList();
                 if (files is [var project] && string.Equals(System.IO.Path.GetExtension(project), VideoEditor.Core.Project.ProjectFile.Extension, StringComparison.OrdinalIgnoreCase))
                     await OpenProjectAsync(project);

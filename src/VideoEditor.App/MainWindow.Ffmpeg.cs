@@ -32,6 +32,12 @@ public partial class MainWindow
     /// </summary>
     private void ChooseFfmpegFolder()
     {
+        // 匯出中要先停止匯出才能重新啟動，流程會變得難以預料；請使用者等匯出完成。
+        if (_export is { IsRunning: true })
+        {
+            ShowStatus("匯出中不能改用其他 FFmpeg，請等匯出完成或取消匯出後再試。", StatusKind.Warning);
+            return;
+        }
         var dialog = new OpenFolderDialog { Title = "選擇 ffmpeg.exe 與 ffprobe.exe 所在的資料夾" };
         if (ExistingFolder(_settings.FfmpegFolder) is { } current) dialog.InitialDirectory = current;
         if (dialog.ShowDialog(this) != true) return;

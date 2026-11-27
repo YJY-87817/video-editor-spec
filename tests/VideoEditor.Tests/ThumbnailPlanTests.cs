@@ -100,3 +100,22 @@ public class ThumbnailPlanTests
         Assert.All(ThumbnailPlan.Slots(clip, 100, 96, 0, 1000), slot => Assert.Equal(0, slot.SourceTime));
     }
 }
+
+public class ThumbnailPlanLongClipTests
+{
+    [Fact]
+    public void LongClipZoomedInListsOnlyTheVisibleThumbnailsFromTheRightPlace()
+    {
+        var timeline = new Timeline();
+        var clip = timeline.Append(new MediaInfo
+        {
+            Path = "long.mp4", Duration = 3600, HasVideo = true, DisplayWidth = 1920, DisplayHeight = 1080,
+            FrameRate = new Rational(30, 1), PixelFormat = "yuv420p",
+        }, 0, 3600);
+
+        // 每秒 400 像素、間隔 0.5 秒；看得到 1800.2～1801.3 秒。
+        var slots = ThumbnailPlan.Slots(clip, 400, 96, 1800.2, 1801.3);
+
+        Assert.Equal([1800.0, 1800.5, 1801.0], slots.Select(s => Math.Round(s.TimelineTime, 6)));
+    }
+}

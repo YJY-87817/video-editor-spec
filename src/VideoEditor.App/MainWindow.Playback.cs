@@ -97,8 +97,8 @@ public partial class MainWindow
         if (e.OriginalSource is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.PasswordBox) return;
         if (ToPreviewKey(e.Key) is not { } key) return;
         var command = PreviewKeys.FromKey(key);
-        // 清單與捲軸自己用換頁鍵捲動，不搶。
-        if (command is PreviewCommand.PreviousEditPoint or PreviewCommand.NextEditPoint
+        // 清單與捲軸自己用換頁鍵與 Home／End 捲動、跳到頭尾，不搶。
+        if (command is PreviewCommand.PreviousEditPoint or PreviewCommand.NextEditPoint or PreviewCommand.GoToStart or PreviewCommand.GoToEnd
             && e.OriginalSource is System.Windows.Controls.Primitives.Selector or System.Windows.Controls.ListBoxItem
                 or System.Windows.Controls.Primitives.ScrollBar) return;
         // 焦點在素材清單時，Delete 是從清單移除素材，不是刪除時間軸上的片段。

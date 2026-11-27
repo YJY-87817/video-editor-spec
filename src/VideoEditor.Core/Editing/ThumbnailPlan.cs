@@ -27,7 +27,9 @@ public static class ThumbnailPlan
         var step = Step(pixelsPerSecond, thumbWidth);
         var slotSeconds = thumbWidth / pixelsPerSecond;
         var slots = new List<ThumbnailSlot>();
-        for (var offset = 0.0; offset < clip.Duration - 1e-9; offset += step)
+        // 從第一張看得到的開始算，不必從片段開頭一張一張走（很長的片段放大時，播放的每個 tick 都會重算）。
+        var first = Math.Max(0, Math.Floor((visibleStart - slotSeconds - clip.Start) / step));
+        for (var offset = first * step; offset < clip.Duration - 1e-9; offset += step)
         {
             var time = clip.Start + offset;
             if (time > visibleEnd) break;
