@@ -9,7 +9,7 @@ using VideoEditor.Core.Editing;
 namespace VideoEditor.App.Controls;
 
 /// <summary>時間軸：V1（影片）、A1（影片原音，與 V1 連動）、A2（配樂）。自行繪製以維持大量片段時的流暢度。</summary>
-public sealed class TimelineView : FrameworkElement
+public sealed partial class TimelineView : FrameworkElement
 {
     private const double HeaderWidth = 44;
     private const double RulerHeight = 24;
@@ -68,6 +68,7 @@ public sealed class TimelineView : FrameworkElement
     {
         ClipToBounds = true;
         Focusable = true;
+        AllowDrop = true;
     }
 
     public TimelineClip? SelectedClip { get; private set; }
@@ -198,6 +199,7 @@ public sealed class TimelineView : FrameworkElement
         if (_timeline.VideoClips.Count == 0 && _timeline.MusicClips.Count == 0) DrawEmptyHint(dc, width);
 
         DrawSnapMark(dc);
+        DrawDropPreview(dc);
         var playheadX = TimeToX(_playhead);
         dc.DrawLine(_snapKind == SnapKind.Playhead ? SnappedPlayheadPen : PlayheadPen, new Point(playheadX, 0), new Point(playheadX, ActualHeight));
         dc.Pop();
@@ -343,7 +345,7 @@ public sealed class TimelineView : FrameworkElement
     /// <summary>時間軸還是空的：在軌道中央說明怎麼把素材放進來。</summary>
     private void DrawEmptyHint(DrawingContext dc, double width)
     {
-        const string hint = "在素材清單選好素材後按「＋ 加入時間軸」；有畫面的放到 V1，只有聲音的放到 A2";
+        const string hint = "把素材從素材清單拖到這裡，或選好素材後按「＋ 加入時間軸」（也可以雙擊素材）。有畫面的放到 V1，只有聲音的放到 A2";
         var formatted = new FormattedText(hint, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, Face, 13, DimTextBrush,
             VisualTreeHelper.GetDpi(this).PixelsPerDip)
         {
@@ -416,6 +418,7 @@ public sealed class TimelineView : FrameworkElement
             EditStarted?.Invoke();
             _drag = kind;
             _dragClip = clip;
+            if (kind == DragKind.Move) Cursor = Cursors.SizeAll;
             _dragGrabOffset = XToTime(p.X) - clip.Start;
             if (kind is DragKind.TrimStart or DragKind.TrimEnd) PrepareSilenceSnap(clip, kind == DragKind.TrimStart ? TrimEdge.Start : TrimEdge.End);
             _dragClipEdges = TimelineSnap.ClipEdgeTargets(_timeline, clip);
@@ -432,7 +435,14 @@ public sealed class TimelineView : FrameworkElement
         if (_drag == DragKind.None)
         {
             var (_, kind) = HitTest(p);
-            Cursor = kind is DragKind.TrimStart or DragKind.TrimEnd ? Cursors.SizeWE : Cursors.Arrow;
+            // 邊緣可以修剪、片段中間可以抓起來移動、時間尺可以點選時間。
+            Cursor = p.X < HeaderWidth ? Cursors.Arrow
+                : kind switch
+                {
+                    DragKind.TrimStart or DragKind.TrimEnd => Cursors.SizeWE,
+                    DragKind.Move => Cursors.Hand,
+                    _ => p.Y < RulerHeight ? Cursors.IBeam : Cursors.Arrow,
+                };
             return;
         }
 
@@ -458,6 +468,22 @@ public sealed class TimelineView : FrameworkElement
                 break;
         }
         InvalidateVisual();
+    }
+
+    /// <summary>
+    /// 按右鍵先選取游標下的片段（空白處取消選取），右鍵選單再依選取的片段決定能做什麼。
+    /// 和左鍵點片段一樣通知 <see cref="ClipPressed"/>（切到剪輯預覽），選單裡的「在播放頭分割」才用得了。
+    /// </summary>
+    protected override void OnMouseRightButtonDown(MouseButtonEventArgs e)
+    {
+        base.OnMouseRightButtonDown(e);
+        if (_drag != DragKind.None) return;
+        Focus();
+        var p = e.GetPosition(this);
+        if (p.X < HeaderWidth) return;
+        var clip = HitTest(p).Clip;
+        Select(clip);
+        if (clip != null) ClipPressed?.Invoke();
     }
 
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)

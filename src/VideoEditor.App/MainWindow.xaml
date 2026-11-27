@@ -5,7 +5,7 @@
         xmlns:local="clr-namespace:VideoEditor.App"
         Title="影片編輯器" Icon="app.ico" Width="1360" Height="860" MinWidth="1000" MinHeight="640"
         Background="#1E1E1E" FontFamily="Microsoft JhengHei UI" AllowDrop="True"
-        Drop="OnFileDrop" PreviewKeyDown="OnPreviewKeyDown" Closing="OnClosing" Closed="OnClosed">
+        DragOver="OnWindowDragOver" Drop="OnFileDrop" PreviewKeyDown="OnPreviewKeyDown" Closing="OnClosing" Closed="OnClosed">
     <Window.TaskbarItemInfo>
         <TaskbarItemInfo x:Name="Taskbar" />
     </Window.TaskbarItemInfo>
@@ -121,8 +121,15 @@
             <Button x:Name="ImportButton" AutomationProperties.AutomationId="ImportButton" DockPanel.Dock="Top" Margin="0,0,0,6" Content="匯入素材…（或拖放到視窗）" Click="OnImportClick" />
             <TextBlock x:Name="MediaDetails" DockPanel.Dock="Bottom" Margin="0,8,0,0" TextWrapping="Wrap" FontSize="12" LineHeight="18"
                        AutomationProperties.AutomationId="MediaDetails" />
+            <!-- 拖曳素材到時間軸插入；雙擊加到最後面；右鍵或 Delete 從清單移除 -->
             <ListBox x:Name="MediaList" AutomationProperties.AutomationId="MediaList" SelectionChanged="OnMediaSelected" PreviewMouseLeftButtonUp="OnMediaListClicked" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                     HorizontalContentAlignment="Stretch">
+                     HorizontalContentAlignment="Stretch" PreviewMouseLeftButtonDown="OnMediaListMouseDown" PreviewMouseMove="OnMediaListMouseMove"
+                     MouseDoubleClick="OnMediaDoubleClick" ToolTip="拖到時間軸插入；雙擊加到時間軸最後面">
+                <ListBox.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="從清單移除" InputGestureText="Delete" AutomationProperties.AutomationId="RemoveMediaMenu" Click="OnRemoveMediaClick" />
+                    </ContextMenu>
+                </ListBox.ContextMenu>
                 <ListBox.ItemTemplate>
                     <DataTemplate>
                         <!-- 左欄變寬時文字跟著變寬 -->
@@ -312,7 +319,29 @@
                 <TextBlock Text="Ctrl + 滾輪縮放；S 在播放頭分割；Page Up／Down 跳剪輯點；按住 Alt 暫停吸附" TextTrimming="CharacterEllipsis" Foreground="#777777" FontSize="12" VerticalAlignment="Center" Margin="8,0,0,0" />
             </DockPanel>
             <ScrollBar x:Name="TimelineScroll" DockPanel.Dock="Bottom" Orientation="Horizontal" Scroll="OnTimelineScroll" />
-            <controls:TimelineView x:Name="TimelineView" AutomationProperties.AutomationId="Timeline" />
+            <controls:TimelineView x:Name="TimelineView" AutomationProperties.AutomationId="Timeline" ContextMenuOpening="OnTimelineContextMenuOpening">
+                <controls:TimelineView.ContextMenu>
+                    <ContextMenu AutomationProperties.AutomationId="TimelineMenu">
+                        <MenuItem x:Name="MenuSplit" Header="在播放頭分割" InputGestureText="S" Click="OnSplitClick" />
+                        <MenuItem x:Name="MenuDelete" Header="刪除" InputGestureText="Delete" Click="OnDeleteClip" />
+                        <Separator x:Name="MenuClipSeparator1" />
+                        <MenuItem x:Name="MenuSwapPrevious" Header="與前一段交換" Click="OnMenuSwapPrevious" />
+                        <MenuItem x:Name="MenuSwapNext" Header="與後一段交換" Click="OnMenuSwapNext" />
+                        <Separator x:Name="MenuClipSeparator2" />
+                        <MenuItem x:Name="MenuReverse" Header="倒放" IsCheckable="True" Click="OnMenuReverse" />
+                        <MenuItem x:Name="MenuRotateLeft" Header="↺ 左轉 90°" Click="OnRotateLeft" />
+                        <MenuItem x:Name="MenuRotateRight" Header="↻ 右轉 90°" Click="OnRotateRight" />
+                        <MenuItem x:Name="MenuFlipHorizontal" Header="⇋ 水平鏡像" Click="OnFlipHorizontal" />
+                        <MenuItem x:Name="MenuFlipVertical" Header="⇵ 垂直鏡像" Click="OnFlipVertical" />
+                        <MenuItem x:Name="MenuResetFraming" Header="重設畫面位置" Click="OnMenuResetFraming" />
+                        <Separator x:Name="MenuClipSeparator3" />
+                        <MenuItem x:Name="MenuVolumeReset" Header="音量回到 100%" Click="OnMenuVolumeReset" />
+                        <MenuItem x:Name="MenuZoomFit" Header="顯示全部" Click="OnZoomFit" />
+                        <MenuItem x:Name="MenuSnapSilence" Header="吸附靜音" IsCheckable="True" Click="OnMenuSnapSilence" />
+                        <MenuItem x:Name="MenuSnapClips" Header="吸附片段" IsCheckable="True" Click="OnMenuSnapClips" />
+                    </ContextMenu>
+                </controls:TimelineView.ContextMenu>
+            </controls:TimelineView>
         </DockPanel>
 
         <!-- 狀態列：固定在視窗最下方，訊息不會被捲到畫面外 -->

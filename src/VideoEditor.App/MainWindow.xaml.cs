@@ -57,6 +57,9 @@ public partial class MainWindow : Window, IExportView, IImportView
         TimelineView.ClipPressed += SwitchToTimelinePreview;
         TimelineView.EditStarted += OnTimelineEditStarted;
         TimelineView.EditCompleted += OnTimelineEditCompleted;
+        TimelineView.DraggedMedia = DraggedMedia;
+        TimelineView.MediaDropped += OnMediaDropped;
+        TimelineView.FilesDropped += OnFilesDroppedOnTimeline;
         TimelineView.ClipsChanged += OnClipsChanged;
         TimelineView.ViewChanged += UpdateTimelineScrollBar;
         ProgressPanel.CancelExportRequested += () => _export?.Cancel();

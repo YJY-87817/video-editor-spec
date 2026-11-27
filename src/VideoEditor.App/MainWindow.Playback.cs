@@ -92,7 +92,9 @@ public partial class MainWindow
         if (command is PreviewCommand.PreviousEditPoint or PreviewCommand.NextEditPoint
             && e.OriginalSource is System.Windows.Controls.Primitives.Selector or System.Windows.Controls.ListBoxItem
                 or System.Windows.Controls.Primitives.ScrollBar) return;
-        Execute(command);
+        // 焦點在素材清單時，Delete 是從清單移除素材，不是刪除時間軸上的片段。
+        if (command == PreviewCommand.DeleteClip && MediaList.IsKeyboardFocusWithin) RemoveSelectedMedia();
+        else Execute(command);
         e.Handled = true;
     }
 

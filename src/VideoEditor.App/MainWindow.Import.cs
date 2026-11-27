@@ -19,6 +19,13 @@ public partial class MainWindow
 {
     // ---- 匯入 ----
 
+    /// <summary>視窗只接受檔案（匯入）；素材清單的素材只能放到時間軸（時間軸自己處理，不會傳到這裡）。</summary>
+    private void OnWindowDragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
     private void OnFileDrop(object sender, DragEventArgs e)
     {
         if (e.Data.GetData(DataFormats.FileDrop) is string[] files) RunImport(files);
