@@ -205,3 +205,12 @@
   - 選好後存到設定並關閉視窗，`OnClosed` 存檔後重新啟動程式。關閉時照常詢問是否放棄時間軸；按取消的話不重新啟動，但已經記住新的資料夾，下次開啟時生效，並在狀態列說明。
   - 狀態列右側的 FFmpeg 版本可以點，流程相同；滑鼠提示說明會重新啟動。
 - **測試**：新增 11 個（偏好的位置排第一、不在時照原本順序、相對路徑不採用、`ContainsTools`、找過的位置的順序、設定檔的新欄位、狀態列各種訊息留多久）。單元測試 684 個全部通過。
+
+### 階段 3（2026-11-27 完成，畫面需在 Windows 上確認）
+
+- **自動捲動**（#3）：Core `TimelineDrag.AutoScrollSpeed`；App 新增 `Controls/TimelineView.AutoScroll.cs`。`OnMouseMove` 的拖曳部分抽成 `ApplyDrag`，自動捲動每 30 毫秒捲一次並用最後的游標位置重套拖曳。拖入素材時只捲動，預定位置由下一次 `DragOver` 重畫。放開、離開、放下時停止。
+- **刪除並補齊**（#4）：Core `Timeline.RemoveAndClose`；Shift+Delete、右鍵選單「刪除並補齊」，記成一步復原，狀態列說明往前移了幾段。焦點在素材清單時 Shift+Delete 不作用（避免和移除素材混淆）。
+- **快捷鍵**（#5）：`PreviewKey` 加上 Home、End、E，`PreviewCommand` 加上 `GoToStart`、`GoToEnd`、`AddToTimeline`；帶修飾鍵的（Shift+E、Shift+Delete、Alt+←／→）與 `+`／`-` 在 `MainWindow.EditKeys.cs` 處理。Alt 組合鍵看 `e.SystemKey`。`+`／`-` 接受主鍵盤（含 Shift）與數字鍵盤。End 停在最後一格（停在結尾時間點時畫面會是黑的）。F1 一覽同步更新。
+- **插入到播放頭**（#12）：播放列加按鈕、Shift+E，走拖曳插入的同一條路（`OnMediaDropped`），所以入出點、復原、狀態列訊息都相同。沒有選素材時說明。
+- **Alt+←／→**：Core `TimelineNavigation.Adjacent`；在選取片段所在的軌道移動（沒選取時看影片軌），播放頭移到那段開頭並切到剪輯預覽。
+- **測試**：新增 21 個（自動捲動速度、刪除並補齊三種情況與復原、鄰近片段四種情況、新按鍵對應）。單元測試 705 個全部通過。

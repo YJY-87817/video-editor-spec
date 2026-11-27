@@ -455,6 +455,13 @@ public sealed partial class TimelineView : FrameworkElement
             return;
         }
 
+        ApplyDrag(p);
+        UpdateAutoScroll(p);
+    }
+
+    /// <summary>依游標位置套用拖曳（移動播放頭、移動或修剪片段）。自動捲動時也用最後的游標位置再套一次。</summary>
+    private void ApplyDrag(Point p)
+    {
         var time = XToTime(p.X);
         switch (_drag)
         {
@@ -525,6 +532,7 @@ public sealed partial class TimelineView : FrameworkElement
         _dragSilences = null;
         _dragSilenceTargets = [];
         _dragClipEdges = [];
+        StopAutoScroll();
         if (editLabel != null)
         {
             EditCompleted?.Invoke(editLabel);

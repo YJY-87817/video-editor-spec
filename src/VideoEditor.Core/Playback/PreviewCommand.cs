@@ -20,6 +20,12 @@ public enum PreviewCommand
     PreviousEditPoint,
     /// <summary>Page Down：跳到下一個剪輯點。</summary>
     NextEditPoint,
+    /// <summary>Home：跳到開頭。</summary>
+    GoToStart,
+    /// <summary>End：跳到結尾。</summary>
+    GoToEnd,
+    /// <summary>E：把預覽中的素材加到時間軸最後面（和「＋ 加入時間軸」相同）。</summary>
+    AddToTimeline,
 }
 
 /// <summary>按下快捷鍵時同時按著的修飾鍵。核心不依賴 WPF，由 App 端把 <c>ModifierKeys</c> 逐一對應過來。</summary>
@@ -39,7 +45,7 @@ public enum KeyModifiers
 /// </summary>
 public enum PreviewKey
 {
-    Space, J, K, L, Left, Right, I, O, Delete, S, PageUp, PageDown,
+    Space, J, K, L, Left, Right, I, O, Delete, S, PageUp, PageDown, Home, End, E,
 }
 
 public static class PreviewKeys
@@ -66,6 +72,9 @@ public static class PreviewKeys
         PreviewKey.S => PreviewCommand.SplitClip,
         PreviewKey.PageUp => PreviewCommand.PreviousEditPoint,
         PreviewKey.PageDown => PreviewCommand.NextEditPoint,
+        PreviewKey.Home => PreviewCommand.GoToStart,
+        PreviewKey.End => PreviewCommand.GoToEnd,
+        PreviewKey.E => PreviewCommand.AddToTimeline,
         _ => throw new ArgumentOutOfRangeException(nameof(key), key, "沒有對應的預覽指令"),
     };
 }

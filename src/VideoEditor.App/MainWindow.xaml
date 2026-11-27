@@ -219,7 +219,9 @@
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                             <Border Style="{StaticResource GroupSeparator}" />
                             <Button x:Name="AddButton" AutomationProperties.AutomationId="AddToTimelineButton" Content="＋ 加入時間軸" Click="OnAddToTimeline"
-                                    ToolTip="把入點到出點這一段接到時間軸最後面" />
+                                    ToolTip="E：把入點到出點這一段接到時間軸最後面" />
+                            <Button x:Name="InsertAtPlayheadButton" AutomationProperties.AutomationId="InsertAtPlayheadButton" Content="插入到播放頭" Click="OnInsertAtPlayheadClick"
+                                    ToolTip="Shift+E：插入到時間軸播放頭的位置（播放頭在片段前半就插在它前面，後半插在後面）" />
                         </StackPanel>
                     </WrapPanel>
                 </DockPanel>
@@ -335,6 +337,7 @@
                     <ContextMenu AutomationProperties.AutomationId="TimelineMenu">
                         <MenuItem x:Name="MenuSplit" Header="在播放頭分割" InputGestureText="S" Click="OnSplitClick" />
                         <MenuItem x:Name="MenuDelete" Header="刪除" InputGestureText="Delete" Click="OnDeleteClip" />
+                        <MenuItem x:Name="MenuRippleDelete" Header="刪除並補齊" InputGestureText="Shift+Delete" Click="OnRippleDeleteClick" />
                         <Separator x:Name="MenuClipSeparator1" />
                         <MenuItem x:Name="MenuSwapPrevious" Header="與前一段交換" Click="OnMenuSwapPrevious" />
                         <MenuItem x:Name="MenuSwapNext" Header="與後一段交換" Click="OnMenuSwapNext" />

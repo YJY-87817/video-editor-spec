@@ -76,12 +76,15 @@ public partial class MainWindow
         Key.S => PreviewKey.S,
         Key.PageUp => PreviewKey.PageUp,
         Key.PageDown => PreviewKey.PageDown,
+        Key.Home => PreviewKey.Home,
+        Key.End => PreviewKey.End,
+        Key.E => PreviewKey.E,
         _ => null,
     };
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (HandleHistoryKey(e) || HandleGoToKey(e)) return;
+        if (HandleHistoryKey(e) || HandleGoToKey(e) || HandleEditKey(e)) return;
         if (e.Key == Key.F1 && Keyboard.Modifiers == ModifierKeys.None)
         {
             ShowShortcuts();
@@ -122,6 +125,9 @@ public partial class MainWindow
             case PreviewCommand.SplitClip: SplitSelectedClip(); break;
             case PreviewCommand.PreviousEditPoint: JumpToEditPoint(forward: false); break;
             case PreviewCommand.NextEditPoint: JumpToEditPoint(forward: true); break;
+            case PreviewCommand.GoToStart: GoToEnd(atStart: true); break;
+            case PreviewCommand.GoToEnd: GoToEnd(atStart: false); break;
+            case PreviewCommand.AddToTimeline: OnAddToTimeline(this, new RoutedEventArgs()); break;
         }
     }
 
