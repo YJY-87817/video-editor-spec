@@ -45,6 +45,7 @@ public partial class MainWindow : Window, IExportView, IImportView
         _editor = new TimelineEditor(_timeline);
         _history = new TimelineHistory(_timeline);
         InitializeComponent();
+        ApplySettings();
         _history.Changed += UpdateHistoryButtons;
         UpdateHistoryButtons();
         UpdateModeIndicator();
@@ -175,6 +176,7 @@ public partial class MainWindow : Window, IExportView, IImportView
 
     private void OnClosed(object? sender, EventArgs e)
     {
+        SaveSettings();
         _export?.Cancel();
         _engine?.Dispose();
         _waveforms?.Dispose();

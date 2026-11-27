@@ -58,8 +58,13 @@ public partial class MainWindow
             return;
         }
 
-        var dialog = new SaveFileDialog { Filter = "MP4 影片|*.mp4", FileName = "輸出.mp4", DefaultExt = ".mp4" };
+        var dialog = new SaveFileDialog
+        {
+            Filter = "MP4 影片|*.mp4", FileName = "輸出.mp4", DefaultExt = ".mp4",
+            InitialDirectory = ExistingFolder(_settings.LastExportFolder) ?? "",
+        };
         if (dialog.ShowDialog(this) != true) return;
+        RememberExportFolder(dialog.FileName);
         try
         {
             await _export.RunAsync(_timeline, new OutputSettings(SelectedRatio, SelectedMode), dialog.FileName);

@@ -40,6 +40,47 @@
             <Setter Property="Foreground" Value="#E0E0E0" />
             <Setter Property="BorderBrush" Value="#3A3A3A" />
         </Style>
+        <!-- 分隔線：平常幾乎看不見，滑鼠移上去才亮起來 -->
+        <Style x:Key="Splitter" TargetType="GridSplitter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Focusable" Value="False" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#3A5A80" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <!-- 播放列各組之間的直線 -->
+        <Style x:Key="GroupSeparator" TargetType="Border">
+            <Setter Property="Width" Value="1" />
+            <Setter Property="Margin" Value="4,3,10,3" />
+            <Setter Property="Background" Value="#4A4A4A" />
+        </Style>
+        <!-- 預覽模式切換：並排的兩個按鈕。BorderBrush 是這個模式的顏色，選中時整個填滿 -->
+        <Style x:Key="SegmentButton" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="#E0E0E0" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Bd" Background="#2A2A2A" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" Padding="14,4" Margin="0,0,4,0" CornerRadius="3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{Binding BorderBrush, RelativeSource={RelativeSource TemplatedParent}}" />
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.85" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="SubTitle" TargetType="TextBlock">
             <Setter Property="Foreground" Value="#C8C8C8" />
             <Setter Property="FontSize" Value="12" />
@@ -53,20 +94,30 @@
     </Window.Resources>
 
     <Grid>
+        <!-- 第 1 欄、第 3 欄、第 1 列是分隔線：拖曳可調整素材清單、右欄的寬度與時間軸的高度，關閉時記住（AppSettings） -->
         <Grid.RowDefinitions>
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="254" />
+            <RowDefinition Height="*" MinHeight="300" />
+            <RowDefinition Height="5" />
+            <RowDefinition x:Name="TimelineRow" Height="254" MinHeight="210" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="250" />
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="280" />
+            <ColumnDefinition x:Name="LeftColumn" Width="250" MinWidth="200" />
+            <ColumnDefinition Width="5" />
+            <ColumnDefinition Width="*" MinWidth="400" />
+            <ColumnDefinition Width="5" />
+            <ColumnDefinition x:Name="RightColumn" Width="280" MinWidth="260" />
         </Grid.ColumnDefinitions>
 
+        <GridSplitter Grid.Row="0" Grid.Column="1" Style="{StaticResource Splitter}" HorizontalAlignment="Stretch" ResizeDirection="Columns"
+                      AutomationProperties.AutomationId="LeftSplitter" ToolTip="拖曳調整素材清單的寬度" />
+        <GridSplitter Grid.Row="0" Grid.Column="3" Style="{StaticResource Splitter}" HorizontalAlignment="Stretch" ResizeDirection="Columns"
+                      AutomationProperties.AutomationId="RightSplitter" ToolTip="拖曳調整右欄的寬度" />
+        <GridSplitter Grid.Row="1" Grid.ColumnSpan="5" Style="{StaticResource Splitter}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" ResizeDirection="Rows"
+                      AutomationProperties.AutomationId="TimelineSplitter" ToolTip="拖曳調整時間軸的高度" />
+
         <!-- 素材清單 -->
-        <DockPanel Grid.Row="0" Grid.RowSpan="2" Grid.Column="0" Margin="8">
+        <DockPanel Grid.Row="0" Grid.Column="0" Margin="8,8,3,8">
             <Button x:Name="ImportButton" AutomationProperties.AutomationId="ImportButton" DockPanel.Dock="Top" Margin="0,0,0,6" Content="匯入素材…（或拖放到視窗）" Click="OnImportClick" />
             <TextBlock x:Name="MediaDetails" DockPanel.Dock="Bottom" Margin="0,8,0,0" TextWrapping="Wrap" FontSize="12" LineHeight="18"
                        AutomationProperties.AutomationId="MediaDetails" />
@@ -74,72 +125,99 @@
                      HorizontalContentAlignment="Stretch">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <StackPanel Orientation="Horizontal" Margin="2">
+                        <!-- 左欄變寬時文字跟著變寬 -->
+                        <DockPanel Margin="2">
                             <Image Source="{Binding Thumbnail}" Width="72" Height="44" Stretch="Uniform" Margin="0,0,6,0" />
-                            <StackPanel Width="130">
-                                <TextBlock Text="{Binding Info.FileName}" TextTrimming="CharacterEllipsis" FontSize="12" />
-                                <TextBlock Text="{Binding Summary}" Foreground="#9A9A9A" FontSize="11" />
+                            <StackPanel>
+                                <TextBlock Text="{Binding Info.FileName}" TextTrimming="CharacterEllipsis" FontSize="12" ToolTip="{Binding Info.Path}" />
+                                <TextBlock Text="{Binding Summary}" Foreground="#9A9A9A" FontSize="11" TextTrimming="CharacterEllipsis" />
                             </StackPanel>
-                        </StackPanel>
+                        </DockPanel>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
         </DockPanel>
 
-        <!-- 預覽 -->
-        <Grid x:Name="PreviewArea" Grid.Row="0" Grid.Column="1" Margin="0,8,0,4" Background="#0C0C0C" ClipToBounds="True" SizeChanged="OnPreviewAreaResized"
-              MouseWheel="OnFramingWheel">
-            <!-- 剪輯預覽＋填滿裁切時，黃色框可拖曳移動、拖四角縮放、滾輪縮放、雙擊重設 -->
-            <Canvas x:Name="PreviewCanvas" MouseMove="OnFramingDragMove" MouseLeftButtonUp="OnFramingDragEnd" LostMouseCapture="OnFramingCaptureLost">
-                <Rectangle x:Name="FrameFill" Fill="Black" />
-                <Image x:Name="PreviewImage" Stretch="Fill" RenderOptions.BitmapScalingMode="Linear" AutomationProperties.AutomationId="PreviewImage" />
-                <Path x:Name="CropDim" Fill="#A0000000" IsHitTestVisible="False" />
-                <Rectangle x:Name="FrameBorder" Stroke="{x:Static local:Palette.Accent}" StrokeThickness="1.5" StrokeDashArray="4 3" IsHitTestVisible="False"
-                           AutomationProperties.AutomationId="FrameBorder" MouseLeftButtonDown="OnFramingMoveStart" />
-                <Rectangle x:Name="FrameHandleTopLeft" Style="{StaticResource FrameHandle}" Tag="-1,-1" Cursor="SizeNWSE" MouseLeftButtonDown="OnFramingResizeStart" />
-                <Rectangle x:Name="FrameHandleTopRight" Style="{StaticResource FrameHandle}" Tag="1,-1" Cursor="SizeNESW" MouseLeftButtonDown="OnFramingResizeStart" />
-                <Rectangle x:Name="FrameHandleBottomLeft" Style="{StaticResource FrameHandle}" Tag="-1,1" Cursor="SizeNESW" MouseLeftButtonDown="OnFramingResizeStart" />
-                <Rectangle x:Name="FrameHandleBottomRight" Style="{StaticResource FrameHandle}" Tag="1,1" Cursor="SizeNWSE" MouseLeftButtonDown="OnFramingResizeStart" />
-            </Canvas>
-            <Border x:Name="ModeFrame" BorderThickness="2" BorderBrush="{x:Static local:Palette.SourceBlue}" IsHitTestVisible="False" />
-            <Border x:Name="ModeBadge" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12" Padding="10,4" CornerRadius="4"
-                    Background="#CC2E6FB5" IsHitTestVisible="False" AutomationProperties.AutomationId="ModeBadge">
-                <TextBlock x:Name="ModeBadgeText" FontSize="13" FontWeight="SemiBold" Foreground="White" AutomationProperties.AutomationId="ModeBadgeText" />
-            </Border>
-            <TextBlock x:Name="EmptyHint" Text="匯入素材後，在這裡預覽並用 I / O 標記入出點" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#777777" />
+        <!-- 中間：預覽模式切換、預覽、播放控制 -->
+        <Grid Grid.Row="0" Grid.Column="2" Margin="3,8,3,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-            <!-- 進度面板：疊在預覽下方，有工作進行時才出現，不推動其他版面 -->
-            <controls:ProgressOverlay x:Name="ProgressPanel" VerticalAlignment="Bottom" Margin="16" />
+            <!-- 預覽模式：顏色與預覽框、左上角標籤相同（藍＝匯入影片，橘＝剪輯成品） -->
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,6">
+                <RadioButton x:Name="SourceMode" AutomationProperties.AutomationId="SourceMode" Content="匯入影片預覽" GroupName="PreviewMode" IsChecked="True"
+                             Style="{StaticResource SegmentButton}" BorderBrush="#2E6FB5" Checked="OnPreviewModeChecked"
+                             ToolTip="預覽素材清單中選取的影片，標記入點與出點" />
+                <RadioButton x:Name="TimelineMode" AutomationProperties.AutomationId="TimelineMode" Content="剪輯預覽" GroupName="PreviewMode"
+                             Style="{StaticResource SegmentButton}" BorderBrush="#C8651B" Checked="OnPreviewModeChecked"
+                             ToolTip="預覽時間軸上剪好的成品" />
+            </StackPanel>
+
+            <!-- 預覽 -->
+            <Grid x:Name="PreviewArea" Grid.Row="1" Margin="0,0,0,4" Background="#0C0C0C" ClipToBounds="True" SizeChanged="OnPreviewAreaResized"
+                  MouseWheel="OnFramingWheel">
+                <!-- 剪輯預覽＋填滿裁切時，黃色框可拖曳移動、拖四角縮放、滾輪縮放、雙擊重設 -->
+                <Canvas x:Name="PreviewCanvas" MouseMove="OnFramingDragMove" MouseLeftButtonUp="OnFramingDragEnd" LostMouseCapture="OnFramingCaptureLost">
+                    <Rectangle x:Name="FrameFill" Fill="Black" />
+                    <Image x:Name="PreviewImage" Stretch="Fill" RenderOptions.BitmapScalingMode="Linear" AutomationProperties.AutomationId="PreviewImage" />
+                    <Path x:Name="CropDim" Fill="#A0000000" IsHitTestVisible="False" />
+                    <Rectangle x:Name="FrameBorder" Stroke="{x:Static local:Palette.Accent}" StrokeThickness="1.5" StrokeDashArray="4 3" IsHitTestVisible="False"
+                               AutomationProperties.AutomationId="FrameBorder" MouseLeftButtonDown="OnFramingMoveStart" />
+                    <Rectangle x:Name="FrameHandleTopLeft" Style="{StaticResource FrameHandle}" Tag="-1,-1" Cursor="SizeNWSE" MouseLeftButtonDown="OnFramingResizeStart" />
+                    <Rectangle x:Name="FrameHandleTopRight" Style="{StaticResource FrameHandle}" Tag="1,-1" Cursor="SizeNESW" MouseLeftButtonDown="OnFramingResizeStart" />
+                    <Rectangle x:Name="FrameHandleBottomLeft" Style="{StaticResource FrameHandle}" Tag="-1,1" Cursor="SizeNESW" MouseLeftButtonDown="OnFramingResizeStart" />
+                    <Rectangle x:Name="FrameHandleBottomRight" Style="{StaticResource FrameHandle}" Tag="1,1" Cursor="SizeNWSE" MouseLeftButtonDown="OnFramingResizeStart" />
+                </Canvas>
+                <Border x:Name="ModeFrame" BorderThickness="2" BorderBrush="{x:Static local:Palette.SourceBlue}" IsHitTestVisible="False" />
+                <Border x:Name="ModeBadge" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12" Padding="10,4" CornerRadius="4"
+                        Background="#CC2E6FB5" IsHitTestVisible="False" AutomationProperties.AutomationId="ModeBadge">
+                    <TextBlock x:Name="ModeBadgeText" FontSize="13" FontWeight="SemiBold" Foreground="White" AutomationProperties.AutomationId="ModeBadgeText" />
+                </Border>
+                <TextBlock x:Name="EmptyHint" Text="匯入素材後，在這裡預覽並用 I / O 標記入出點" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#777777" />
+
+                <!-- 進度面板：疊在預覽下方，有工作進行時才出現，不推動其他版面 -->
+                <controls:ProgressOverlay x:Name="ProgressPanel" VerticalAlignment="Bottom" Margin="16" />
+            </Grid>
+
+            <!-- 播放控制：播放｜標記｜加入，三組各自不拆開換行 -->
+            <StackPanel Grid.Row="2" Margin="0,0,0,6">
+                <Grid Margin="0,0,0,4">
+                    <Slider x:Name="ScrubSlider" AutomationProperties.AutomationId="ScrubSlider" Minimum="0" Maximum="1" IsMoveToPointEnabled="True" Focusable="False" ValueChanged="OnScrubChanged" />
+                    <Canvas x:Name="MarkCanvas" IsHitTestVisible="False" Height="4" VerticalAlignment="Bottom">
+                        <Rectangle x:Name="MarkRange" Height="4" Fill="{x:Static local:Palette.Accent}" />
+                    </Canvas>
+                </Grid>
+                <DockPanel>
+                    <TextBlock x:Name="TimeText" AutomationProperties.AutomationId="TimeText" DockPanel.Dock="Right" VerticalAlignment="Center" FontFamily="Consolas" Text="00:00:00.00 / 00:00:00.00" />
+                    <WrapPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <Button x:Name="RewindButton" AutomationProperties.AutomationId="RewindButton" AutomationProperties.Name="倒帶" Content="◀◀ 倒帶" Width="72" Click="OnRewindClick" ToolTip="J（再按加速）" />
+                            <Button x:Name="PlayButton" AutomationProperties.AutomationId="PlayButton" AutomationProperties.Name="播放或暫停" Content="▶ 播放" Width="72" Click="OnPlayClick" ToolTip="空白鍵；K 暫停" />
+                            <Button x:Name="FastForwardButton" AutomationProperties.AutomationId="FastForwardButton" AutomationProperties.Name="快轉" Content="▶▶ 快轉" Width="72" Click="OnFastForwardClick" ToolTip="L（播放中再按加速）" />
+                            <Button Content="◀ 前一格" AutomationProperties.AutomationId="StepBackButton" AutomationProperties.Name="前一格" Click="OnStepBack" ToolTip="←" />
+                            <Button Content="後一格 ▶" AutomationProperties.AutomationId="StepForwardButton" AutomationProperties.Name="後一格" Click="OnStepForward" ToolTip="→" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <Border Style="{StaticResource GroupSeparator}" />
+                            <Button Content="入點 I" AutomationProperties.AutomationId="MarkInButton" Click="OnMarkIn" ToolTip="I：把目前這一格設為入點" />
+                            <Button Content="出點 O" AutomationProperties.AutomationId="MarkOutButton" Click="OnMarkOut" ToolTip="O：把目前這一格設為出點（不含這一格）" />
+                            <TextBlock x:Name="MarkText" AutomationProperties.AutomationId="MarkText" VerticalAlignment="Center" Foreground="{x:Static local:Palette.Accent}" FontFamily="Consolas" Margin="2,0,6,0" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <Border Style="{StaticResource GroupSeparator}" />
+                            <Button x:Name="AddButton" AutomationProperties.AutomationId="AddToTimelineButton" Content="＋ 加入時間軸" Click="OnAddToTimeline"
+                                    ToolTip="把入點到出點這一段接到時間軸最後面" />
+                        </StackPanel>
+                    </WrapPanel>
+                </DockPanel>
+            </StackPanel>
         </Grid>
 
-        <!-- 播放控制 -->
-        <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,0,0,6">
-            <Grid Margin="0,0,0,4">
-                <Slider x:Name="ScrubSlider" AutomationProperties.AutomationId="ScrubSlider" Minimum="0" Maximum="1" IsMoveToPointEnabled="True" Focusable="False" ValueChanged="OnScrubChanged" />
-                <Canvas x:Name="MarkCanvas" IsHitTestVisible="False" Height="4" VerticalAlignment="Bottom">
-                    <Rectangle x:Name="MarkRange" Height="4" Fill="{x:Static local:Palette.Accent}" />
-                </Canvas>
-            </Grid>
-            <DockPanel>
-                <TextBlock x:Name="TimeText" AutomationProperties.AutomationId="TimeText" DockPanel.Dock="Right" VerticalAlignment="Center" FontFamily="Consolas" Text="00:00:00.00 / 00:00:00.00" />
-                <WrapPanel>
-                    <Button x:Name="RewindButton" AutomationProperties.AutomationId="RewindButton" Content="◀◀ 倒帶" Width="72" Click="OnRewindClick" ToolTip="J（再按加速）" />
-                    <Button x:Name="PlayButton" AutomationProperties.AutomationId="PlayButton" Content="▶ 播放" Width="72" Click="OnPlayClick" ToolTip="空白鍵；K 暫停" />
-                    <Button x:Name="FastForwardButton" AutomationProperties.AutomationId="FastForwardButton" Content="▶▶ 快轉" Width="72" Click="OnFastForwardClick" ToolTip="L（播放中再按加速）" />
-                    <Button Content="◀ 前一格" AutomationProperties.AutomationId="StepBackButton" Click="OnStepBack" ToolTip="←" />
-                    <Button Content="後一格 ▶" AutomationProperties.AutomationId="StepForwardButton" Click="OnStepForward" ToolTip="→" />
-                    <Button Content="入點 I" AutomationProperties.AutomationId="MarkInButton" Click="OnMarkIn" Margin="10,0,6,0" />
-                    <Button Content="出點 O" AutomationProperties.AutomationId="MarkOutButton" Click="OnMarkOut" />
-                    <Button x:Name="AddButton" AutomationProperties.AutomationId="AddToTimelineButton" Content="加入時間軸" Click="OnAddToTimeline" />
-                    <RadioButton x:Name="SourceMode" AutomationProperties.AutomationId="SourceMode" Content="匯入影片預覽" GroupName="PreviewMode" IsChecked="True" Margin="10,4,8,0" Checked="OnPreviewModeChecked" />
-                    <RadioButton x:Name="TimelineMode" AutomationProperties.AutomationId="TimelineMode" Content="剪輯預覽" GroupName="PreviewMode" Margin="0,4,8,0" Checked="OnPreviewModeChecked" />
-                    <TextBlock x:Name="MarkText" AutomationProperties.AutomationId="MarkText" VerticalAlignment="Center" Foreground="{x:Static local:Palette.Accent}" FontFamily="Consolas" Margin="4,0,0,0" />
-                </WrapPanel>
-            </DockPanel>
-        </StackPanel>
-
         <!-- 右側：上方是輸出設定與匯出（固定，不捲動），下方是片段清單與選取片段的屬性（可捲動） -->
-        <DockPanel Grid.Row="0" Grid.RowSpan="2" Grid.Column="2" Margin="8">
+        <DockPanel Grid.Row="0" Grid.Column="4" Margin="3,8,8,8">
             <Border DockPanel.Dock="Top" Background="#252525" BorderBrush="#333333" BorderThickness="1" CornerRadius="4" Padding="10,0,10,10" Margin="0,0,0,8">
                 <StackPanel>
                     <TextBlock Style="{StaticResource SectionTitle}" Text="輸出" />
@@ -213,7 +291,7 @@
         </DockPanel>
 
         <!-- 時間軸 -->
-        <DockPanel Grid.Row="2" Grid.ColumnSpan="3" Margin="8,0,8,8">
+        <DockPanel Grid.Row="2" Grid.ColumnSpan="5" Margin="8,0,8,8">
             <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
                 <TextBlock Text="時間軸" Style="{StaticResource SectionTitle}" Margin="0,0,12,0" VerticalAlignment="Center" />
                 <Button x:Name="UndoButton" Content="↶ 復原" AutomationProperties.AutomationId="UndoButton" AutomationProperties.Name="復原" Click="OnUndoClick" />
@@ -238,7 +316,7 @@
         </DockPanel>
 
         <!-- 狀態列：固定在視窗最下方，訊息不會被捲到畫面外 -->
-        <Border Grid.Row="3" Grid.ColumnSpan="3" Background="#181818" BorderBrush="#2E2E2E" BorderThickness="0,1,0,0" Padding="10,4">
+        <Border Grid.Row="3" Grid.ColumnSpan="5" Background="#181818" BorderBrush="#2E2E2E" BorderThickness="0,1,0,0" Padding="10,4">
             <DockPanel>
                 <TextBlock x:Name="FfmpegText" AutomationProperties.AutomationId="FfmpegText" DockPanel.Dock="Right" Margin="16,0,0,0" FontSize="12"
                            Foreground="#8A8A8A" TextTrimming="CharacterEllipsis" MaxWidth="420" VerticalAlignment="Center" />
@@ -249,7 +327,7 @@
         </Border>
 
         <!-- 尚未找到 FFmpeg 時的錯誤遮罩 -->
-        <Border x:Name="FatalPanel" Grid.RowSpan="4" Grid.ColumnSpan="3" Background="#E0101010" Visibility="Collapsed">
+        <Border x:Name="FatalPanel" Grid.RowSpan="4" Grid.ColumnSpan="5" Background="#E0101010" Visibility="Collapsed">
             <TextBlock x:Name="FatalText" HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="600" FontSize="16" />
         </Border>
     </Grid>

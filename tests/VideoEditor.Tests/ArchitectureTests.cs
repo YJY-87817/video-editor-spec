@@ -4,7 +4,7 @@ namespace VideoEditor.Tests;
 
 /// <summary>
 /// 鎖住 Core 的命名空間依賴方向，避免循環相依長回來（A-2）。
-/// 方向：Models ← Editing ← Ffmpeg ← Export；Playback 不依賴其他資料夾；Logging 是最底層，誰都可以用，它自己不依賴任何資料夾。
+/// 方向：Models ← Editing ← Ffmpeg ← Export；Playback 不依賴其他資料夾；Settings（介面設定檔）只用到 Models；Logging 是最底層，誰都可以用，它自己不依賴任何資料夾。
 /// 以原始碼文字檢查 using 與命名空間限定名稱，不需要建置額外工具；比對前先去掉注解與字串，
 /// 文件注解裡提到另一個資料夾的類別（例如 see cref）不算依賴。
 /// </summary>
@@ -17,6 +17,7 @@ public class ArchitectureTests
         ["Playback"] = [],
         ["Ffmpeg"] = ["Models", "Editing"],
         ["Export"] = ["Models", "Editing", "Ffmpeg"],
+        ["Settings"] = ["Models"],
         ["Logging"] = [],
     };
 

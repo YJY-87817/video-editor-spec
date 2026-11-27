@@ -195,6 +195,7 @@ public sealed class TimelineView : FrameworkElement
         }
         foreach (var clip in _timeline.MusicClips)
             DrawClip(dc, clip, MusicRowY, AudioRowHeight, MusicClipBrush, $"{clip.Media.FileName}  {VolumeLabel(clip)}", audio: true);
+        if (_timeline.VideoClips.Count == 0 && _timeline.MusicClips.Count == 0) DrawEmptyHint(dc, width);
 
         DrawSnapMark(dc);
         var playheadX = TimeToX(_playhead);
@@ -337,6 +338,22 @@ public sealed class TimelineView : FrameworkElement
             bottom = _dragClip.Track == TrackKind.Video ? OriginalAudioRowY + AudioRowHeight : MusicRowY + AudioRowHeight;
         }
         dc.DrawLine(SnappedPlayheadPen, new Point(x, top), new Point(x, bottom));
+    }
+
+    /// <summary>時間軸還是空的：在軌道中央說明怎麼把素材放進來。</summary>
+    private void DrawEmptyHint(DrawingContext dc, double width)
+    {
+        const string hint = "在素材清單選好素材後按「＋ 加入時間軸」；有畫面的放到 V1，只有聲音的放到 A2";
+        var formatted = new FormattedText(hint, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, Face, 13, DimTextBrush,
+            VisualTreeHelper.GetDpi(this).PixelsPerDip)
+        {
+            MaxTextWidth = Math.Max(1, width - HeaderWidth - 24),
+            MaxLineCount = 2,
+            TextAlignment = TextAlignment.Center,
+            Trimming = TextTrimming.CharacterEllipsis,
+        };
+        var centerY = (VideoRowY + MusicRowY + AudioRowHeight) / 2;
+        dc.DrawText(formatted, new Point(HeaderWidth + 12, centerY - formatted.Height / 2));
     }
 
     private void DrawText(DrawingContext dc, string text, double x, double y, Brush brush, double maxWidth, Brush? background = null)

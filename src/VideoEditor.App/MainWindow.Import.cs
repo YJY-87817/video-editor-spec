@@ -47,8 +47,11 @@ public partial class MainWindow
             Filter = "影音與圖片|*.mp4;*.mov;*.m4v;*.mkv;*.avi;*.webm;*.mts;*.m2ts;*.mp3;*.m4a;*.wav;*.aac;*.flac;*.jpg;*.jpeg;*.png;*.bmp;*.webp;*.tif;*.tiff"
                 + "|影音檔|*.mp4;*.mov;*.m4v;*.mkv;*.avi;*.webm;*.mts;*.m2ts;*.mp3;*.m4a;*.wav;*.aac;*.flac"
                 + "|圖片|*.jpg;*.jpeg;*.png;*.bmp;*.webp;*.tif;*.tiff|所有檔案|*.*",
+            InitialDirectory = ExistingFolder(_settings.LastImportFolder) ?? "",
         };
-        if (dialog.ShowDialog(this) == true) RunImport(dialog.FileNames);
+        if (dialog.ShowDialog(this) != true) return;
+        RememberImportFolder(dialog.FileName);
+        RunImport(dialog.FileNames);
     }
 
     // ---- IImportView：匯入流程需要的畫面更新 ----
