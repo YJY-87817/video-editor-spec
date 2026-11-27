@@ -368,10 +368,12 @@
         </Popup>
 
         <!-- 狀態列：固定在視窗最下方，訊息不會被捲到畫面外 -->
-        <Border Grid.Row="3" Grid.ColumnSpan="5" Background="#181818" BorderBrush="#2E2E2E" BorderThickness="0,1,0,0" Padding="10,4">
+        <Border x:Name="StatusBar" Grid.Row="3" Grid.ColumnSpan="5" Background="#181818" BorderBrush="#2E2E2E" BorderThickness="0,1,0,0" Padding="10,4">
             <DockPanel>
+                <!-- 點一下可以改用其他資料夾的 FFmpeg -->
                 <TextBlock x:Name="FfmpegText" AutomationProperties.AutomationId="FfmpegText" DockPanel.Dock="Right" Margin="16,0,0,0" FontSize="12"
-                           Foreground="{x:Static local:Palette.TextDim}" TextTrimming="CharacterEllipsis" MaxWidth="420" VerticalAlignment="Center" />
+                           Foreground="{x:Static local:Palette.TextDim}" TextTrimming="CharacterEllipsis" MaxWidth="420" VerticalAlignment="Center"
+                           Cursor="Hand" MouseLeftButtonUp="OnFfmpegTextClick" />
                 <Button x:Name="StatusAction" AutomationProperties.AutomationId="StatusAction" DockPanel.Dock="Right" Visibility="Collapsed" Padding="8,0" Margin="12,0,0,0"
                         FontSize="12" Click="OnStatusActionClick" />
                 <TextBlock x:Name="StatusIcon" AutomationProperties.AutomationId="StatusIcon" Width="18" FontSize="12" VerticalAlignment="Center" />
@@ -381,8 +383,28 @@
         </Border>
 
         <!-- 尚未找到 FFmpeg 時的錯誤遮罩 -->
+        <!-- 找不到 FFmpeg：說明找過哪裡，可以直接選資料夾（選好後重新啟動），或看下載說明 -->
         <Border x:Name="FatalPanel" Grid.RowSpan="4" Grid.ColumnSpan="5" Background="#E0101010" Visibility="Collapsed">
-            <TextBlock x:Name="FatalText" HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="600" FontSize="16" />
+            <Border HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="620" Background="#252525" BorderBrush="#555555" BorderThickness="1"
+                    CornerRadius="6" Padding="24,20" AutomationProperties.AutomationId="FatalCard">
+                <StackPanel>
+                    <TextBlock Text="找不到 FFmpeg" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,10" />
+                    <TextBlock x:Name="FatalText" AutomationProperties.AutomationId="FatalText" TextWrapping="Wrap" FontSize="13" LineHeight="20" />
+                    <TextBlock x:Name="FatalPlaces" AutomationProperties.AutomationId="FatalPlaces" TextWrapping="Wrap" FontSize="12" LineHeight="18"
+                               Foreground="{x:Static local:Palette.TextSecondary}" Margin="0,10,0,0" />
+                    <TextBlock TextWrapping="Wrap" FontSize="12" Margin="0,10,0,0" Foreground="{x:Static local:Palette.TextSecondary}"
+                               Text="需要含 libx264 與 libx265 的 Windows 版 FFmpeg（ffmpeg.exe 與 ffprobe.exe 要在同一個資料夾，通常是解壓縮後的 bin 資料夾）。" />
+                    <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                        <Button x:Name="ChooseFfmpegButton" AutomationProperties.AutomationId="ChooseFfmpegButton" Content="選擇 FFmpeg 所在資料夾…"
+                                Padding="14,6" Click="OnChooseFfmpegClick" />
+                        <TextBlock VerticalAlignment="Center" Margin="12,0,0,0">
+                            <Hyperlink NavigateUri="https://ffmpeg.org/download.html" RequestNavigate="OnFfmpegDownloadLink" Foreground="#9CC4F0">下載說明</Hyperlink>
+                        </TextBlock>
+                    </StackPanel>
+                    <TextBlock x:Name="FatalChooseResult" AutomationProperties.AutomationId="FatalChooseResult" TextWrapping="Wrap" FontSize="12" Margin="0,10,0,0"
+                               Foreground="{x:Static local:Palette.StatusWarning}" Visibility="Collapsed" />
+                </StackPanel>
+            </Border>
         </Border>
     </Grid>
 </Window>

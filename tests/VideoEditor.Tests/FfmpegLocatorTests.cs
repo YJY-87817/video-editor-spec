@@ -25,6 +25,59 @@ public sealed class FfmpegLocatorTests : IDisposable
     private string EmptyBase() => Directory.CreateDirectory(Path.Combine(_root, "app-" + Guid.NewGuid().ToString("N")[..6])).FullName;
 
     [Fact]
+    public void PreferredDirectoryComesFirst()
+    {
+        var chosen = MakeTools("chosen");
+        var appDirectory = EmptyBase();
+        Directory.CreateDirectory(Path.Combine(appDirectory, "tools", "ffmpeg"));
+        File.WriteAllText(Path.Combine(appDirectory, "tools", "ffmpeg", "ffmpeg.exe"), "");
+        File.WriteAllText(Path.Combine(appDirectory, "tools", "ffmpeg", "ffprobe.exe"), "");
+
+        var found = FfmpegLocator.Locate(appDirectory, MakeTools("on-path"), chosen);
+
+        Assert.Equal(Path.Combine(chosen, "ffmpeg.exe"), found.Ffmpeg);
+    }
+
+    [Fact]
+    public void MissingPreferredDirectoryFallsBackToTheUsualOrder()
+    {
+        var onPath = MakeTools("fallback");
+        var found = FfmpegLocator.Locate(EmptyBase(), onPath, Path.Combine(_root, "deleted-folder"));
+        Assert.Equal(Path.Combine(onPath, "ffmpeg.exe"), found.Ffmpeg);
+    }
+
+    [Fact]
+    public void RelativePreferredDirectoryIsIgnored()
+    {
+        // 相對路徑依工作目錄解析，和 PATH 的相對項目一樣不信任。
+        MakeTools("relative-choice");
+        var relative = Path.GetRelativePath(Environment.CurrentDirectory, Path.Combine(_root, "relative-choice"));
+        Assert.Throws<FfmpegNotFoundException>(() => FfmpegLocator.Locate(EmptyBase(), "", relative));
+    }
+
+    [Fact]
+    public void ContainsToolsNeedsBothProgramsAndAFullPath()
+    {
+        var both = MakeTools("both");
+        var onlyOne = Path.Combine(_root, "only-one");
+        Directory.CreateDirectory(onlyOne);
+        File.WriteAllText(Path.Combine(onlyOne, "ffmpeg.exe"), "");
+
+        Assert.True(FfmpegLocator.ContainsTools(both));
+        Assert.False(FfmpegLocator.ContainsTools(onlyOne));
+        Assert.False(FfmpegLocator.ContainsTools(Path.GetRelativePath(Environment.CurrentDirectory, both)));
+    }
+
+    [Fact]
+    public void SearchedPlacesListTheChosenFolderFirst()
+    {
+        var places = FfmpegLocator.SearchedPlaces("/app", "/chosen");
+        Assert.Contains("/chosen", places[0]);
+        Assert.Equal(4, places.Count);
+        Assert.Equal(3, FfmpegLocator.SearchedPlaces("/app").Count);
+    }
+
+    [Fact]
     public void FindsToolsInAFullyQualifiedPathEntry()
     {
         var tools = MakeTools("on-path");

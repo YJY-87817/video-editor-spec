@@ -31,6 +31,9 @@ public sealed record AppSettings
     /// <summary>時間顯示成時間碼（時:分:秒:格）還是百分秒。</summary>
     public TimeDisplay TimeDisplay { get; init; } = TimeDisplay.Timecode;
 
+    /// <summary>使用者自己選的 FFmpeg 資料夾，找 FFmpeg 時排第一；null 表示照預設順序找。</summary>
+    public string? FfmpegFolder { get; init; }
+
     /// <summary>上次選檔匯入、上次匯出的資料夾。</summary>
     public string? LastImportFolder { get; init; }
     public string? LastExportFolder { get; init; }

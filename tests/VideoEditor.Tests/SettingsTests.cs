@@ -45,6 +45,7 @@ public sealed class SettingsTests : IDisposable
             Ratio = AspectRatio.R9x16,
             Mode = FitMode.Pad,
             TimeDisplay = TimeDisplay.Decimal,
+            FfmpegFolder = @"C:\ffmpeg\bin",
             LastImportFolder = @"D:\影片",
             LastExportFolder = @"E:\輸出",
         };
@@ -145,5 +146,22 @@ public sealed class SettingsTests : IDisposable
         // 虛擬螢幕從 -1920 開始（主螢幕左邊還有一個螢幕）。
         Assert.True(new WindowBounds(-1500, 50, 1200, 800).IsReachableOn(-1920, 0, 3840, 1080));
         Assert.False(new WindowBounds(-1500, 50, 1200, 800).IsReachableOn(0, 0, 1920, 1080));
+    }
+}
+
+public class StatusPolicyTests
+{
+    [Theory]
+    [InlineData(VideoEditor.Core.Models.StatusKind.Info, false, false, true)]
+    [InlineData(VideoEditor.Core.Models.StatusKind.Success, false, false, true)]
+    [InlineData(VideoEditor.Core.Models.StatusKind.Warning, false, false, false)]
+    [InlineData(VideoEditor.Core.Models.StatusKind.Error, false, false, false)]
+    [InlineData(VideoEditor.Core.Models.StatusKind.Success, true, false, false)]  // 有「開啟資料夾」按鈕
+    [InlineData(VideoEditor.Core.Models.StatusKind.Info, false, true, false)]     // 進行中的工作
+    public void ShortMessagesFadeImportantOnesStay(VideoEditor.Core.Models.StatusKind kind, bool hasAction, bool keep, bool fades)
+    {
+        var lifetime = VideoEditor.Core.Models.StatusPolicy.Lifetime(kind, hasAction, keep);
+        Assert.Equal(fades, lifetime != null);
+        if (fades) Assert.Equal(TimeSpan.FromSeconds(8), lifetime);
     }
 }

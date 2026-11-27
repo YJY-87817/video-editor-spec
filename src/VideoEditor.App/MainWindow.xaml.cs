@@ -69,13 +69,12 @@ public partial class MainWindow : Window, IExportView, IImportView
 
         try
         {
-            _tools = FfmpegLocator.Locate();
+            _tools = FfmpegLocator.Locate(preferredDirectory: _settings.FfmpegFolder);
             _ = ShowFfmpegAsync(_tools);
         }
         catch (FfmpegNotFoundException e)
         {
-            FatalText.Text = e.Message;
-            FatalPanel.Visibility = Visibility.Visible;
+            ShowFfmpegMissing(e.Message);
             return;
         }
 
@@ -138,7 +137,7 @@ public partial class MainWindow : Window, IExportView, IImportView
         var text = version == null ? $"使用的 FFmpeg：{tools.Ffmpeg}" : $"使用的 FFmpeg：{tools.Ffmpeg}（{version}）";
         Log.Info(text);
         FfmpegText.Text = version == null ? "FFmpeg" : $"FFmpeg {version}";
-        FfmpegText.ToolTip = text;
+        FfmpegText.ToolTip = $"{text}\n點一下可以改用其他資料夾的 FFmpeg（程式會重新啟動）";
     }
 
     private bool IsTimelinePreview => TimelineMode.IsChecked == true;
@@ -182,6 +181,7 @@ public partial class MainWindow : Window, IExportView, IImportView
     private void OnClosed(object? sender, EventArgs e)
     {
         SaveSettings();
+        if (_restartAfterClose) RestartApplication();
         _export?.Cancel();
         _engine?.Dispose();
         _waveforms?.Dispose();

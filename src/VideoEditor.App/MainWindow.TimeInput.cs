@@ -3,6 +3,7 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using VideoEditor.Core.Editing;
 using VideoEditor.Core.Export;
+using VideoEditor.Core.Models;
 using VideoEditor.Core.Playback;
 
 namespace VideoEditor.App;
